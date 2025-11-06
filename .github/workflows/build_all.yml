@@ -1,4 +1,4 @@
-name: ▶️ Build Binaries for Multiple Platforms and Docker Image
+name: ▶️ Build Binaries for Multiple Platforms
 
 on:
   # ──────────────── 1) Disparador manual desde GitHub Actions ────────────────
@@ -541,7 +541,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.TOKEN_GITHUB }}
 
-      - name: 📥 Download Artifacts (RELEASE-NOTES.md, Binaries and Docker Zips)
+      - name: 📥 Download Artifacts (RELEASE-NOTES.md and Binaries)
         uses: actions/download-artifact@v4
         with:
           pattern: RetuningAutomations*.zip
