@@ -220,7 +220,7 @@ If the repository includes `_compile_pyinstaller.py`, you can produce single-fol
 pip install -r requirements.txt
 
 # Build
-python _compile_pyinstaller.py
+python Compile.py
 ```
 
 The script should:

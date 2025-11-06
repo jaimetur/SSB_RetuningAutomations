@@ -70,7 +70,7 @@ jobs:
 
       - name: Build binary with PyInstaller
         env:
-          TARGET_ARCH: ${{ matrix.py_arch }}  # Only used on Windows by _compile_pyinstaller.py
+          TARGET_ARCH: ${{ matrix.py_arch }}  # Only used on Windows by Compile.py
         shell: bash
         run: |
           echo "Executing compiler script: _compile_pyinstaller.py"
