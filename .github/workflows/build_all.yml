@@ -363,7 +363,7 @@ jobs:
           
           if [[ "${{ matrix.compilation_mode }}" == "standalone" ]]; then
             folder="${{ matrix.compiler }}_dist"
-            ZIP_FILE="PhotoMigrator_v${{ env.TOOL_VERSION }}_standalone_${{ matrix.os }}_${{ matrix.compiler }}.zip"
+            ZIP_FILE="RetuningAutomations_v${{ env.TOOL_VERSION }}_standalone_${{ matrix.os }}_${{ matrix.compiler }}.zip"
             echo "📁 Checking for folder: $folder"
           
             if [ -d "$folder" ]; then
@@ -545,7 +545,7 @@ jobs:
       - name: 📥 Download Artifacts (RELEASE-NOTES.md, Binaries and Docker Zips)
         uses: actions/download-artifact@v4
         with:
-          pattern: PhotoMigrator*.zip
+          pattern: RetuningAutomations*.zip
           path: ./release_files
           merge-multiple: true
 

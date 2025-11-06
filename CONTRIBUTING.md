@@ -1,6 +1,6 @@
-# 🤝 Contributing to PhotoMigrator
+# 🤝 Contributing to RetuningAutomations
 
-First of all, **thank you** for considering contributing to **PhotoMigrator** — your help makes the project better for everyone! 🚀
+First of all, **thank you** for considering contributing to **RetuningAutomations** — your help makes the project better for everyone! 🚀
 
 Whether you want to fix a bug, suggest a feature, improve documentation, or just report an issue, this guide will help you get started.
 
@@ -24,9 +24,9 @@ Whether you want to fix a bug, suggest a feature, improve documentation, or just
 ## 🧭 How to contribute
 
 ### 1. **Check for open issues**
-Before starting anything, take a look at the [Issues](https://github.com/jaimetur/PhotoMigrator/issues) tab to see if your idea or bug has already been reported.
+Before starting anything, take a look at the [Issues](https://github.com/jaimetur/RetuningAutomations/issues) tab to see if your idea or bug has already been reported.
 
-If it hasn’t, feel free to [open a new issue](https://github.com/jaimetur/PhotoMigrator/issues/new/choose).
+If it hasn’t, feel free to [open a new issue](https://github.com/jaimetur/RetuningAutomations/issues/new/choose).
 
 ---
 
@@ -34,8 +34,8 @@ If it hasn’t, feel free to [open a new issue](https://github.com/jaimetur/Phot
 Click the **Fork** button at the top right of the repository, then:
 
 ```bash
-git clone https://github.com/jaimetur/PhotoMigrator.git
-cd PhotoMigrator
+git clone https://github.com/jaimetur/RetuningAutomations.git
+cd RetuningAutomations
 ```
 
 ---
@@ -109,4 +109,4 @@ Optional tools:
 
 ## 💙 Thank you!
 
-Whether it's fixing a typo or building a major feature — your help means a lot. Let's make **PhotoMigrator** better together!
+Whether it's fixing a typo or building a major feature — your help means a lot. Let's make **RetuningAutomations** better together!

@@ -207,7 +207,7 @@ def main(compiler='pyinstaller', compile_in_one_file=COMPILE_IN_ONE_FILE):
 
     # Calcular el path relativo
     tool_name_with_version_os_arch = f"{TOOL_NAME_VERSION}_{OPERATING_SYSTEM}_{ARCHITECTURE}"
-    script_zip_file = Path(f"./PhotoMigrator-builds/{TOOL_VERSION_WITHOUT_V}/{tool_name_with_version_os_arch}.zip").resolve()
+    script_zip_file = Path(f"./RetuningAutomations-builds/{TOOL_VERSION_WITHOUT_V}/{tool_name_with_version_os_arch}.zip").resolve()
     archive_path_relative = os.path.relpath(script_zip_file, root_dir)
     # ========================
     # End of global variables
@@ -438,7 +438,7 @@ def compile(compiler='pyinstaller', compile_in_one_file=COMPILE_IN_ONE_FILE):
             f'--output-dir={dist_path}',
             f'--include-data-file={gpth_tool}={gpth_tool}',
 
-            f'--windows-icon-from-ico=./assets/ico/PhotoMigrator.ico',
+            f'--windows-icon-from-ico=./assets/ico/RetuningAutomations.ico',
             f'--copyright={COPYRIGHT_TEXT}',
             f"--company-name={TOOL_NAME}",
             f"--product-name={TOOL_NAME}",
