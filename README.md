@@ -229,21 +229,42 @@ The script should:
 
 ---
 
-## 🧪 Validations & Logging
+## 📝 Changelog
+The Historical Change Log can be checked in the following link:
+[Changelog](https://github.com/jaimetur/RetuningAutomations/blob/main/CHANGELOG.md)
 
-- Each module prints a **short preamble** indicating the module name and the input folder.  
-- Missing required inputs will result in **clear error messages** (and GUI fallbacks where applicable).  
-- Extend internal `logger` usage to persist run metadata (input path, timestamps, frequencies, tables loaded, row counts, etc.).
+## 📅 Roadmap
+The Planned Roadmap for futures releases can be checked in the following link:
+[Planned Roadmap](https://github.com/jaimetur/RetuningAutomations/blob/main/ROADMAP.md)
 
+## 🛡️ Code of Conduct
+By participating in this project, you agree to abide by our [Code of Conduct](https://github.com/jaimetur/RetuningAutomations/blob/main/CODE_OF_CONDUCT.md).
+
+## 📢 Disclaimer
+
+- ⚠️ The project is under **very active** development.
+- ⚠️ Expect bugs and breaking changes.
+  
 ---
 
-## 🗺️ Roadmap
+## 📊 Repository activity
+![Alt](https://repobeats.axiom.co/api/embed/b3021f0fd0db11466b473e34c9de04cc5d85f110.svg "Repobeats analytics image")
 
-- [ ] Fill `CreateExcelFromLogs` with robust parsers & schema validators.  
-- [ ] Implement `CleanUp` policies (temp deletion, file normalization, conflict resolution).  
-- [ ] Add schema checks for input tables + repair helpers.  
-- [ ] Optional HTML report alongside Excel exports.  
-- [ ] Unit tests for loaders and frequency comparison logic.
+## 📈 Star History
+<a href="https://www.star-history.com/#jaimetur/RetuningAutomations&Date">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=jaimetur/RetuningAutomations&type=Date&theme=dark" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=jaimetur/RetuningAutomations&type=Date" />
+   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=jaimetur/RetuningAutomations&type=Date" />
+ </picture>
+</a>
+
+## 👥 Contributors
+<a href="https://github.com/jaimetur/RetuningAutomations/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=jaimetur/RetuningAutomations" width="15%"/>
+</a>
+
+If you want to Contribute to this project please, first read the file [CONTRIBUTING.md](https://github.com/jaimetur/RetuningAutomations/blob/main/CONTRIBUTING.md)
 
 ---
 
