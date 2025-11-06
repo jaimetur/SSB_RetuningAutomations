@@ -21,7 +21,7 @@ The tool automatically adds a **timestamped + versioned suffix** to outputs, whi
 
 ---
 
-# 🖥️ Module Selector
+## 🖥️ Module Selector
 ![Module Selector](https://github.com/jaimetur/RetuningAutomations/blob/main/assets/screenshots/module_selector.png?raw=true) 
 
 ---
