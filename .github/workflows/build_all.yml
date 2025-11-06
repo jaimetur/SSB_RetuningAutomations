@@ -1,83 +1,756 @@
-name: Build RetuningAutomations
+name: ▶️ Build Binaries for Multiple Platforms and Docker Image
 
 on:
+  # ──────────────── 1) Disparador manual desde GitHub Actions ────────────────
   workflow_dispatch:
-  push:
-    branches: [ "main" ]
-    tags: [ "v*" ]
+    inputs:
+      final_release:
+        description: "Is this a Final Release?"
+        required: true
+        default: false
+        type: boolean
+      compiler:
+        description: "Select Compiler:"
+        required: true
+        default: "pyinstaller"
+        type: choice
+        options:
+          - nuitka
+          - pyinstaller
+      compilation_mode:
+        description: "Select Compilation Mode:"
+        required: true
+        default: "onefile"
+        type: choice
+        options:
+          - onefile
+          - standalone
+#      build_mode:
+#        description: "Select Build Mode:"
+#        required: true
+#        default: "default"
+#        type: choice
+#        options:
+#          - default
+#          - custom
+      python:
+        description: "Select Python Version:"
+        required: true
+        default: "3.12"
+        type: choice
+        options:
+          - "3.8"
+          - "3.9"
+          - "3.10"
+          - "3.11"
+          - "3.12"
+          - "3.13"
+          - "3.14"
+
+      linux_x64:
+        description: "Include linux-x64 ?"
+        type: boolean
+        required: true
+        default: true
+      macos_x64:
+        description: "Include macos-x64 ?"
+        type: boolean
+        required: true
+        default: true
+      windows_x64:
+        description: "Include windows-x64 ?"
+        type: boolean
+        required: true
+        default: true
+
+      linux_arm64:
+        description: "Include linux-arm64 ?"
+        type: boolean
+        required: true
+        default: true
+      macos_arm64:
+        description: "Include macos-arm64 ?"
+        type: boolean
+        required: true
+        default: true
+      windows_arm64:
+        description: "Include windows-arm64 ?"
+        type: boolean
+        required: true
+        default: true
+
+  # ──────────────── 2) Disparador automático por push ──────────────────────
+  #  push:                   # Ejecución tras push en main, excepto en los path-ignore
+  #    branches:
+  #      - main
+  #    paths-ignore:
+  #      - '_built_versions/**'  # Ignore any changes in _built_versions
+  #      - .gitignore
+  #      - gpth*/**
+  #      - exif*/**
+  #      - .idea/**
+
+  # ──────────────── 3) Disparador automático por cron ──────────────────────
+  #  schedule:
+  #    - cron: '0 2 * * *' # Ejecución diaria a las 2 AM UTC
+  # ─────────────────────────────────────────────────────────────────────────
+
 
 jobs:
-  build-binaries:
-    name: Build RetuningAutomations binaries
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          # Windows runners (x64 + ARM64 via --target-arch)
-          - os: windows-latest
-            arch: x64
-            py_arch: "64"
-          - os: windows-latest
-            arch: arm64
-            py_arch: "ARM64"
-
-          # Ubuntu runner x64 (native)
-          - os: ubuntu-latest
-            arch: x64
-            py_arch: ""
-
-          # macOS: macos-14 is arm64; macos-13 is x64 (Intel)
-          - os: macos-14
-            arch: arm64
-            py_arch: ""
-          - os: macos-13
-            arch: x64
-            py_arch: ""
-
+  # ==========================================================================================================================
+  # JOB Set Input Matrix
+  # ==========================================================================================================================
+  set-input-matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Show workspace structure (debug)
-        shell: bash
+      - id: matrix
         run: |
-          echo "Current working directory:"
-          pwd
-          echo "Repository content (depth 2):"
-          find . -maxdepth 2 -type f -print
+          echo "⚙️ Preparando matriz dinámica..."
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
+          EVENT_NAME="${{ github.event_name }}"
 
-      - name: Upgrade pip & install PyInstaller
-        shell: bash
-        run: |
-          python -m pip install --upgrade pip
-          pip install pyinstaller
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            echo "🔘 Disparo manual con inputs"
+            linux_x64=${{ toJSON(github.event.inputs.linux_x64) }}
+            linux_arm64=${{ toJSON(github.event.inputs.linux_arm64) }}
+            macos_x64=${{ toJSON(github.event.inputs.macos_x64) }}
+            macos_arm64=${{ toJSON(github.event.inputs.macos_arm64) }}
+            windows_x64=${{ toJSON(github.event.inputs.windows_x64) }}
+            windows_arm64=${{ toJSON(github.event.inputs.windows_arm64) }}
+            compiler="${{ github.event.inputs.compiler }}"
+            compilation_mode="${{ github.event.inputs.compilation_mode }}"
+            # build_mode="${{ github.event.inputs.build_mode }}"
+            build_mode="custom"
+            python="${{ github.event.inputs.python }}"
 
-      - name: Install project dependencies (if requirements.txt exists)
-        shell: bash
-        run: |
-          if [ -f requirements.txt ]; then
-            echo "requirements.txt found — installing dependencies..."
-            pip install -r requirements.txt
           else
-            echo "No requirements.txt found — skipping dependency installation."
+            echo "⏰ Disparo programado (cron) o 📦 Disparo por commit"
+            linux_x64="true"
+            linux_arm64="true"
+            macos_x64="true"
+            macos_arm64="true"
+            windows_x64="true"
+            windows_arm64="true"
+            compiler="nuitka"
+            compilation_mode="onefile"
+            build_mode="default"
+            python="3.12"
           fi
 
-      - name: Build binary with PyInstaller
-        env:
-          TARGET_ARCH: ${{ matrix.py_arch }}  # Only used on Windows by _compile_pyinstaller.py
+          # Crear lista
+          OS_LIST=()
+          [ "$linux_x64" = "true" ] && OS_LIST+=("linux-x64")
+          [ "$linux_arm64" = "true" ] && OS_LIST+=("linux-arm64")
+          [ "$macos_x64" = "true" ] && OS_LIST+=("macos-x64")
+          [ "$macos_arm64" = "true" ] && OS_LIST+=("macos-arm64")
+          [ "$windows_x64" = "true" ] && OS_LIST+=("windows-x64")
+          [ "$windows_arm64" = "true" ] && OS_LIST+=("windows-arm64")
+
+          if [ ${#OS_LIST[@]} -eq 0 ]; then
+            echo "❌ No OS selected"
+            exit 1
+          fi
+
+          # Convertir a array JSON real y limpio
+          OS_JSON=$(printf '%s\n' "${OS_LIST[@]}" | jq -R . | jq -s .)
+
+          # Construir JSON compacto final
+          MATRIX=$(jq -nc \
+            --argjson os "${OS_JSON}" \
+            --arg compiler ${compiler} \
+            --arg compilation_mode ${compilation_mode} \
+            --arg build_mode ${build_mode} \
+            --arg python ${python} \
+            '{os: $os, compiler: [$compiler], compilation_mode: [$compilation_mode], build_mode: [$build_mode], python: [$python]}')
+
+          echo "✅ Matriz generada:"
+          echo "$MATRIX"
+          echo ""
+          echo "📋 Desglose de Inputs:"
+          echo "  🏁 Final-Release    : ${{ github.event.inputs.final_release }}"
+          echo "  🌿 Branch           : ${{ github.ref_name }}"
+          echo "  📦 OS               : $(echo "$MATRIX" | jq -r '.os | join(", ")')"
+          echo "  🛠️ Compiler         : $(echo "$MATRIX" | jq -r '.compiler | join(", ")')"
+          echo "  🧪 Compilation mode : $(echo "$MATRIX" | jq -r '.compilation_mode | join(", ")')"
+          echo "  🚀 Build mode       : $(echo "$MATRIX" | jq -r '.build_mode | join(", ")')"
+          echo "  🐍 Python version   : $(echo "$MATRIX" | jq -r '.python | join(", ")')"
+
+          # Exportar en una sola línea (obligatorio)
+          echo "matrix=$MATRIX" >> "$GITHUB_OUTPUT"
+
+  # ==========================================================================================================================
+  # JOB Docker packaging (single run)
+  # ==========================================================================================================================
+  build-docker:
+    name: 🐳 Build Docker
+    uses: ./.github/workflows/build_docker.yml
+    needs: set-input-matrix
+    with:
+      final_release: ${{ inputs.final_release }}
+    secrets:
+      TOKEN_GITHUB: ${{ secrets.TOKEN_GITHUB }}
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_PASSWORD: ${{ secrets.DOCKERHUB_PASSWORD }}
+
+
+  # ==========================================================================================================================
+  # JOB build
+  # ==========================================================================================================================
+  build-binaries:
+    name: ▶️ Build Binaries
+    # Different VM images to compile in all SO and all Archs according to:
+    # https://github.com/actions/runner-images
+    # https://docs.github.com/en/actions/using-github-hosted-runners/using-github-hosted-runners/about-github-hosted-runners#standard-github-hosted-runners-for-public-repositories
+    needs: set-input-matrix
+    strategy:
+      matrix: ${{ fromJson(needs.set-input-matrix.outputs.matrix) }}
+        # os: [ linux-x64, linux-arm64, macos-x64, macos-arm64, windows-x64, windows-arm64 ]
+        # compiler: [ "${{ github.event.inputs.compiler }}" ] # possible values: [pyinstaller, nuitka]
+        # mode: [ "${{ github.event.inputs.mode }}" ] # possible values: [default, custom]
+        # python: [ "${{ github.event.inputs.python }}"] # select Python version
+
+    # runs-on: ${{ matrix.os }}
+    # latest linux-x64: ubuntu-latest
+    # latest linux-arm64: ubuntu-24.04-arm
+    runs-on: ${{ fromJson('{
+      "linux-x64":"ubuntu-22.04", 
+      "linux-arm64":"ubuntu-22.04-arm",
+      "macos-x64":"macos-13",
+      "macos-arm64":"macos-latest",
+      "windows-x64":"windows-latest",
+      "windows-arm64":"windows-11-arm"}')
+      [matrix.os] }}
+
+    steps:
+      - name: 🔍 Show environment configuration
         shell: bash
         run: |
-          echo "Executing compiler script: _compile_pyinstaller.py"
-          python _compile_pyinstaller.py
+          echo ""
+          echo "🎯 Event that triggered this workflow: ${{ github.event_name }}"
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "✅ Manually triggered by a user from the interface"
+          else
+            echo "🤖 Automatically triggered (by push or cron)"
+          fi
+          echo ""
+          echo "📦 Target OS         : ${{ matrix.os }}"
+          echo "🛠️ Selected compiler : ${{ matrix.compiler }}"
+          echo "🧪 Compilation mode  : ${{ matrix.compilation_mode }}"
+          echo "🚀 Build mode        : ${{ matrix.build_mode }}"
+          echo "🐍 Python version    : ${{ matrix.python }}"
+          echo ""
+          echo "OS        : ${{ runner.os }}"
+          echo "Arch      : ${{ runner.arch }}"
+          echo "Python    : ${{ matrix.python }}"
+          echo "Compiler  : ${{ matrix.compiler }}"
+          echo "Build Mode: ${{ matrix.build_mode }}"
 
-      - name: Upload artifact
+      # Checkout Repository
+      - name: 🧾 Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.TOKEN_GITHUB }}
+
+      # Set up Python
+      - name: 🐍 Set up Python
+        uses: actions/setup-python@v3
+        with:
+          python-version: ${{ matrix.python }}
+
+      # Install dependencies
+      - name: 📦 Install dependencies
+        run: |
+          python3 -m pip install --upgrade pip
+          python3 -m pip install -r requirements.txt
+
+      - name: ▶️ DEFAULT IMAGES MODE - Build for All Operating System (Linux, MacOS, Windows) and All Architectures (x64, arm64) using default images for each plattform
+        if: matrix.build_mode == 'default'
+        shell: bash
+        run: |
+          echo "::group::Build for ${{ runner.os }}-${{ runner.arch }}. Python Version: ${{ matrix.python }}. Compiler: ${{ matrix.compiler }}"
+          echo "================================================================================================="
+          echo "INFO    : INSTALLED VERSIONS..."
+          echo "================================================================================================="
+          echo "Python version:"
+          python3 --version
+          echo "PyInstaller version:"
+          pyinstaller --version
+          echo "Nuitka version:"
+          python3 -m nuitka --version
+          echo "================================================================================================="
+          echo "INFO    : COMPILING..."
+          echo "================================================================================================="
+          python3 build-binary.py --${{ matrix.compiler }} --${{ matrix.compilation_mode }}
+
+          echo "::endgroup::"
+
+      - name: ▶️ CUSTOM IMAGES MODE - Build for All Operating System (Linux, MacOS, Windows) and All Architectures (x64, arm64) but customizing image per plattform.
+        if: matrix.build_mode == 'custom'
+        shell: bash
+        run: |
+          echo "::group::Build for ${{ runner.os }}-${{ runner.arch }}. Python Version: ${{ matrix.python }}. Compiler: ${{ matrix.compiler }}"
+           
+          # Build for Linux (x64)
+          if [[ "${{ matrix.os }}" == *"linux"* ]] && [ "${{ runner.arch }}" == "X64" ]; then
+            docker run --rm --platform linux/amd64 -v ${{ github.workspace }}:/workspace -w /workspace jaimetur/centos-amd64:7 bash -c '
+                echo "================================================================================================="
+                echo "INFO    : INSTALLING REQUIREMENTS..."
+                echo "================================================================================================="
+                python3 -m pip install --upgrade pip
+                python3 -m pip install -r requirements.txt
+                echo "================================================================================================="
+                echo "INFO    : INSTALLED VERSIONS..."
+                echo "================================================================================================="
+                echo "Python version:"
+                python3 --version
+                echo "PyInstaller version:"
+                pyinstaller --version
+                echo "Nuitka version:"
+                python3 -m nuitka --version
+                echo "================================================================================================="
+                echo "INFO    : COMPILING..."
+                echo "================================================================================================="
+                python3 build-binary.py --${{ matrix.compiler }} --${{ matrix.compilation_mode }}
+            '
+          # Build for Linux (arm64), macOS (x64 & arm64), Windows (x64 & arm64)
+          else
+            # echo "================================================================================================="
+            # echo "INFO    : INSTALLING REQUIREMENTS..."
+            # echo "================================================================================================="
+            # python3 -m pip install --upgrade pip
+            # python3 -m pip install -r requirements.txt
+            echo "================================================================================================="
+            echo "INFO    : INSTALLED VERSIONS..."
+            echo "================================================================================================="
+            echo "Python version:"
+            python3 --version
+            echo "PyInstaller version:"
+            pyinstaller --version
+            echo "Nuitka version:"
+            python3 -m nuitka --version
+            echo "================================================================================================="
+            echo "INFO    : COMPILING..."
+            echo "================================================================================================="
+            python3 build-binary.py --${{ matrix.compiler }} --${{ matrix.compilation_mode }}
+          fi
+
+          echo "::endgroup::"
+
+      - name: 🏷️ Extract TOOL_VERSION and ARCHIVE_PATH from build_info.txt
+        shell: bash
+        run: |
+          # Read TOOL_VERSION from the first line
+          TOOL_VERSION=$(grep '^TOOL_VERSION=' build_info.txt | cut -d'=' -f2-)
+
+          # Read ARCHIVE_PATH from the second line
+          ARCHIVE_PATH=$(grep '^ARCHIVE_PATH=' build_info.txt | cut -d'=' -f2-)
+          
+          # Save both variables on GitHub Actions environment
+          echo "TOOL_VERSION=${TOOL_VERSION}" >> $GITHUB_ENV
+          echo "ARCHIVE_PATH=${ARCHIVE_PATH}" >> $GITHUB_ENV
+
+          # Print both variables on screen
+          echo "TOOL_VERSION   : ${TOOL_VERSION}"
+          echo "ARCHIVE_PATH   : ${ARCHIVE_PATH}"
+
+      - name: 📛 Extract ARCHIVE_NAME from ARCHIVE_PATH (onefile mode only)
+        if: matrix.compilation_mode == 'onefile'
+        shell: bash
+        run: |
+          ARCHIVE_NAME=$(basename "${ARCHIVE_PATH}")
+          echo "ARCHIVE_NAME=${ARCHIVE_NAME}" >> $GITHUB_ENV
+          echo "ARCHIVE_NAME: ${ARCHIVE_NAME}"
+
+      - name: 🧰 Install zip (satandalone mode on Windows only)
+        if: ${{ matrix.compilation_mode == 'standalone' && runner.os == 'Windows' }}
+        shell: bash
+        run: choco install zip -y
+
+      - name: 📦 Compress dist folder (standalone mode only)
+        if: matrix.compilation_mode == 'standalone'
+        shell: bash
+        run: |
+          echo "🔍 Compilation mode: ${{ matrix.compilation_mode }}"
+          echo "🛠️ Compiler: ${{ matrix.compiler }}"
+          
+          if [[ "${{ matrix.compilation_mode }}" == "standalone" ]]; then
+            folder="${{ matrix.compiler }}_dist"
+            ZIP_FILE="PhotoMigrator_v${{ env.TOOL_VERSION }}_standalone_${{ matrix.os }}_${{ matrix.compiler }}.zip"
+            echo "📁 Checking for folder: $folder"
+          
+            if [ -d "$folder" ]; then
+              echo "✅ Folder '$folder' found. Creating ${ZIP_FILE}..."
+              zip -r "${ZIP_FILE}" "$folder"
+              echo "ZIP_FILE=${ZIP_FILE}" >> $GITHUB_ENV
+              echo "ZIP_FILE: ${ZIP_FILE}"
+            else
+              echo "⚠️ Folder '$folder' not found. Skipping compression."
+            fi
+          else
+            echo "ℹ️ Compilation mode is not 'standalone'. Skipping compression."
+          fi
+
+      - name: ⬆️ Upload compressed dist folder as artifact (standalone mode only)
+        if: ${{ matrix.compilation_mode == 'standalone' && env.ZIP_FILE != '' && env.ZIP_FILE != null }}
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
-          name: RetuningAutomations-${{ matrix.os }}-${{ matrix.arch }}
-          path: dist/*
+          name: ${{ env.ZIP_FILE }}
+          path: ${{ env.ZIP_FILE }}
+
+      - name: ⬆️ Upload build binary as artifact (onefile mode only)
+        if: matrix.compilation_mode == 'onefile'
+        uses: actions/upload-artifact@v4
+        continue-on-error: true
+        with:
+          name: ${{ env.ARCHIVE_NAME }}
+          path: ${{ env.ARCHIVE_PATH }}
+
+      - name: ⬆️ Upload RELEASE-NOTES.md as artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        continue-on-error: true
+        with:
+          name: RELEASE-NOTES.md
+          path: RELEASE-NOTES.md
+          overwrite: true
+
+      - name: 🧹 Cleanup
+        shell: bash
+        run: |
+          if [ -f artifact_base64.txt ]; then
+            rm artifact_base64.txt
+            echo "Archivo artifact_base64.txt eliminado de carpeta raiz."
+          elif [ -f src/artifact_base64.txt ]; then
+            rm artifact_base64.txt
+            echo "Archivo artifact_base64.txt eliminado de src."
+          fi
+          # if [ -f ${{ env.ARCHIVE_PATH }} ]; then
+            # rm ${{ env.ARCHIVE_PATH }}
+            # echo "Archivo '${{ env.ARCHIVE_PATH }}' eliminado de carpeta raiz."
+          # elif [ -f src/${{ env.ARCHIVE_PATH }} ]; then
+            # rm ${{ env.ARCHIVE_PATH }}
+            # echo "Archivo '${{ env.ARCHIVE_PATH }}' eliminado de carpeta src."
+          # fi
+
+
+  # ==========================================================================================================================
+  # JOB Create Release
+  # ==========================================================================================================================
+  create-release:
+    name: 🏷️ Create Release
+    needs:
+      - build-binaries
+      - build-docker
+
+    runs-on: ubuntu-22.04
+
+    outputs:
+      tool_version: ${{ steps.extract_version.outputs.tool_version }}
+
+    steps:
+      - name: 🧾 Checkout source code
+        uses: actions/checkout@v4
+
+      - name: ✅ Check Final-Release
+        run: |
+          echo "Final-Release: ${{ inputs.final_release }}"
+
+      - name: 🏷️ Extract TOOL_VERSION from GlobalVariables.py
+        id: extract_version                   # Importante añadir el ID para que outputs pueda encontrar la variable
+        run: |
+          # 1️⃣ Obtenemos el valor sin la “v”
+          TOOL_VERSION=$(grep -oP '^TOOL_VERSION_WITHOUT_V\s*=\s*"\K[^"]+' ./src/Core/GlobalVariables.py)
+          
+          # 2️⃣ Lo ponemos en el entorno de los siguientes steps (opcional)
+          echo "TOOL_VERSION=${TOOL_VERSION}" >> "$GITHUB_ENV"
+          
+          # 3️⃣ Creamos la salida del step
+          echo "tool_version=${TOOL_VERSION}" >> "$GITHUB_OUTPUT"
+          
+          echo "✅ TOOL_VERSION = ${TOOL_VERSION}"
+
+      - name: 🧼 Delete GitHub release, tag and associated discussion (only for stable releases)
+        run: |
+          set -e
+          TAG="v${{ env.TOOL_VERSION }}"
+          REPO="${{ github.repository }}"
+          EXIT_CODE=0
+      
+          # Get release info safely
+          RELEASE_INFO=$(gh api --silent "repos/$REPO/releases/tags/$TAG" 2>/dev/null || echo "")
+          RELEASE_ID=$(echo "$RELEASE_INFO" | jq -r '.id // empty')
+          
+          # Check for existing releasess/discussions with RELEASE_ID associated to TAG
+          echo "🔍 Checking for existing discussion ID with tag $TAG..."
+          if [[ -n "$RELEASE_ID" ]]; then
+            echo "🗑 Discussion ID $RELEASE_ID exists associated with tag $TAG . Deleting it (discussion will also be removed)..."
+            gh api -X DELETE "repos/$REPO/releases/$RELEASE_ID"
+            echo "✅ Release ID $RELEASE_ID successfully deleted."
+          else
+            echo "✅ No discussion was found for tag $TAG"
+          fi
+          
+          # Check if release exists and delete it
+          echo "🔍 Checking for existing release with tag $TAG..."
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" &> /dev/null; then
+            echo "🗑 Release $TAG exists. Deleting it..."
+            gh release delete "$TAG" --repo "$GITHUB_REPOSITORY" --yes
+            echo "✅ Release $TAG successfully deleted."
+          else
+            echo "✅ Release $TAG does not exist."
+          fi
+      
+          # Check if remote tag exists and delete it
+          echo "🔍 Checking for remote tag $TAG..."
+          if git ls-remote --tags origin | grep "refs/tags/$TAG" &> /dev/null; then
+            echo "🗑 Remote tag $TAG exists. Deleting it..."
+            git push --delete origin "$TAG" || EXIT_CODE=1
+            echo "✅ Remote tag $TAG successfully deleted."
+          else
+            echo "✅ Remote tag $TAG does not exist"
+          fi
+          
+          # Check if local tag exists and delete it
+          echo "🔍 Checking for local tag $TAG..."
+          if git tag | grep -q "$TAG"; then
+            echo "🗑 Local tag $TAG exists. Deleting it..."
+            git tag -d "$TAG"
+            echo "✅ Local tag $TAG successfully deleted."
+          else
+            echo "✅ Local tag $TAG does not exist"
+          fi
+
+          # VERIFICATIONS...
+          echo ""
+          echo "✅ Verifying cleanup..."
+      
+          # Retry-based verification of release deletion
+          if gh api --silent "repos/$REPO/releases/tags/$TAG" 2>/dev/null; then
+            echo "⚠️ Release still exists after deletion. Retrying in 5s..."
+            sleep 5
+            if gh api --silent "repos/$REPO/releases/tags/$TAG" 2>/dev/null; then
+              echo "❌ Release still exists after retry."
+              EXIT_CODE=1
+            else
+              echo "✅ Release deleted after retry."
+            fi
+          else
+            echo "✅ Release deleted."
+          fi
+      
+          # Final verification of tag deletion
+          if git ls-remote --tags origin | grep "refs/tags/$TAG" &> /dev/null; then
+            echo "❌ Remote tag still exists after deletion."
+            EXIT_CODE=1
+          else
+            echo "✅ Remote tag deleted."
+          fi
+      
+          if [[ "$EXIT_CODE" -ne 0 ]]; then
+            echo "❌ Cleanup failed. Aborting workflow."
+            exit 1
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.TOKEN_GITHUB }}
+
+      - name: 📥 Download Artifacts (RELEASE-NOTES.md, Binaries and Docker Zips)
+        uses: actions/download-artifact@v4
+        with:
+          pattern: PhotoMigrator*.zip
+          path: ./release_files
+          merge-multiple: true
+
+      - name: 📝 Download RELEASE-NOTES.md
+        uses: actions/download-artifact@v4
+        with:
+          name: RELEASE-NOTES.md
+          path: .
+
+      # Confirmar contenido descargado
+      - name: 📂 List downloaded files
+        run: |
+          ls -lh ./release_files/
+          sha256sum ./release_files/*
+
+      # 🚀 Crear release estable (final_release == true)
+      - name: 🚀 Create GitHub Release (stable)
+        if: ${{ inputs.final_release == true }}
+        uses: softprops/action-gh-release@v2.2.2
+        with:
+          tag_name: v${{ env.TOOL_VERSION }}
+          name: v${{ env.TOOL_VERSION }}
+          # target_commitish: main
+          discussion_category_name: Announcements
+          draft: false
+          prerelease: false
+          make_latest: true
+          generate_release_notes: true
+          body_path: RELEASE-NOTES.md
+          files: |
+            ./release_files/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.TOKEN_GITHUB }}
+      
+      # 🚀 Crear prerelease (final_release == false)
+      - name: 🚀 Create GitHub Release (prerelease)
+        if: ${{ inputs.final_release == false }}
+        uses: softprops/action-gh-release@v2.2.2
+        with:
+          tag_name: v${{ env.TOOL_VERSION }}
+          name: v${{ env.TOOL_VERSION }}
+          # target_commitish: main
+          # discussion_category_name: Announcements  # Descomenta si también quieres discusión en prerelease
+          draft: false
+          prerelease: true
+          generate_release_notes: true
+          body_path: RELEASE-NOTES.md
+          files: |
+            ./release_files/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.TOKEN_GITHUB }}
+
+
+  # ==========================================================================================================================
+  # JOB Notify Release on Discord Channels (#new_releases & #releases-discussion)
+  # ==========================================================================================================================
+  notify-discord:
+    if: ${{ github.event.inputs.final_release == 'true' }}
+    name: 📣 Notify on Discord
+    needs: create-release
+    runs-on: ubuntu-latest
+    env:
+      TOOL_VERSION: ${{ needs.create-release.outputs.tool_version }}
+
+    steps:
+      - name: 🧾 Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: 📥 Download RELEASE-NOTES.md
+        uses: actions/download-artifact@v4
+        with:
+          name: RELEASE-NOTES.md
+          path: .
+
+      # ──────────────────────────────────────────────────────────────────────
+      # CHANNEL: '#new_releases'
+      # ──────────────────────────────────────────────────────────────────────
+      # ──────────────────────────────────────────────────────────────────────
+      # 1. 🔍 CHECK: if message already exists in '#new_releases'
+      # ──────────────────────────────────────────────────────────────────────
+      - name: "1. 🔍 Check if message exists in '#new_releases'"
+        id: check_text
+        run: |
+          VERSION="v${{ env.TOOL_VERSION }}"
+          echo "🔎 Searching for footer: $VERSION"
+          RESP=$(curl -s -H "Authorization: Bot ${{ secrets.DISCORD_BOT_TOKEN }}" \
+            "https://discord.com/api/v10/channels/${{ secrets.DISCORD_NEW_RELEASES_CHANNEL_ID }}/messages?limit=50")
+          echo "📦 Raw API response (truncado):"
+          echo "$RESP" | head -n 20
+          MATCH=$(echo "$RESP" | jq -e --arg f "$VERSION" \
+            '.[] | select(.embeds[]?.footer?.text == $f)' || true)
+          if [ -n "$MATCH" ]; then
+            echo "✅ Found existing message:"
+            echo "$MATCH" | jq -r '.id, .embeds[0].footer.text'
+            echo "already_sent=true" >> $GITHUB_OUTPUT
+            echo "message_id=$(echo "$MATCH" | jq -r .id)" >> $GITHUB_OUTPUT
+          else
+            echo "🆕 No matching message found"
+            echo "already_sent=false" >> $GITHUB_OUTPUT
+          fi
+
+      # ──────────────────────────────────────────────────────────────────────
+      # 2. 📣 CREATE: announcement in '#new_releases' if not exists
+      # ──────────────────────────────────────────────────────────────────────
+      - name: "2. 📣 Create announcement in '#new_releases'"
+        if: steps.check_text.outputs.already_sent == 'false'
+        run: |
+          VERSION="v${{ env.TOOL_VERSION }}"
+          REPO_URL="https://github.com/${{ github.repository }}/releases/tag/$VERSION"
+          curl -X POST \
+            -F "payload_json={\"username\":\"GitHub Bot\",\"embeds\":[{\"title\":\"📣 New Release — $VERSION\",\"url\":\"$REPO_URL\",\"description\":\"Version **$VERSION** is now available!\",\"color\":15105570,\"footer\":{\"text\":\"$VERSION\"}}]}" \
+            -F "file1=@RELEASE-NOTES.md" \
+            "${{ secrets.DISCORD_WEBHOOK_URL_NEW_RELEASES }}"
+
+      # ──────────────────────────────────────────────────────────────────────
+      # 3. ✏️ UPDATE: announcement in '#new_releases' if exists
+      # ──────────────────────────────────────────────────────────────────────
+      - name: "3. ✏️ Update announcement in '#new_releases'"
+        if: steps.check_text.outputs.already_sent == 'true'
+        run: |
+          VERSION="v${{ env.TOOL_VERSION }}"
+          MSG_ID="${{ steps.check_text.outputs.message_id }}"
+          REPO_URL="https://github.com/${{ github.repository }}/releases/tag/$VERSION"
+          curl -X PATCH \
+            -F "payload_json={\"username\":\"GitHub Bot\",\"embeds\":[{\"title\":\"📣 New Release — $VERSION\",\"url\":\"$REPO_URL\",\"description\":\"Version **$VERSION** is now available!\",\"color\":15105570,\"footer\":{\"text\":\"$VERSION\"}}],\"attachments\":[]}" \
+            -F "file1=@RELEASE-NOTES.md" \
+            "${{ secrets.DISCORD_WEBHOOK_URL_NEW_RELEASES }}/messages/$MSG_ID"
+
+      # ──────────────────────────────────────────────────────────────────────
+      # CHANNEL: '#releases-discussion'
+      # ──────────────────────────────────────────────────────────────────────
+      # ──────────────────────────────────────────────────────────────────────
+      # 4. 🔍 CHECK: if thread already exists in '#releases-discussion'
+      # ──────────────────────────────────────────────────────────────────────
+      - name: "4. 🔍 Check if thread exists in '#releases-discussion'"
+        id: check_discussion
+        run: |
+          VERSION="v${{ env.TOOL_VERSION }}"
+          THREAD_NAME="Release $VERSION"
+          PARENT_ID="${{ secrets.DISCORD_RELEASES_DISCUSSION_CHANNEL_ID }}"
+          echo "🔎 Searching for thread: $THREAD_NAME under parent $PARENT_ID"
+
+          RESPONSE=$(curl -s -H "Authorization: Bot ${{ secrets.DISCORD_BOT_TOKEN }}" \
+            "https://discord.com/api/v10/guilds/${{ secrets.DISCORD_GUILD_ID }}/threads/active")
+          echo "📦 Raw API response (truncado):"
+          echo "$RESPONSE" | head -n 5
+
+          THREAD_ID=$(echo "$RESPONSE" | jq -r --arg n "$THREAD_NAME" --arg p "$PARENT_ID" \
+            '.threads[] | select(.parent_id==$p and .name==$n) | .id')
+          THREAD_MSG_ID=$(echo "$RESPONSE" | jq -r --arg n "$THREAD_NAME" --arg p "$PARENT_ID" \
+            '.threads[] | select(.parent_id==$p and .name==$n) | .last_message_id')
+
+          if [[ -n "$THREAD_ID" && -n "$THREAD_MSG_ID" ]]; then
+            echo "✅ Found existing thread $THREAD_ID with message $THREAD_MSG_ID"
+            echo "already_sent=true"        >> $GITHUB_OUTPUT
+            echo "thread_id=$THREAD_ID"     >> $GITHUB_OUTPUT
+            echo "thread_msg_id=$THREAD_MSG_ID" >> $GITHUB_OUTPUT
+          else
+            echo "🆕 Thread does not exist yet"
+            echo "already_sent=false"       >> $GITHUB_OUTPUT
+          fi
+
+      # ──────────────────────────────────────────────────────────────────────
+      # 5. 📣 CREATE: thread in '#releases-discussion' if not exists
+      # ──────────────────────────────────────────────────────────────────────
+      - name: "5. 📣 Create thread in '#releases-discussion'"
+        if: steps.check_discussion.outputs.already_sent == 'false'
+        id: create_thread
+        run: |
+          VERSION="v${{ env.TOOL_VERSION }}"
+          REPO_URL="https://github.com/${{ github.repository }}/releases/tag/$VERSION"
+          # POST multipart without forcing Content-Type header
+          RESPONSE=$(curl -s \
+            -F "payload_json={\"username\":\"GitHub Bot\",\"thread_name\":\"Release $VERSION\",\"embeds\":[{\"title\":\"📣 New Release — $VERSION\",\"url\":\"$REPO_URL\",\"description\":\"Version **$VERSION** is now available!\",\"color\":3447003,\"footer\":{\"text\":\"$VERSION\"}}]}" \
+            -F "file1=@RELEASE-NOTES.md" \
+            "${{ secrets.DISCORD_WEBHOOK_URL_RELEASES_DISCUSSION }}?wait=true")
+          echo "🔍 RESPONSE: $RESPONSE"
+          echo "thread_msg_id=$(echo "$RESPONSE" | jq -r .id)" >> $GITHUB_OUTPUT
+
+      # ──────────────────────────────────────────────────────────────────────
+      # 6. ✏️ UPDATE: thread root message in '#releases-discussion' if exists
+      # ──────────────────────────────────────────────────────────────────────
+      - name: "6. ✏️ Update thread in '#releases-discussion'"
+        if: steps.check_discussion.outputs.already_sent == 'true'
+        run: |
+          VERSION="v${{ env.TOOL_VERSION }}"
+          THREAD_ID="${{ steps.check_discussion.outputs.thread_id }}"
+          MSG_ID="${{ steps.check_discussion.outputs.thread_msg_id }}"
+          REPO_URL="https://github.com/${{ github.repository }}/releases/tag/$VERSION"
+
+          curl -X PATCH \
+            -F "payload_json={\"username\":\"GitHub Bot\",\"embeds\":[{\"title\":\"📣 New Release — $VERSION\",\"url\":\"$REPO_URL\",\"description\":\"Version **$VERSION** is now available!\",\"color\":3447003,\"footer\":{\"text\":\"$VERSION\"}}],\"attachments\":[]}" \
+            -F "file1=@RELEASE-NOTES.md" \
+            "${{ secrets.DISCORD_WEBHOOK_URL_RELEASES_DISCUSSION }}/messages/$MSG_ID?thread_id=$THREAD_ID"

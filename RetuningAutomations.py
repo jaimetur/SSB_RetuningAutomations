@@ -27,7 +27,7 @@ from CleanUp import CleanUp
 
 # ================================ VERSIONING ================================ #
 
-VERSION = "0.2.1"
+TOOL_VERSION = "0.2.1"
 
 # ================================ DEFAULTS ================================= #
 
@@ -192,7 +192,7 @@ def run_excel_from_logs(input_dir: str) -> None:
     print(f"{module_name} Input folder: '{input_dir}'")
 
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    versioned_suffix = f"{timestamp}_v{VERSION}"
+    versioned_suffix = f"{timestamp}_v{TOOL_VERSION}"
     app = CreateExcelFromLogs()
     out = app.run(input_dir, module_name=module_name, versioned_suffix=versioned_suffix)
 
@@ -208,7 +208,7 @@ def run_prepost(input_dir: str, freq_pre: Optional[str], freq_post: Optional[str
     print(f"{module_name} Input folder: '{input_dir}'")
 
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    versioned_suffix = f"{timestamp}_v{VERSION}"
+    versioned_suffix = f"{timestamp}_v{TOOL_VERSION}"
     output_dir = os.path.join(input_dir, f"CellRelationConsistencyChecks_{versioned_suffix}")
 
     app = PrePostRelations()
@@ -235,7 +235,7 @@ def run_cleanup(input_dir: str, *_args) -> None:
     print(f"{module_name} Input folder: '{input_dir}'")
 
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    versioned_suffix = f"{timestamp}_v{VERSION}"
+    versioned_suffix = f"{timestamp}_v{TOOL_VERSION}"
 
     app = CleanUp()
     out = app.run(input_dir, module_name=module_name, versioned_suffix=versioned_suffix)

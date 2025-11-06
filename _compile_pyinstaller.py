@@ -52,7 +52,7 @@ def read_version_from_main(main_path: Path) -> str:
     """Extract VERSION from the main module. VERSION must not include the 'v'."""
     text = main_path.read_text(encoding="utf-8", errors="ignore")
     # Look for a top-level assignment like: VERSION = "0.2.1"
-    m = re.search(r'^\s*VERSION\s*=\s*["\']([^"\']+)["\']', text, flags=re.MULTILINE)
+    m = re.search(r'^\s*TOOL_VERSION\s*=\s*["\']([^"\']+)["\']', text, flags=re.MULTILINE)
     if not m:
         raise RuntimeError(f"VERSION variable not found in {main_path}")
     version = m.group(1).strip()
