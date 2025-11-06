@@ -41,19 +41,15 @@ Multi-Platform/Multi-Arch tool designed to Automate some process during SSB Retu
 """
                                       )
 # ================================ DEFAULTS ================================= #
+# Input Folder
+# INPUT_FOLDER = r"c:\Users\ejaitur\OneDrive - Ericsson\SSB Retuning Project Sharepoint - Scripts\OutputStep0\Output\ToyCells\PA7"
+INPUT_FOLDER = ""  # empty by default if not defined
 
+# Frequencyes
 DEFAULT_FREQ_PRE = "648672"
 DEFAULT_FREQ_POST = "647328"
 
-# Optional hardcoded constant (can be defined manually)
-try:
-    INPUT_FOLDER = r"c:\Users\ejaitur\OneDrive - Ericsson\SSB Retuning Project Sharepoint - Scripts\OutputStep0\Output\ToyCells\PA6"
-except NameError:
-    INPUT_FOLDER = ""  # empty by default if not defined
-
-
 # ============================ OPTIONAL TKINTER UI =========================== #
-
 try:
     import tkinter as tk
     from tkinter import ttk, filedialog, messagebox
