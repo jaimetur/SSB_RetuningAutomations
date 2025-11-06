@@ -73,8 +73,8 @@ jobs:
           TARGET_ARCH: ${{ matrix.py_arch }}  # Only used on Windows by Compile.py
         shell: bash
         run: |
-          echo "Executing compiler script: _compile_pyinstaller.py"
-          python _compile_pyinstaller.py
+          echo "Executing compiler script: Compile.py"
+          python Compile.py
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
