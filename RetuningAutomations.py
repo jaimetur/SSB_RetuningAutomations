@@ -72,8 +72,8 @@ class GuiResult:
 
 
 MODULE_OPTIONS = [
-    "1. Create Excel from Logs",
-    "2. Pre/Post Relations Consistency Check",
+    "1. Pre/Post Relations Consistency Check",
+    "2. Create Excel from Logs",
     "3. Clean-Up",
 ]
 
@@ -259,11 +259,11 @@ def run_cleanup(input_dir: str, *_args) -> None:
 
 def resolve_module_callable(name: str):
     name = (name or "").strip().lower()
-    if name in ("excel", "1. create excel from logs"):
+    if name in ("prepost", MODULE_OPTIONS[0].lower()):
         return run_excel_from_logs
-    if name in ("prepost", "2. pre/post relations consistency check"):
+    if name in ("excel", MODULE_OPTIONS[1].lower()):
         return run_prepost
-    if name in ("cleanup", "3. clean-up", "clean up"):
+    if name in ("cleanup", MODULE_OPTIONS[2].lower()):
         return run_cleanup
     return None
 

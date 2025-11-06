@@ -1,0 +1,70 @@
+# 🗓️ CHANGELOG
+[Planned Roadmap](https://github.com/jaimetur/PhotoMigrator/blob/main/ROADMAP.md) for the following releases
+[Changelog](https://github.com/jaimetur/PhotoMigrator/blob/main/CHANGELOG.md) for the past releases+
+
+---
+
+## Release: v0.2.1
+- ### Release Date: 2025-11-06
+
+- ### Main Changes:
+  
+  - #### 🚨 Breaking Changes:
+  
+  - #### 🌟 New Features:
+    - Module '2. Create Excel from Logs' ready.
+    
+  - #### 🐛 Bug fixes:
+    - Fixed bug on Summary_Detailed that was creating pairs of frequencies where Freq_Pre or Freq_Post was empty.
+
+  - #### 📚 Documentation: 
+    - Created README.md
+    - Created CHANGELOG.md
+    - Created ROADMAP.md
+    
+  - #### 🚀 Enhancements:
+    - Created module to compile the tool and generate binaries files for the different OS and architecture.
+    - Created GitHub repository.
+    - Created GitHub workflow to automatically generate binaries for the different OS and architecture.
+
+     
+---
+
+## Release: v0.2.0
+- ### Release Date: 2025-11-05
+
+- ### Main Changes:
+  
+  - #### 🚨 Breaking Changes:
+  
+  - #### 🌟 New Features:
+    - Create a Module Selector & Configuration window.
+    
+  - #### 🐛 Bug fixes:
+    - Fixed bug on Summary_Detailed that was creating pairs of frequencies where Freq_Pre or Freq_Post was empty.
+
+  - #### 🚀 Enhancements:
+    - Improvements on Module '1. Pre/Post Relations Consistency Check' to satisfy the requirements.
+    
+---
+
+## Release: v0.1.1
+- ### Release Date: 2025-11-04
+
+- ### Main Changes:
+
+  - #### 🚀 Enhancements:
+    - Improvements on Module '1. Pre/Post Relations Consistency Check' to satisfy the requirements.
+
+---
+
+## Release: v0.1.0
+- ### Release Date: 2025-11-03
+
+- ### Main Changes:
+   
+  - #### 🌟 New Features:
+    - Module '1. Pre/Post Relations Consistency Check' first release.
+
+    
+---
