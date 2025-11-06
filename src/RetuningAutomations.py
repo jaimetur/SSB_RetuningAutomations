@@ -260,9 +260,9 @@ def run_cleanup(input_dir: str, *_args) -> None:
 def resolve_module_callable(name: str):
     name = (name or "").strip().lower()
     if name in ("prepost", MODULE_OPTIONS[0].lower()):
-        return run_excel_from_logs
-    if name in ("excel", MODULE_OPTIONS[1].lower()):
         return run_prepost
+    if name in ("excel", MODULE_OPTIONS[1].lower()):
+        return run_excel_from_logs
     if name in ("cleanup", MODULE_OPTIONS[2].lower()):
         return run_cleanup
     return None
@@ -276,7 +276,6 @@ def main():
 
     # Load Tool while splash image is shown (only for Windows)
     print("")
-    print(TOOL_DESCRIPTION)
     print("Loading Tool...")
     # Remove Splash image from Pyinstaller
     if '_PYI_SPLASH_IPC' in os.environ and importlib.util.find_spec("pyi_splash"):
@@ -297,6 +296,7 @@ def main():
         if os.path.exists(splash_filename):
             os.unlink(splash_filename)
     print("Tool loaded!")
+    print(TOOL_DESCRIPTION)
     print("")
 
     args = parse_args()
@@ -323,10 +323,10 @@ def main():
             freq_post = sel.freq_post
         if not input_dir:
             raise SystemExit("Input folder not provided.")
-        if module_fn is run_excel_from_logs:
-            run_excel_from_logs(input_dir, freq_pre, freq_post)
-        elif module_fn is run_prepost:
+        if module_fn is run_prepost:
             run_prepost(input_dir, freq_pre, freq_post)
+        elif module_fn is run_excel_from_logs:
+            run_excel_from_logs(input_dir, freq_pre, freq_post)
         elif module_fn is run_cleanup:
             run_cleanup(input_dir, freq_pre, freq_post)
         else:
@@ -341,10 +341,10 @@ def main():
         module_fn = resolve_module_callable(sel.module)
         if module_fn is None:
             raise SystemExit(f"Unknown module selected: {sel.module}")
-        if module_fn is run_excel_from_logs:
-            run_excel_from_logs(sel.input_dir)
-        elif module_fn is run_prepost:
+        if module_fn is run_prepost:
             run_prepost(sel.input_dir, sel.freq_pre, sel.freq_post)
+        elif module_fn is run_excel_from_logs:
+            run_excel_from_logs(sel.input_dir)
         elif module_fn is run_cleanup:
             run_cleanup(sel.input_dir, sel.freq_pre, sel.freq_post)
         else:

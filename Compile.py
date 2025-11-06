@@ -88,15 +88,21 @@ def clean_previous_artifacts(name_stem: str):
 
 def run_pyinstaller(entry_file: Path, name_stem: str, target_arch: str | None, onefile: bool = True):
     """Invoke PyInstaller to build the binary."""
+    OPERATING_SYSTEM, _ = detect_platform_and_ext()
+    splash_image = "assets/logos/logo_01.png"  # Splash image for windows
+
     cmd = [sys.executable, "-m", "PyInstaller", str(entry_file)]
     # Common flags
     if onefile:
         cmd += ["--onefile"]
+        # Add splash image to .exe file (only supported in windows)
+        if OPERATING_SYSTEM == 'windows':
+            cmd += ["--splash", splash_image]
     cmd += ["--name", name_stem]
 
     # Windows-only target arch support
-    os_key, _ = detect_platform_and_ext()
-    if os_key == "windows" and target_arch:
+
+    if OPERATING_SYSTEM == "windows" and target_arch:
         # Valid values: 32, 64, ARM64 (per PyInstaller docs)
         cmd += ["--target-arch", target_arch]
 
