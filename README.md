@@ -4,10 +4,12 @@
 [![Open Github issues](https://img.shields.io/github/issues/jaimetur/RetuningAutomations?label=Open%20Issues)](https://github.com/jaimetur/RetuningAutomations/issues)
 
 ---
-# Retuning Automations Tool
+
+# Retuning Automations
 <p align="center">
   <img src="https://github.com/jaimetur/RetuningAutomations/blob/main/assets/logos/logo_01.png?raw=true" alt="RetuningAutomations Logo" width="600" height="480" />
 </p>
+
 ---
 
 ## 🧭 Overview
