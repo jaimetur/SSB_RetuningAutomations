@@ -271,6 +271,34 @@ def resolve_module_callable(name: str):
 # ================================== MAIN =================================== #
 
 def main():
+    # Clean screen and parse input args
+    os.system('cls' if os.name == 'nt' else 'clear')
+
+    # Load Tool while splash image is shown (only for Windows)
+    print("")
+    print(TOOL_DESCRIPTION)
+    print("Loading Tool...")
+    # Remove Splash image from Pyinstaller
+    if '_PYI_SPLASH_IPC' in os.environ and importlib.util.find_spec("pyi_splash"):
+        import pyi_splash
+        pyi_splash.update_text('UI Loaded ...')
+        pyi_splash.close()
+
+    # Remove Splash image from Nuitka
+    if "NUITKA_ONEFILE_PARENT" in os.environ:
+        import tempfile
+        splash_filename = os.path.join(
+            tempfile.gettempdir(),
+            "onefile_%d_splash_feedback.tmp" % int(os.environ["NUITKA_ONEFILE_PARENT"]),
+        )
+        with open(splash_filename, "wb") as f:
+            f.write(b"READY")
+
+        if os.path.exists(splash_filename):
+            os.unlink(splash_filename)
+    print("Tool loaded!")
+    print("")
+
     args = parse_args()
 
     # Determine default input folder
@@ -330,5 +358,4 @@ def main():
 
 
 if __name__ == "__main__":
-    print (TOOL_DESCRIPTION)
     main()
