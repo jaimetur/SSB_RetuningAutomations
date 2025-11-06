@@ -77,7 +77,7 @@ on:
         description: "Include windows-arm64 ?"
         type: boolean
         required: true
-        default: true
+        default: false
 
   # ──────────────── 2) Disparador automático por push ──────────────────────
   #  push:                   # Ejecución tras push en main, excepto en los path-ignore
