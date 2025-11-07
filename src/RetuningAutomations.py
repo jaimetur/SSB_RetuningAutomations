@@ -16,11 +16,16 @@ Behavior:
 
 import argparse
 import os
-from dataclasses import dataclass
+import sys
 from datetime import datetime
+from dataclasses import dataclass
 from typing import Optional
 import textwrap
 import importlib
+import configparser
+import traceback
+from pathlib import Path
+
 
 # Import our different Classes
 from src.modules.PrePostRelations import PrePostRelations
@@ -30,8 +35,8 @@ from src.modules.CleanUp import CleanUp
 # ================================ VERSIONING ================================ #
 
 TOOL_NAME           = "RetuningAutomations"
-TOOL_VERSION        = "0.2.2"
-TOOL_DATE           = "2025-11-06"
+TOOL_VERSION        = "0.2.3"
+TOOL_DATE           = "2025-11-07"
 TOOL_NAME_VERSION   = f"{TOOL_NAME}_v{TOOL_VERSION}"
 COPYRIGHT_TEXT      = "(c) 2025 - Jaime Tur (jaime.tur@ericsson.com)"
 TOOL_DESCRIPTION    = textwrap.dedent(f"""
@@ -48,6 +53,32 @@ INPUT_FOLDER = ""  # empty by default if not defined
 # Frequencyes
 DEFAULT_FREQ_PRE = "648672"
 DEFAULT_FREQ_POST = "647328"
+
+# ============================== PERSISTENT CONFIG =========================== #
+# We store config under user's home to avoid write-permission issues with PyInstaller/Nuitka.
+CONFIG_DIR  = Path.home() / ".retuning_automations"
+CONFIG_PATH = CONFIG_DIR / "config.cfg"
+CONFIG_SECTION = "general"
+CONFIG_KEY_LAST_INPUT = "last_input_dir"
+
+# ============================== LOGGING SYSTEM ============================== #
+class LoggerDual:
+    """
+    Simple dual logger that mirrors stdout prints to both console and a log file.
+    Replaces sys.stdout so every print() goes to both outputs automatically.
+    """
+    def __init__(self, log_file_path: str):
+        self.terminal = sys.stdout
+        self.log = open(log_file_path, "a", encoding="utf-8")
+
+    def write(self, message: str):
+        self.terminal.write(message)
+        self.log.write(message)
+
+    def flush(self):
+        """Required for compatibility with Python's stdout flush behavior."""
+        self.terminal.flush()
+        self.log.flush()
 
 # ============================ OPTIONAL TKINTER UI =========================== #
 try:
@@ -264,12 +295,110 @@ def resolve_module_callable(name: str):
         return run_cleanup
     return None
 
+def load_last_input_dir_from_config() -> str:
+    """Load last used input directory from config file. Returns empty string if missing."""
+    try:
+        if not CONFIG_PATH.exists():
+            return ""
+        parser = configparser.ConfigParser()
+        parser.read(CONFIG_PATH, encoding="utf-8")
+        return parser.get(CONFIG_SECTION, CONFIG_KEY_LAST_INPUT, fallback="").strip()
+    except Exception:
+        # Fail-safe: do not block the tool if config is corrupt
+        return ""
+
+
+def save_last_input_dir_to_config(input_dir: str) -> None:
+    """Persist last used input directory to config file (create/update as needed)."""
+    try:
+        CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+        parser = configparser.ConfigParser()
+        if CONFIG_PATH.exists():
+            parser.read(CONFIG_PATH, encoding="utf-8")
+        if CONFIG_SECTION not in parser:
+            parser[CONFIG_SECTION] = {}
+        parser[CONFIG_SECTION][CONFIG_KEY_LAST_INPUT] = input_dir or ""
+        with CONFIG_PATH.open("w", encoding="utf-8") as f:
+            parser.write(f)
+    except Exception:
+        # Silent fail on write; we do not want to break main flow due to IO
+        pass
+
+def execute_module(module_fn, input_dir: str, freq_pre: str, freq_post: str) -> None:
+    """Execute the selected module with the proper signature."""
+    # We normalize signatures here so caller code stays simple.
+    if module_fn is run_prepost:
+        module_fn(input_dir, freq_pre, freq_post)
+    elif module_fn is run_excel_from_logs:
+        module_fn(input_dir)
+    elif module_fn is run_cleanup:
+        module_fn(input_dir, freq_pre, freq_post)
+    else:
+        # Fallback for custom callables keeping compatibility
+        module_fn(input_dir, freq_pre, freq_post)
+
+
+def ask_reopen_launcher() -> bool:
+    """Ask the user if the launcher should reopen after a module finishes.
+    Returns True to reopen, False to exit.
+    """
+    # If Tk is not available (or disabled), default to not reopening.
+    if messagebox is None:
+        return False
+    try:
+        return messagebox.askyesno(
+            "Finished",
+            "The selected task has finished.\nDo you want to open the launcher again?"
+        )
+    except Exception:
+        # In case of headless/console-only contexts, do not loop.
+        return False
+
+def log_module_exception(module_label: str, exc: BaseException) -> None:
+    """Pretty-print a module exception to stdout (and therefore to the log)."""
+    print("\n" + "=" * 80)
+    print(f"[ERROR] An exception occurred while executing {module_label}:")
+    print("-" * 80)
+    print(str(exc))
+    print("-" * 80)
+    print("Traceback (most recent call last):")
+    print(traceback.format_exc().rstrip())
+    print("=" * 80 + "\n")
+    # Optional GUI popup (short message) if Tk is available
+    if messagebox is not None:
+        try:
+            messagebox.showerror(
+                "Execution error",
+                f"An exception occurred while executing {module_label}.\n\n{exc}"
+            )
+        except Exception:
+            pass
 
 # ================================== MAIN =================================== #
 
 def main():
-    # Clean screen and parse input args
     os.system('cls' if os.name == 'nt' else 'clear')
+
+    # --- Initialize log file inside ./Logs folder ---
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    log_filename = f"RetuningAutomation_{timestamp}_v{TOOL_VERSION}.log"
+
+    # Detect the base directory of the running script or compiled binary
+    try:
+        base_dir = os.path.dirname(os.path.abspath(sys.executable if getattr(sys, 'frozen', False) else __file__))
+    except Exception:
+        base_dir = os.getcwd()
+
+    logs_dir = os.path.join(base_dir, "Logs")
+    os.makedirs(logs_dir, exist_ok=True)
+
+    log_path = os.path.join(logs_dir, log_filename)
+
+    # Replace stdout/stderr and with our dual logger
+    sys.stdout = LoggerDual(log_path)
+    sys.stderr = sys.stdout  # <- add this
+    print(f"[Logger] Output will also be written to: {log_path}")
+    print("")
 
     # Load Tool while splash image is shown (only for Windows)
     print("")
@@ -295,11 +424,17 @@ def main():
     print("Tool loaded!")
     print(TOOL_DESCRIPTION)
     print("")
+    print(f"[Config] Using config file: {CONFIG_PATH}")
+    print("")
+
 
     args = parse_args()
 
     # Determine default input folder
-    default_input = args.input or INPUT_FOLDER or ""
+    # Priority: CLI argument > persisted config > hardcoded INPUT_FOLDER > empty
+    persisted_last = load_last_input_dir_from_config()
+    default_input = args.input or persisted_last or INPUT_FOLDER or ""
+
     default_pre = args.freq_pre or DEFAULT_FREQ_PRE
     default_post = args.freq_post or DEFAULT_FREQ_POST
 
@@ -308,50 +443,90 @@ def main():
         module_fn = resolve_module_callable(args.module)
         if module_fn is None:
             raise SystemExit(f"Unknown module: {args.module}")
+
         input_dir = args.input or ""
         freq_pre = args.freq_pre or DEFAULT_FREQ_PRE
         freq_post = args.freq_post or DEFAULT_FREQ_POST
+
+        # If input is missing and GUI is allowed, show GUI, execute, and optionally loop
         if not input_dir and not args.no_gui and tk is not None:
-            sel = gui_config_dialog(default_input="", default_pre=freq_pre, default_post=freq_post)
-            if sel is None:
-                raise SystemExit("Cancelled.")
-            input_dir = sel.input_dir
-            freq_pre = sel.freq_pre
-            freq_post = sel.freq_post
+            while True:
+                sel = gui_config_dialog(default_input="", default_pre=freq_pre, default_post=freq_post)
+                if sel is None:
+                    raise SystemExit("Cancelled.")
+                input_dir = sel.input_dir
+                freq_pre = sel.freq_pre
+                freq_post = sel.freq_post
+
+                # Persist last used input dir
+                save_last_input_dir_to_config(input_dir)
+
+                try:
+                    execute_module(module_fn, input_dir, freq_pre, freq_post)
+                except Exception as e:
+                    log_module_exception(sel.module, e)
+
+                # Ask if user wants to reopen the launcher; if not, exit loop
+                if not ask_reopen_launcher():
+                    break
+                # Reset input_dir to force showing the GUI again on next iteration
+                input_dir = ""
+            return
+
+        # Pure headless CLI execution (no GUI fallback or input provided)
         if not input_dir:
             raise SystemExit("Input folder not provided.")
-        if module_fn is run_prepost:
-            run_prepost(input_dir, freq_pre, freq_post)
-        elif module_fn is run_excel_from_logs:
-            run_excel_from_logs(input_dir)
-        elif module_fn is run_cleanup:
-            run_cleanup(input_dir, freq_pre, freq_post)
-        else:
-            module_fn(input_dir, freq_pre, freq_post)
+        # Persist last used input dir (headless CLI)
+        save_last_input_dir_to_config(input_dir)
+        execute_module(module_fn, input_dir, freq_pre, freq_post)
         return
 
     # CASE B: No module specified -> GUI (if available)
     if not args.no_gui and tk is not None:
-        sel = gui_config_dialog(default_input=default_input, default_pre=default_pre, default_post=default_post)
-        if sel is None:
-            raise SystemExit("Cancelled.")
-        module_fn = resolve_module_callable(sel.module)
-        if module_fn is None:
-            raise SystemExit(f"Unknown module selected: {sel.module}")
-        if module_fn is run_prepost:
-            run_prepost(sel.input_dir, sel.freq_pre, sel.freq_post)
-        elif module_fn is run_excel_from_logs:
-            run_excel_from_logs(sel.input_dir)
-        elif module_fn is run_cleanup:
-            run_cleanup(sel.input_dir, sel.freq_pre, sel.freq_post)
-        else:
-            module_fn(sel.input_dir, sel.freq_pre, sel.freq_post)
+        # Loop to keep reopening the launcher after each module finishes
+        while True:
+            sel = gui_config_dialog(default_input=default_input, default_pre=default_pre, default_post=default_post)
+            if sel is None:
+                raise SystemExit("Cancelled.")
+
+            module_fn = resolve_module_callable(sel.module)
+            if module_fn is None:
+                raise SystemExit(f"Unknown module selected: {sel.module}")
+
+            # Persist last used input dir
+            save_last_input_dir_to_config(sel.input_dir)
+
+            try:
+                execute_module(module_fn, sel.input_dir, sel.freq_pre, sel.freq_post)
+            except Exception as e:
+                # Log nicely and keep the app alive
+                log_module_exception(sel.module, e)
+
+            # Ask if user wants to reopen the launcher; if not, exit loop
+            if not ask_reopen_launcher():
+                break
         return
+
 
     # CASE C: Headless (no GUI)
     if not args.input:
         raise SystemExit("Input folder not provided and GUI disabled/unavailable. Use -i/--input.")
-    run_prepost(args.input, args.freq_pre or DEFAULT_FREQ_PRE, args.freq_post or DEFAULT_FREQ_POST)
+    # Persist last used input dir (headless no-GUI path)
+    save_last_input_dir_to_config(args.input)
+    try:
+        run_prepost(args.input, args.freq_pre or DEFAULT_FREQ_PRE, args.freq_post or DEFAULT_FREQ_POST)
+    except Exception as e:
+        log_module_exception("prepost", e)
+        # Same policy as above (choose A or B)
+        # raise SystemExit(1)
+        return
+
+    # Log clossing
+    print("\n[Logger] Execution finished.")
+    # Restore stdout and close log file
+    if isinstance(sys.stdout, LoggerDual):
+        sys.stdout.log.close()
+        sys.stdout = sys.stdout.terminal
 
 
 if __name__ == "__main__":

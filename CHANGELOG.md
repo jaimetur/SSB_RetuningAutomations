@@ -4,6 +4,32 @@
 
 ---
 
+## Release: v0.2.3
+- ### Release Date: 2025-11-07
+
+- ### Main Changes:
+  
+  - #### 🚨 Breaking Changes:
+  
+  - #### 🌟 New Features:
+    - Logger support for all print outputs.
+    - `Input Folder` persistent between executions.
+    
+  - #### 🐛 Bug fixes:
+    - Minor bug fixing.
+
+  - #### 📚 Documentation: 
+    - Updated documentation with latest changes
+    
+  - #### 🚀 Enhancements:
+    - GUI for module selection/launcher open again when any module finish successfully.
+    - MO autodetection based on content instead of log filename.
+    - Multiple table detection for each MO log file.
+    - Capture exceptions during modules executions and avoid the tool to exit when any error is found.
+    - Added 2 new columns in Summary sheet of module `2. Create Excel from Logs` with the Log filename where the table have been found and with the number of tables of each log file.
+
+---
+
 ## Release: v0.2.2
 - ### Release Date: 2025-11-06
 

@@ -122,13 +122,124 @@ class PrePostRelations:
     def _table_key_name(table_base: str) -> str:
         return table_base.strip()
 
+    # ----------------------------- NEW HELPERS (multi-table & robust read) ----------------------------- #
+
+    @staticmethod
+    def _read_text_file(path: str) -> Optional[List[str]]:
+        """Robust text reader for .log/.txt using multiple encodings."""
+        if not os.path.isfile(path):
+            return None
+        encodings = ["utf-8-sig", "utf-16", "utf-16-le", "utf-16-be", "cp1252", "utf-8"]
+        for enc in encodings:
+            try:
+                with open(path, "r", encoding=enc, errors="strict") as f:
+                    return [ln.rstrip("\n") for ln in f]
+            except Exception:
+                continue
+        # last permissive attempt
+        try:
+            with open(path, "r", encoding="utf-8", errors="replace") as f:
+                return [ln.rstrip("\n") for ln in f]
+        except Exception:
+            return None
+
+    @staticmethod
+    def _find_all_subnetwork_headers(lines: List[str]) -> List[int]:
+        """Return indices of every line that starts with 'SubNetwork'."""
+        return [i for i, ln in enumerate(lines) if ln.strip().startswith("SubNetwork")]
+
+    @staticmethod
+    def _extract_mo_from_subnetwork_line(line: str) -> Optional[str]:
+        """
+        Extract MO/table name from the 'SubNetwork,...,<MO>' line.
+        Rule: last token after the last comma.
+        """
+        if not line:
+            return None
+        if "," in line:
+            last = line.strip().split(",")[-1].strip()
+            return last or None
+        # Defensive fallback: last whitespace token
+        toks = line.strip().split()
+        return toks[-1].strip() if toks else None
+
+    @staticmethod
+    def _split_line_generic(line: str, sep: Optional[str]) -> List[str]:
+        """Split a line by sep; if sep is None, split by whitespace."""
+        import re as _re
+        if sep is None:
+            return _re.split(r"\s+", line.strip())
+        return line.split(sep)
+
+    def _parse_table_slice_from_subnetwork(self, lines: List[str], header_idx: int, end_idx: int) -> pd.DataFrame:
+        """
+        Parse one table bounded by:
+          - SubNetwork line at lines[header_idx]
+          - Next SubNetwork line (exclusive) or EOF at end_idx
+        Data header is expected in the next non-empty/non-summary line after SubNetwork.
+        Data rows follow until end_idx (exclusive) or a summary line.
+        Delimiter preference for DATA: TAB > comma > whitespace.
+        """
+        # 1) Find the real data header (next non-empty, non-summary line)
+        data_header_idx = None
+        for j in range(header_idx + 1, end_idx):
+            ln = lines[j]
+            if not ln.strip():
+                continue
+            if self.SUMMARY_RE.match(ln):
+                continue
+            data_header_idx = j
+            break
+        if data_header_idx is None:
+            return pd.DataFrame()
+
+        header_line = lines[data_header_idx].strip()
+
+        # 2) Detect DATA separator within the slice (from header line + a few data lines)
+        probe_lines = []
+        for j in range(data_header_idx, min(end_idx, data_header_idx + 50)):
+            ln = lines[j]
+            if not ln.strip() or self.SUMMARY_RE.match(ln):
+                continue
+            probe_lines.append(ln)
+        any_tab = any("\t" in ln for ln in probe_lines)
+        data_sep: Optional[str] = "\t" if any_tab else ("," if any("," in ln for ln in probe_lines) else None)
+
+        # 3) Split header columns
+        header_cols = [c.strip() for c in self._split_line_generic(header_line, data_sep)]
+
+        # 4) Build rows
+        rows: List[List[str]] = []
+        for j in range(data_header_idx + 1, end_idx):
+            ln = lines[j]
+            if not ln.strip() or self.SUMMARY_RE.match(ln):
+                continue
+            parts = [p.strip() for p in self._split_line_generic(ln, data_sep)]
+            if len(parts) < len(header_cols):
+                parts += [""] * (len(header_cols) - len(parts))
+            elif len(parts) > len(header_cols):
+                parts = parts[:len(header_cols)]
+            rows.append(parts)
+
+        df = pd.DataFrame(rows, columns=header_cols).dropna(how="all")
+        # Normalize basic string-ish values for stability
+        df = df.replace({"nan": "", "NaN": "", "None": "", "none": "", "NULL": "", "null": ""})
+        for c in df.columns:
+            df[c] = df[c].astype(str).str.strip()
+        return df
+
     # ----------------------------- LOADING ----------------------------- #
 
     def loadPrePost(self, input_dir: str) -> Dict[str, pd.DataFrame]:
         """
         Scans subfolders containing 'Pre'/'Step0' or 'Post'/'Step3',
-        loads GUtranCellRelation.log and NRCellRelation.log if found,
+        loads tables found inside *.log/*.txt by detecting 'SubNetwork' blocks,
+        extracts the MO name from the 'SubNetwork,...,<MO>' line (last column),
         and creates DataFrames with columns 'Pre/Post' and 'Date'.
+
+        Only MOs of interest are kept:
+          - GUtranCellRelation
+          - NRCellRelation
         """
         if not os.path.isdir(input_dir):
             raise NotADirectoryError(f"Invalid directory: {input_dir}")
@@ -138,6 +249,7 @@ class PrePostRelations:
             "NRCellRelation": [],
         }
 
+        # Scan immediate subfolders (Pre/Post or Step0/Step3)
         for entry in os.scandir(input_dir):
             if not entry.is_dir():
                 continue
@@ -148,19 +260,49 @@ class PrePostRelations:
 
             date_str = self._extract_date(entry.name)
 
-            gu_path = os.path.join(entry.path, "GUtranCellRelation.log")
-            nr_path = os.path.join(entry.path, "NRCellRelation.log")
+            # Look for .log and .txt files in this subfolder
+            for fname in os.listdir(entry.path):
+                lower = fname.lower()
+                if not (lower.endswith(".log") or lower.endswith(".txt")):
+                    continue
+                fpath = os.path.join(entry.path, fname)
+                if not os.path.isfile(fpath):
+                    continue
 
-            df_gu = self._read_relation_log(gu_path)
-            if df_gu is not None:
-                df_gu = self._insert_front_columns(df_gu, prepost, date_str)
-                collected["GUtranCellRelation"].append(df_gu)
+                lines = self._read_text_file(fpath)
+                if not lines:
+                    continue
 
-            df_nr = self._read_relation_log(nr_path)
-            if df_nr is not None:
-                df_nr = self._insert_front_columns(df_nr, prepost, date_str)
-                collected["NRCellRelation"].append(df_nr)
+                # Find all 'SubNetwork' headers (each marks a new table)
+                header_indices = self._find_all_subnetwork_headers(lines)
+                if not header_indices:
+                    continue
 
+                # Add sentinel end to slice the last table
+                header_indices.append(len(lines))
+
+                # Parse each table slice
+                for ix in range(len(header_indices) - 1):
+                    h_idx = header_indices[ix]
+                    next_h_idx = header_indices[ix + 1]
+
+                    subnetwork_line = lines[h_idx]
+                    mo = self._extract_mo_from_subnetwork_line(subnetwork_line)
+
+                    if mo not in ("GUtranCellRelation", "NRCellRelation"):
+                        # Not a relation table we care about
+                        continue
+
+                    df_tbl = self._parse_table_slice_from_subnetwork(lines, h_idx, next_h_idx)
+                    if df_tbl is None or df_tbl.empty:
+                        continue
+
+                    # Insert front columns as before
+                    df_tbl = self._insert_front_columns(df_tbl, prepost, date_str)
+
+                    collected[mo].append(df_tbl)
+
+        # Build self.tables same as before
         self.tables = {}
         for base, chunks in collected.items():
             if chunks:
