@@ -108,7 +108,7 @@ You can run any module directly from the command line.
 
 **General form:**
 ```bash
-python RetuningAutomations.py --module {prepost|excel|cleanup} -i "<INPUT_FOLDER>"   --freq-pre 648672 --freq-post 647328
+python RetuningAutomations.py --module {consistency-checks|excel|cleanup} -i "<INPUT_FOLDER>"   --freq-pre 648672 --freq-post 647328
 ```
 
 > If you omit `-i` but do **not** pass `--no-gui` and Tkinter is available, the tool will offer the GUI to complete missing fields.  
@@ -119,7 +119,7 @@ python RetuningAutomations.py --module {prepost|excel|cleanup} -i "<INPUT_FOLDER
 ## ⚙️ CLI Reference
 
 ```text
---module     Module to run: prepost | excel | cleanup
+--module     Module to run: consistency-checks | configuration-audit | initial-cleanup | final-cleanup
 -i, --input  Input folder to process
 --freq-pre   Frequency before refarming (Pre), e.g. 648672
 --freq-post  Frequency after refarming (Post), e.g. 647328
@@ -128,30 +128,36 @@ python RetuningAutomations.py --module {prepost|excel|cleanup} -i "<INPUT_FOLDER
 
 ### Examples
 
-**A. Pre/Post with comparison (full):**
+
+**A. Configuration Audit:**
 ```bash
-python RetuningAutomations.py --module prepost   -i "C:\Projects\Retuning\Round_01\Input"   --freq-pre 648672   --freq-post 647328
+python RetuningAutomations.py --module configuration-audit   -i "/data/retuning/logs/PA6"
+```
+
+**B. Consistency Checks (Pre/Post comparison) (full):**
+```bash
+python RetuningAutomations.py --module consistency-checks   -i "C:\Projects\Retuning\Round_01\Input"   --freq-pre 648672   --freq-post 647328
 ```
 - Writes:
   - `CellRelation.xlsx`
   - `CellRelationDiscrepancies.xlsx`
   - Under: `CellRelationConsistencyChecks_<YYYYMMDD-HHMMSS>_v0.2.0/`
 
-**B. Pre/Post without frequencies (tables only):**
+**C. Consistency Checks (Pre/Post comparison) (tables only):**
 ```bash
-python RetuningAutomations.py --module prepost   -i "/data/retuning/PA6/Input"
+python RetuningAutomations.py --module consistency-checks   -i "/data/retuning/PA6/Input"
 ```
 - Writes:
   - `CellRelation.xlsx` (no comparison workbook)
 
-**C. Create Excel from Logs:**
+**D. Initial Clean-Up (scaffold):**
 ```bash
-python RetuningAutomations.py --module excel   -i "/data/retuning/logs/PA6"
+python RetuningAutomations.py --module initial-cleanup   -i "/data/retuning/outputs"
 ```
 
-**D. Clean-Up (scaffold):**
+**E. Final Clean-Up (scaffold):**
 ```bash
-python RetuningAutomations.py --module cleanup   -i "/data/retuning/outputs"
+python RetuningAutomations.py --module final-cleanup   -i "/data/retuning/outputs"
 ```
 
 ---
