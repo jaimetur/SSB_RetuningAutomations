@@ -5,7 +5,7 @@
 ---
 
 ## Release: v0.2.4
-- ### Release Date: 2025-11-07
+- ### Release Date: 2025-11-10
 
 - ### Main Changes:
   
@@ -20,7 +20,8 @@
     - Updated documentation with latest changes
     
   - #### 🚀 Enhancements:
-    - Modules common methods and helpers extracted from their classes and added to a new Python module called common.py for a better efficiency and maintainance.
+    - Common methods and helpers from different Automation Modules extracted from their classes and added to a new Python module called common.py for a better efficiency and maintainance.
+    - Smart sorting of MO names based on prefefined list `TABLES_ORDER` or log filename.
 
 ---
 

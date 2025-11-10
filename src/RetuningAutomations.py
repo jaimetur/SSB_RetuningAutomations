@@ -54,6 +54,10 @@ INPUT_FOLDER = ""  # empty by default if not defined
 DEFAULT_FREQ_PRE = "648672"
 DEFAULT_FREQ_POST = "647328"
 
+# TABLES_ORDER defines the desired priority of table sheet ordering.
+# Sheets whose MO name is not listed here will be placed after the listed ones.
+TABLES_ORDER = []
+
 # ============================== PERSISTENT CONFIG =========================== #
 # We store config under user's home to avoid write-permission issues with PyInstaller/Nuitka.
 CONFIG_DIR  = Path.home() / ".retuning_automations"
@@ -232,7 +236,7 @@ def run_excel_from_logs(input_dir: str) -> None:
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     versioned_suffix = f"{timestamp}_v{TOOL_VERSION}"
     app = CreateExcelFromLogs()
-    out = app.run(input_dir, module_name=module_name, versioned_suffix=versioned_suffix)
+    out = app.run(input_dir, module_name=module_name, versioned_suffix=versioned_suffix, tables_order=TABLES_ORDER)
 
     if out:
         print(f"{module_name} Done → '{out}'")

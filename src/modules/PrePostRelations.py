@@ -7,7 +7,7 @@ from typing import Dict, Optional, List
 
 import pandas as pd
 
-from src.modules.common import (
+from src.modules.CommonMethods import (
     read_text_lines,
     find_all_subnetwork_headers,
     extract_mo_from_subnetwork_line,
