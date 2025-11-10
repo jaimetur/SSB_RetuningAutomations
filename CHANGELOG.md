@@ -19,7 +19,7 @@
     - Added timer to measure the execution time of each module.
     - Module's Renaming. Current Module Names are:  
       `1. Configuration Audit (Logs Parser)`  
-      `2. Consistency Check (Pre/Post Comparisson)`  
+      `2. Consistency Check (Pre/Post Comparison)`  
       `3. Initial Clean-Up (During Maintenance Window)`  
       `4. Final Clean-Up (After Retune is completed)`  
     

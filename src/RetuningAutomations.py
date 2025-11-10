@@ -63,7 +63,7 @@ TABLES_ORDER = []
 # Module names
 MODULE_NAMES = [
     "1. Configuration Audit (Logs Parser)",
-    "2. Consistency Check (Pre/Post Comparisson)",
+    "2. Consistency Check (Pre/Post Comparison)",
     "3. Initial Clean-Up (During Maintenance Window)",
     "4. Final Clean-Up (After Retune is completed)",
 ]
@@ -131,7 +131,7 @@ def gui_config_dialog(
         return None
 
     root = tk.Tk()
-    root.title("Select task and configuration")
+    root.title("Select module to run and configuration")
     root.resizable(False, False)
 
     # Center window
@@ -248,7 +248,7 @@ def run_configuration_audit(input_dir: str) -> None:
 
 
 def run_consistency_checks(input_dir: str, freq_pre: Optional[str], freq_post: Optional[str]) -> None:
-    module_name = "[Consistency Checks (Pre/Post Comparisson]"
+    module_name = "[Consistency Checks (Pre/Post Comparison]"
     print(f"{module_name} Running…")
     print(f"{module_name} Input folder: '{input_dir}'")
 
