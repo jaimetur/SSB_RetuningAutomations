@@ -3,7 +3,7 @@
 import os
 from typing import Optional
 
-class CleanUp:
+class InitialCleanUp:
     """
     Placeholder class. Future: housekeeping tasks over the input_dir.
     """

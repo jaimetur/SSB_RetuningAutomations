@@ -17,6 +17,7 @@ Behavior:
 import argparse
 import os
 import sys
+import time  # high-resolution timing for module execution
 from datetime import datetime
 from dataclasses import dataclass
 from typing import Optional
@@ -28,9 +29,10 @@ from pathlib import Path
 
 
 # Import our different Classes
-from src.modules.PrePostRelations import PrePostRelations
-from src.modules.CreateExcelFromLogs import CreateExcelFromLogs
-from src.modules.CleanUp import CleanUp
+from src.modules.ConsistencyChecks import PrePostRelations
+from src.modules.ConfigurationAudit import CreateExcelFromLogs
+from src.modules.InitialCleanUp import InitialCleanUp
+from src.modules.FinalCleanUp import FinalCleanUp
 
 # ================================ VERSIONING ================================ #
 
@@ -57,6 +59,14 @@ DEFAULT_FREQ_POST = "647328"
 # TABLES_ORDER defines the desired priority of table sheet ordering.
 # Sheets whose MO name is not listed here will be placed after the listed ones.
 TABLES_ORDER = []
+
+# Module names
+MODULE_NAMES = [
+    "1. Configuration Audit (Logs Parser)",
+    "2. Consistency Check (Pre/Post Comparisson)",
+    "3. Initial Clean-Up (During Maintenance Window)",
+    "4. Final Clean-Up (After Retune is completed)",
+]
 
 # ============================== PERSISTENT CONFIG =========================== #
 # We store config under user's home to avoid write-permission issues with PyInstaller/Nuitka.
@@ -103,13 +113,6 @@ class GuiResult:
     freq_post: str
 
 
-MODULE_OPTIONS = [
-    "1. Pre/Post Relations Consistency Check",
-    "2. Create Excel from Logs",
-    "3. Clean-Up",
-]
-
-
 def gui_config_dialog(
     default_input: str = "",
     default_pre: str = DEFAULT_FREQ_PRE,
@@ -144,7 +147,7 @@ def gui_config_dialog(
         pass
 
     # --- Vars
-    module_var = tk.StringVar(value=MODULE_OPTIONS[0])
+    module_var = tk.StringVar(value=MODULE_NAMES[0])
     input_var = tk.StringVar(value=default_input or "")
     pre_var = tk.StringVar(value=default_pre or "")
     post_var = tk.StringVar(value=default_post or "")
@@ -157,7 +160,7 @@ def gui_config_dialog(
 
     # Row 0: Module
     ttk.Label(frm, text="Module to run:").grid(row=0, column=0, sticky="w", **pad)
-    cmb = ttk.Combobox(frm, textvariable=module_var, values=MODULE_OPTIONS, state="readonly", width=36)
+    cmb = ttk.Combobox(frm, textvariable=module_var, values=MODULE_NAMES, state="readonly", width=36)
     cmb.grid(row=0, column=1, columnspan=2, sticky="ew", **pad)
 
     # Row 1: Input folder
@@ -228,8 +231,8 @@ def parse_args() -> argparse.Namespace:
 
 # ============================== RUNNERS (TASKS) ============================= #
 
-def run_excel_from_logs(input_dir: str) -> None:
-    module_name = "[Create Excel from Logs]"
+def run_configuration_audit(input_dir: str) -> None:
+    module_name = "[Configuration Audit (Log Parser)]"
     print(f"{module_name} Running…")
     print(f"{module_name} Input folder: '{input_dir}'")
 
@@ -244,8 +247,8 @@ def run_excel_from_logs(input_dir: str) -> None:
         print(f"{module_name}  No logs found or nothing written.")
 
 
-def run_prepost(input_dir: str, freq_pre: Optional[str], freq_post: Optional[str]) -> None:
-    module_name = "[Pre/Post Relations Consistency Checks]"
+def run_consistency_checks(input_dir: str, freq_pre: Optional[str], freq_post: Optional[str]) -> None:
+    module_name = "[Consistency Checks (Pre/Post Comparisson]"
     print(f"{module_name} Running…")
     print(f"{module_name} Input folder: '{input_dir}'")
 
@@ -271,15 +274,15 @@ def run_prepost(input_dir: str, freq_pre: Optional[str], freq_post: Optional[str
         print(f"{module_name} Wrote CellRelation.xlsx (all tables). No comparison Excel because frequencies were not provided.")
 
 
-def run_cleanup(input_dir: str, *_args) -> None:
-    module_name = "[Clean-Up]"
+def run_initial_cleanup(input_dir: str, *_args) -> None:
+    module_name = "[Initial Clean-Up]"
     print(f"{module_name} Running…")
     print(f"{module_name} Input folder: '{input_dir}'")
 
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     versioned_suffix = f"{timestamp}_v{TOOL_VERSION}"
 
-    app = CleanUp()
+    app = InitialCleanUp()
     out = app.run(input_dir, module_name=module_name, versioned_suffix=versioned_suffix)
 
     if out:
@@ -289,14 +292,35 @@ def run_cleanup(input_dir: str, *_args) -> None:
         print(f"{module_name} Module logic not yet implemented (under development). Exiting...")
 
 
+def run_final_cleanup(input_dir: str, *_args) -> None:
+    module_name = "[Final Clean-Up]"
+    print(f"{module_name} Running…")
+    print(f"{module_name} Input folder: '{input_dir}'")
+
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    versioned_suffix = f"{timestamp}_v{TOOL_VERSION}"
+
+    app = FinalCleanUp()
+    out = app.run(input_dir, module_name=module_name, versioned_suffix=versioned_suffix)
+
+    if out:
+        print(f"{module_name} Done → '{out}'")
+    else:
+        # print(f"{module_name} No logs found or nothing written.")
+        print(f"{module_name} Module logic not yet implemented (under development). Exiting...")
+
+
+
 def resolve_module_callable(name: str):
     name = (name or "").strip().lower()
-    if name in ("prepost", MODULE_OPTIONS[0].lower()):
-        return run_prepost
-    if name in ("excel", MODULE_OPTIONS[1].lower()):
-        return run_excel_from_logs
-    if name in ("cleanup", MODULE_OPTIONS[2].lower()):
-        return run_cleanup
+    if name in ("audit", MODULE_NAMES[0].lower()):
+        return run_configuration_audit
+    if name in ("consistency-check", MODULE_NAMES[1].lower()):
+        return run_consistency_checks
+    if name in ("initial-cleanup", MODULE_NAMES[2].lower()):
+        return run_initial_cleanup
+    if name in ("final-cleanup", MODULE_NAMES[2].lower()):
+        return run_final_cleanup
     return None
 
 def load_last_input_dir_from_config() -> str:
@@ -328,18 +352,39 @@ def save_last_input_dir_to_config(input_dir: str) -> None:
         # Silent fail on write; we do not want to break main flow due to IO
         pass
 
+def _format_duration_hms(seconds: float) -> str:
+    """Return duration as H:MM:SS.mmm (milliseconds precision)."""
+    ms = int((seconds - int(seconds)) * 1000)
+    total_seconds = int(seconds)
+    hours, rem = divmod(total_seconds, 3600)
+    minutes, secs = divmod(rem, 60)
+    return f"{hours}:{minutes:02d}:{secs:02d}.{ms:03d}"
+
 def execute_module(module_fn, input_dir: str, freq_pre: str, freq_post: str) -> None:
-    """Execute the selected module with the proper signature."""
-    # We normalize signatures here so caller code stays simple.
-    if module_fn is run_prepost:
-        module_fn(input_dir, freq_pre, freq_post)
-    elif module_fn is run_excel_from_logs:
-        module_fn(input_dir)
-    elif module_fn is run_cleanup:
-        module_fn(input_dir, freq_pre, freq_post)
-    else:
-        # Fallback for custom callables keeping compatibility
-        module_fn(input_dir, freq_pre, freq_post)
+    """Execute the selected module with the proper signature (timed)."""
+    # Timing starts here
+    start_ts = time.perf_counter()
+    # Friendly label for logs: use function name if no better label
+    label = getattr(module_fn, "__name__", "module")
+
+    try:
+        # We normalize signatures here so caller code stays simple.
+        if module_fn is run_consistency_checks:
+            module_fn(input_dir, freq_pre, freq_post)
+        elif module_fn is run_configuration_audit:
+            module_fn(input_dir)
+        elif module_fn is run_initial_cleanup:
+            module_fn(input_dir, freq_pre, freq_post)
+        elif module_fn is run_final_cleanup:
+            module_fn(input_dir, freq_pre, freq_post)
+        else:
+            # Fallback for custom callables keeping compatibility
+            module_fn(input_dir, freq_pre, freq_post)
+    finally:
+        # Always print elapsed time even if the module raised an exception
+        elapsed = time.perf_counter() - start_ts
+        print(f"[Timer] {label} finished in {_format_duration_hms(elapsed)}")
+
 
 
 def ask_reopen_launcher() -> bool:
@@ -518,7 +563,7 @@ def main():
     # Persist last used input dir (headless no-GUI path)
     save_last_input_dir_to_config(args.input)
     try:
-        run_prepost(args.input, args.freq_pre or DEFAULT_FREQ_PRE, args.freq_post or DEFAULT_FREQ_POST)
+        run_consistency_checks(args.input, args.freq_pre or DEFAULT_FREQ_PRE, args.freq_post or DEFAULT_FREQ_POST)
     except Exception as e:
         log_module_exception("prepost", e)
         # Same policy as above (choose A or B)
