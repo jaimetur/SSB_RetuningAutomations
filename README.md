@@ -128,7 +128,13 @@ python RetuningAutomations.py --module {consistency-checks|excel|cleanup} -i "<I
 
 ### Examples
 
-**A. Pre/Post with comparison (full):**
+
+**A. Configuration Audit:**
+```bash
+python RetuningAutomations.py --module configuration-audit   -i "/data/retuning/logs/PA6"
+```
+
+**B. Consistency Checks (Pre/Post comparison) (full):**
 ```bash
 python RetuningAutomations.py --module consistency-checks   -i "C:\Projects\Retuning\Round_01\Input"   --freq-pre 648672   --freq-post 647328
 ```
@@ -137,21 +143,21 @@ python RetuningAutomations.py --module consistency-checks   -i "C:\Projects\Retu
   - `CellRelationDiscrepancies.xlsx`
   - Under: `CellRelationConsistencyChecks_<YYYYMMDD-HHMMSS>_v0.2.0/`
 
-**B. Pre/Post without frequencies (tables only):**
+**C. Consistency Checks (Pre/Post comparison) (tables only):**
 ```bash
 python RetuningAutomations.py --module consistency-checks   -i "/data/retuning/PA6/Input"
 ```
 - Writes:
   - `CellRelation.xlsx` (no comparison workbook)
 
-**C. Create Excel from Logs:**
-```bash
-python RetuningAutomations.py --module configuration-audit   -i "/data/retuning/logs/PA6"
-```
-
-**D. Clean-Up (scaffold):**
+**D. Initial Clean-Up (scaffold):**
 ```bash
 python RetuningAutomations.py --module initial-cleanup   -i "/data/retuning/outputs"
+```
+
+**E. Final Clean-Up (scaffold):**
+```bash
+python RetuningAutomations.py --module final-cleanup   -i "/data/retuning/outputs"
 ```
 
 ---
