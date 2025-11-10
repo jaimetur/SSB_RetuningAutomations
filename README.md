@@ -12,6 +12,20 @@
 
 ---
 
+## 📝 Changelog
+The Historical Change Log can be checked in the following link:
+[Changelog](https://github.com/jaimetur/RetuningAutomations/blob/main/CHANGELOG.md)
+
+## 📅 Roadmap
+The Planned Roadmap for futures releases can be checked in the following link:
+[Planned Roadmap](https://github.com/jaimetur/RetuningAutomations/blob/main/ROADMAP.md)
+
+## 💾 Download
+Download the tool either for Linux, MacOS or Windows (for both x64 and arm64 architectures) as you prefer, directly from following link:
+[Latest Stable Release](https://github.com/jaimetur/RetuningAutomations/releases/latest)
+
+---
+
 ## 🧭 Overview
 
 **RetuningAutomations** streamlines routine tasks during SSB retuning projects.  
@@ -186,20 +200,6 @@ For `CreateExcelFromLogs`, the module itself returns the **path** of the artifac
   20251106-153245_v0.2.0
   ```
   ensuring reproducibility and traceability across deliveries.
-
----
-
-## 📝 Changelog
-The Historical Change Log can be checked in the following link:
-[Changelog](https://github.com/jaimetur/RetuningAutomations/blob/main/CHANGELOG.md)
-
-## 📅 Roadmap
-The Planned Roadmap for futures releases can be checked in the following link:
-[Planned Roadmap](https://github.com/jaimetur/RetuningAutomations/blob/main/ROADMAP.md)
-
-## 💾 Download
-Download the tool either for Linux, MacOS or Windows (for both x64 and arm64 architectures) as you prefer, directly from following link:
-[Latest Stable Release](https://github.com/jaimetur/RetuningAutomations/releases/latest)
 
 ---
 
