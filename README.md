@@ -79,13 +79,6 @@ The tool automatically adds a **timestamped + versioned suffix** to outputs, whi
 
 ---
 
-## 💾 Download
-Download the tool either for Linux, MacOS or Windows (for both x64 and arm64 architectures) as you prefer, directly from following link:
-
-- [Latest Stable Release](https://github.com/jaimetur/RetuningAutomations/releases/latest)
-
----
-
 ## 🖥️ Run Modes
 
 ### GUI (no arguments)
@@ -196,64 +189,6 @@ For `CreateExcelFromLogs`, the module itself returns the **path** of the artifac
 
 ---
 
-## 🛠️ Installation
-
-> Python 3.10+ is recommended.
-
-1. **Clone the repo**
-   ```bash
-   git clone https://github.com/jaimetur/RetuningAutomations.git
-   cd RetuningAutomations
-   ```
-
-2. **Create & activate a virtual environment** (optional but recommended)
-   ```bash
-   python -m venv .venv
-   # Windows
-   .venv\Scripts\activate
-   # macOS/Linux
-   source .venv/bin/activate
-   ```
-
-3. **Install dependencies**
-   ```bash
-   pip install -r requirements.txt
-   ```
-   Typical dependencies include:
-   - `pandas` (tabular handling)
-   - `openpyxl` (Excel writer/reader)
-   - `numpy` (array ops)
-   - `tkinter` (GUI; usually preinstalled on Windows/macOS; install via your distro on Linux)
-
----
-
-## 🛠️ Requirements
-Python 3.10+, pandas, openpyxl, tkinter
-
----
-
-## 📦 Building Standalone Binaries (optional)
-
-If the repository includes `_compile_pyinstaller.py`, you can produce single-folder or single-file executables:
-
-```bash
-# Ensure you installed requirements first
-pip install -r requirements.txt
-
-# Build
-python Compile.py
-```
-
-The script should:
-- Verify required modules.  
-- Build for your platform/arch.  
-- Drop artifacts in a `dist/` or `build/` folder.
-
-> For CI/CD (GitHub Actions), configure a matrix job to run `_compile_pyinstaller.py` on each target OS/arch.  
-> Make sure to **install requirements first** in each job before invoking the compile step.
-
----
-
 ## 📝 Changelog
 The Historical Change Log can be checked in the following link:
 [Changelog](https://github.com/jaimetur/RetuningAutomations/blob/main/CHANGELOG.md)
@@ -261,6 +196,12 @@ The Historical Change Log can be checked in the following link:
 ## 📅 Roadmap
 The Planned Roadmap for futures releases can be checked in the following link:
 [Planned Roadmap](https://github.com/jaimetur/RetuningAutomations/blob/main/ROADMAP.md)
+
+## 💾 Download
+Download the tool either for Linux, MacOS or Windows (for both x64 and arm64 architectures) as you prefer, directly from following link:
+[Latest Stable Release](https://github.com/jaimetur/RetuningAutomations/releases/latest)
+
+---
 
 ## 🛡️ Code of Conduct
 By participating in this project, you agree to abide by our [Code of Conduct](https://github.com/jaimetur/RetuningAutomations/blob/main/CODE_OF_CONDUCT.md).
