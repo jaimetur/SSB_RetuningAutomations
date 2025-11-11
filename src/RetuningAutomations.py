@@ -20,13 +20,13 @@ import sys
 import time  # high-resolution timing for module execution
 from datetime import datetime
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, List
 import textwrap
 import importlib
 import configparser
 import traceback
 from pathlib import Path
-
+import inspect
 
 # Import our different Classes
 from src.modules.ConsistencyChecks import ConsistencyChecks
@@ -45,16 +45,22 @@ TOOL_DESCRIPTION    = textwrap.dedent(f"""
 {TOOL_NAME_VERSION} - {TOOL_DATE}
 Multi-Platform/Multi-Arch tool designed to Automate some process during SSB Retuning
 ©️ 2025 by Jaime Tur (jaime.tur@ericsson.com)
-"""
-                                      )
+""")
+
 # ================================ DEFAULTS ================================= #
 # Input Folder
 # INPUT_FOLDER = r"c:\Users\ejaitur\OneDrive - Ericsson\SSB Retuning Project Sharepoint - Scripts\OutputStep0\RetuneAutomations\ToyCells\PA7"
 INPUT_FOLDER = ""  # empty by default if not defined
 
-# Frequencyes
+# Frequencies (single Pre/Post used by ConsistencyChecks)
 DEFAULT_FREQ_PRE = "648672"
 DEFAULT_FREQ_POST = "647328"
+
+# Global selectable list for filtering summary columns in ConfigurationAudit
+# NOTE: User can edit/extend this list. It supports multi-selection in GUI.
+NETWORK_FREQUENCIES: List[str] = [
+    "174970","176410","176430","176910","177150","392410","393410","394500","394590","432970","647328","648672","650004","653952","2071667","2071739","2073333","2074999","2076665","2078331","2079997","2081663","2083329"
+]
 
 # TABLES_ORDER defines the desired priority of table sheet ordering.
 # Sheets whose MO name is not listed here will be placed after the listed ones.
@@ -74,6 +80,7 @@ CONFIG_DIR  = Path.home() / ".retuning_automations"
 CONFIG_PATH = CONFIG_DIR / "config.cfg"
 CONFIG_SECTION = "general"
 CONFIG_KEY_LAST_INPUT = "last_input_dir"
+CONFIG_KEY_FREQ_FILTERS = "summary_freq_filters"  # comma-separated persistence for filters
 
 # ============================== LOGGING SYSTEM ============================== #
 class LoggerDual:
@@ -111,12 +118,23 @@ class GuiResult:
     input_dir: str
     freq_pre: str
     freq_post: str
+    freq_filters_csv: str  # comma-separated list of frequency filters for summary sheets
+
+
+def _normalize_csv_list(text: str) -> str:
+    """Normalize a comma-separated text into 'a,b,c' without extra spaces/empties."""
+    if not text:
+        return ""
+    items = [t.strip() for t in text.split(",")]
+    items = [t for t in items if t]  # drop empties
+    return ",".join(items)
 
 
 def gui_config_dialog(
     default_input: str = "",
     default_pre: str = DEFAULT_FREQ_PRE,
     default_post: str = DEFAULT_FREQ_POST,
+    default_filters_csv: str = "",
 ) -> Optional[GuiResult]:
     """
     Opens a single modal window with:
@@ -124,6 +142,7 @@ def gui_config_dialog(
       - Input folder (entry + Browse)
       - Freq Pre (entry)
       - Freq Post (entry)
+      - Multi-select list for Summary Frequency Filters (persisted)
       - Run / Cancel
     Returns GuiResult or None if cancelled/unavailable.
     """
@@ -137,7 +156,7 @@ def gui_config_dialog(
     # Center window
     try:
         root.update_idletasks()
-        w, h = 520, 240
+        w, h = 750, 430
         sw = root.winfo_screenwidth()
         sh = root.winfo_screenheight()
         x = (sw // 2) - (w // 2)
@@ -151,6 +170,7 @@ def gui_config_dialog(
     input_var = tk.StringVar(value=default_input or "")
     pre_var = tk.StringVar(value=default_pre or "")
     post_var = tk.StringVar(value=default_post or "")
+    selected_csv_var = tk.StringVar(value=_normalize_csv_list(default_filters_csv))
     result: Optional[GuiResult] = None
 
     # --- Layout
@@ -160,12 +180,12 @@ def gui_config_dialog(
 
     # Row 0: Module
     ttk.Label(frm, text="Module to run:").grid(row=0, column=0, sticky="w", **pad)
-    cmb = ttk.Combobox(frm, textvariable=module_var, values=MODULE_NAMES, state="readonly", width=36)
+    cmb = ttk.Combobox(frm, textvariable=module_var, values=MODULE_NAMES, state="readonly", width=42)
     cmb.grid(row=0, column=1, columnspan=2, sticky="ew", **pad)
 
     # Row 1: Input folder
     ttk.Label(frm, text="Input folder:").grid(row=1, column=0, sticky="w", **pad)
-    ent_input = ttk.Entry(frm, textvariable=input_var, width=42)
+    ent_input = ttk.Entry(frm, textvariable=input_var, width=48)
     ent_input.grid(row=1, column=1, sticky="ew", **pad)
 
     def browse():
@@ -175,15 +195,68 @@ def gui_config_dialog(
 
     ttk.Button(frm, text="Browse…", command=browse).grid(row=1, column=2, sticky="ew", **pad)
 
-    # Row 2-3: Frequencies
+    # Row 2-3: Pre/Post single frequencies (ConsistencyChecks)
     ttk.Label(frm, text="Frequency (Pre):").grid(row=2, column=0, sticky="w", **pad)
-    ttk.Entry(frm, textvariable=pre_var, width=18).grid(row=2, column=1, sticky="w", **pad)
+    ttk.Entry(frm, textvariable=pre_var, width=22).grid(row=2, column=1, sticky="w", **pad)
     ttk.Label(frm, text="Frequency (Post):").grid(row=3, column=0, sticky="w", **pad)
-    ttk.Entry(frm, textvariable=post_var, width=18).grid(row=3, column=1, sticky="w", **pad)
+    ttk.Entry(frm, textvariable=post_var, width=22).grid(row=3, column=1, sticky="w", **pad)
 
-    # Row 4: Buttons
+    # Row 4+: Multi-select for Summary Filters (ConfigurationAudit)
+    ttk.Separator(frm).grid(row=4, column=0, columnspan=3, sticky="ew", **pad)
+    ttk.Label(frm, text="Summary Filters (for pivot columns in Configuration Audit):").grid(row=5, column=0, columnspan=3, sticky="w", **pad)
+
+    # Left: multi-select list of NETWORK_FREQUENCIES
+    list_frame = ttk.Frame(frm)
+    list_frame.grid(row=6, column=0, columnspan=1, sticky="nsw", **pad)
+    ttk.Label(list_frame, text="Available frequencies:").pack(anchor="w")
+    lb = tk.Listbox(list_frame, selectmode="extended", height=10, width=24, exportselection=False)
+    for freq in NETWORK_FREQUENCIES:
+        lb.insert("end", freq)
+    lb.pack(fill="y", expand=False)
+
+    btns_frame = ttk.Frame(frm)
+    btns_frame.grid(row=6, column=1, sticky="n", **pad)
+
+    # Right: entry showing selected (comma-separated)
+    right_frame = ttk.Frame(frm)
+    right_frame.grid(row=6, column=2, sticky="nsew", **pad)
+    ttk.Label(right_frame, text="Selected (comma-separated):").grid(row=0, column=0, sticky="w")
+    ent_selected = ttk.Entry(right_frame, textvariable=selected_csv_var, width=36)
+    ent_selected.grid(row=1, column=0, sticky="ew")
+
+    def _current_selected_set() -> List[str]:
+        return [s.strip() for s in _normalize_csv_list(selected_csv_var.get()).split(",") if s.strip()]
+
+    def add_selected():
+        # Append highlighted items from listbox into the CSV entry (unique)
+        chosen = [lb.get(i) for i in lb.curselection()]
+        pool = set(_current_selected_set())
+        for c in chosen:
+            pool.add(c)
+        selected_csv_var.set(",".join(sorted(pool)))
+
+    def remove_selected():
+        # Remove highlighted items from listbox from the CSV entry
+        chosen = set([lb.get(i) for i in lb.curselection()])
+        pool = [x for x in _current_selected_set() if x not in chosen]
+        selected_csv_var.set(",".join(pool))
+
+    def select_all():
+        lb.select_set(0, "end")
+        add_selected()
+
+    def clear_all():
+        lb.selection_clear(0, "end")
+        selected_csv_var.set("")
+
+    ttk.Button(btns_frame, text="Add →", command=add_selected).pack(pady=4, fill="x")
+    ttk.Button(btns_frame, text="← Remove", command=remove_selected).pack(pady=4, fill="x")
+    ttk.Button(btns_frame, text="Select all", command=select_all).pack(pady=4, fill="x")
+    ttk.Button(btns_frame, text="Clear", command=clear_all).pack(pady=4, fill="x")
+
+    # Row 7: Buttons
     btns = ttk.Frame(frm)
-    btns.grid(row=4, column=0, columnspan=3, sticky="e", **pad)
+    btns.grid(row=7, column=0, columnspan=3, sticky="e", **pad)
 
     def on_run():
         nonlocal result
@@ -197,6 +270,7 @@ def gui_config_dialog(
             input_dir=sel_input,
             freq_pre=pre_var.get().strip(),
             freq_post=post_var.get().strip(),
+            freq_filters_csv=_normalize_csv_list(selected_csv_var.get()),
         )
         root.destroy()
 
@@ -225,21 +299,40 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("-i", "--input", help="Input folder to process")
     parser.add_argument("--freq-pre", help="Frequency before refarming (Pre)")
     parser.add_argument("--freq-post", help="Frequency after refarming (Post)")
+    parser.add_argument(
+        "--freq-filters",
+        help="Comma-separated list of frequencies to filter pivot columns in Configuration Audit (substring match per column header)."
+    )
     parser.add_argument("--no-gui", action="store_true", help="Disable GUI prompts (require CLI args)")
     return parser.parse_args()
 
 
 # ============================== RUNNERS (TASKS) ============================= #
 
-def run_configuration_audit(input_dir: str) -> None:
+def run_configuration_audit(input_dir: str, freq_filters_csv: str = "") -> None:
     module_name = "[Configuration Audit (Log Parser)]"
     print(f"{module_name} Running…")
     print(f"{module_name} Input folder: '{input_dir}'")
+    if freq_filters_csv:
+        print(f"{module_name} Summary column filters: {freq_filters_csv}")
 
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     versioned_suffix = f"{timestamp}_v{TOOL_VERSION}"
     app = ConfigurationAudit()
-    out = app.run(input_dir, module_name=module_name, versioned_suffix=versioned_suffix, tables_order=TABLES_ORDER)
+
+    # We pass the filters to ConfigurationAudit if its run() accepts it. If not, we call old signature.
+    kwargs = dict(module_name=module_name, versioned_suffix=versioned_suffix, tables_order=TABLES_ORDER)
+    if freq_filters_csv:
+        # New optional argument expected by updated ConfigurationAudit
+        kwargs["filter_frequencies"] = [x.strip() for x in freq_filters_csv.split(",") if x.strip()]
+
+    try:
+        # Try new signature first
+        out = app.run(input_dir, **kwargs)
+    except TypeError:
+        # Fallback to legacy signature (no filtering supported by class yet)
+        print(f"{module_name} [WARN] Installed ConfigurationAudit does not support 'filter_frequencies'. Running without filters.")
+        out = app.run(input_dir, module_name=module_name, versioned_suffix=versioned_suffix, tables_order=TABLES_ORDER)
 
     if out:
         print(f"{module_name} Done → '{out}'")
@@ -248,7 +341,7 @@ def run_configuration_audit(input_dir: str) -> None:
 
 
 def run_consistency_checks(input_dir: str, freq_pre: Optional[str], freq_post: Optional[str]) -> None:
-    module_name = "[Consistency Checks (Pre/Post Comparison]"
+    module_name = "[Consistency Checks (Pre/Post Comparison)]"
     print(f"{module_name} Running…")
     print(f"{module_name} Input folder: '{input_dir}'")
 
@@ -310,18 +403,18 @@ def run_final_cleanup(input_dir: str, *_args) -> None:
         print(f"{module_name} Module logic not yet implemented (under development). Exiting...")
 
 
-
 def resolve_module_callable(name: str):
     name = (name or "").strip().lower()
-    if name in ("audit", MODULE_NAMES[0].lower()):
+    if name in ("audit", MODULE_NAMES[0].lower(), "configuration-audit"):
         return run_configuration_audit
     if name in ("consistency-check", MODULE_NAMES[1].lower()):
         return run_consistency_checks
     if name in ("initial-cleanup", MODULE_NAMES[2].lower()):
         return run_initial_cleanup
-    if name in ("final-cleanup", MODULE_NAMES[2].lower()):
+    if name in ("final-cleanup", MODULE_NAMES[3].lower(), "final-cleanup"):
         return run_final_cleanup
     return None
+
 
 def load_last_input_dir_from_config() -> str:
     """Load last used input directory from config file. Returns empty string if missing."""
@@ -333,6 +426,18 @@ def load_last_input_dir_from_config() -> str:
         return parser.get(CONFIG_SECTION, CONFIG_KEY_LAST_INPUT, fallback="").strip()
     except Exception:
         # Fail-safe: do not block the tool if config is corrupt
+        return ""
+
+
+def load_last_filters_from_config() -> str:
+    """Load last used frequency filters (CSV) from config file. Returns empty string if missing."""
+    try:
+        if not CONFIG_PATH.exists():
+            return ""
+        parser = configparser.ConfigParser()
+        parser.read(CONFIG_PATH, encoding="utf-8")
+        return parser.get(CONFIG_SECTION, CONFIG_KEY_FREQ_FILTERS, fallback="").strip()
+    except Exception:
         return ""
 
 
@@ -352,6 +457,23 @@ def save_last_input_dir_to_config(input_dir: str) -> None:
         # Silent fail on write; we do not want to break main flow due to IO
         pass
 
+
+def save_last_filters_to_config(filters_csv: str) -> None:
+    """Persist last used frequency filters (CSV) to config file."""
+    try:
+        CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+        parser = configparser.ConfigParser()
+        if CONFIG_PATH.exists():
+            parser.read(CONFIG_PATH, encoding="utf-8")
+        if CONFIG_SECTION not in parser:
+            parser[CONFIG_SECTION] = {}
+        parser[CONFIG_SECTION][CONFIG_KEY_FREQ_FILTERS] = _normalize_csv_list(filters_csv)
+        with CONFIG_PATH.open("w", encoding="utf-8") as f:
+            parser.write(f)
+    except Exception:
+        pass
+
+
 def _format_duration_hms(seconds: float) -> str:
     """Return duration as H:MM:SS.mmm (milliseconds precision)."""
     ms = int((seconds - int(seconds)) * 1000)
@@ -360,7 +482,8 @@ def _format_duration_hms(seconds: float) -> str:
     minutes, secs = divmod(rem, 60)
     return f"{hours}:{minutes:02d}:{secs:02d}.{ms:03d}"
 
-def execute_module(module_fn, input_dir: str, freq_pre: str, freq_post: str) -> None:
+
+def execute_module(module_fn, input_dir: str, freq_pre: str, freq_post: str, freq_filters_csv: str = "") -> None:
     """Execute the selected module with the proper signature (timed)."""
     # Timing starts here
     start_ts = time.perf_counter()
@@ -368,23 +491,27 @@ def execute_module(module_fn, input_dir: str, freq_pre: str, freq_post: str) -> 
     label = getattr(module_fn, "__name__", "module")
 
     try:
-        # We normalize signatures here so caller code stays simple.
+        # Normalize signatures here so caller code stays simple.
         if module_fn is run_consistency_checks:
             module_fn(input_dir, freq_pre, freq_post)
         elif module_fn is run_configuration_audit:
-            module_fn(input_dir)
+            module_fn(input_dir, freq_filters_csv=freq_filters_csv)
         elif module_fn is run_initial_cleanup:
             module_fn(input_dir, freq_pre, freq_post)
         elif module_fn is run_final_cleanup:
             module_fn(input_dir, freq_pre, freq_post)
         else:
             # Fallback for custom callables keeping compatibility
-            module_fn(input_dir, freq_pre, freq_post)
+            # Try to pass filters if function supports it
+            sig = inspect.signature(module_fn)
+            if "freq_filters_csv" in sig.parameters:
+                module_fn(input_dir, freq_pre, freq_post, freq_filters_csv=freq_filters_csv)
+            else:
+                module_fn(input_dir, freq_pre, freq_post)
     finally:
         # Always print elapsed time even if the module raised an exception
         elapsed = time.perf_counter() - start_ts
         print(f"[Timer] {label} finished in {_format_duration_hms(elapsed)}")
-
 
 
 def ask_reopen_launcher() -> bool:
@@ -402,6 +529,7 @@ def ask_reopen_launcher() -> bool:
     except Exception:
         # In case of headless/console-only contexts, do not loop.
         return False
+
 
 def log_module_exception(module_label: str, exc: BaseException) -> None:
     """Pretty-print a module exception to stdout (and therefore to the log)."""
@@ -476,13 +604,13 @@ def main():
     print(f"[Config] Using config file: {CONFIG_PATH}")
     print("")
 
-
     args = parse_args()
 
-    # Determine default input folder
-    # Priority: CLI argument > persisted config > hardcoded INPUT_FOLDER > empty
+    # Determine default input folder and default filters (persist across runs)
     persisted_last = load_last_input_dir_from_config()
     default_input = args.input or persisted_last or INPUT_FOLDER or ""
+    persisted_filters = load_last_filters_from_config()
+    default_filters_csv = _normalize_csv_list(args.freq_filters or persisted_filters)
 
     default_pre = args.freq_pre or DEFAULT_FREQ_PRE
     default_post = args.freq_post or DEFAULT_FREQ_POST
@@ -496,22 +624,25 @@ def main():
         input_dir = args.input or ""
         freq_pre = args.freq_pre or DEFAULT_FREQ_PRE
         freq_post = args.freq_post or DEFAULT_FREQ_POST
+        freq_filters_csv = default_filters_csv  # already normalized from args/config
 
         # If input is missing and GUI is allowed, show GUI, execute, and optionally loop
         if not input_dir and not args.no_gui and tk is not None:
             while True:
-                sel = gui_config_dialog(default_input="", default_pre=freq_pre, default_post=freq_post)
+                sel = gui_config_dialog(default_input="", default_pre=freq_pre, default_post=freq_post, default_filters_csv=freq_filters_csv)
                 if sel is None:
                     raise SystemExit("Cancelled.")
                 input_dir = sel.input_dir
                 freq_pre = sel.freq_pre
                 freq_post = sel.freq_post
+                freq_filters_csv = sel.freq_filters_csv
 
-                # Persist last used input dir
+                # Persist last used input dir and filters
                 save_last_input_dir_to_config(input_dir)
+                save_last_filters_to_config(freq_filters_csv)
 
                 try:
-                    execute_module(module_fn, input_dir, freq_pre, freq_post)
+                    execute_module(module_fn, input_dir, freq_pre, freq_post, freq_filters_csv=freq_filters_csv)
                 except Exception as e:
                     log_module_exception(sel.module, e)
 
@@ -525,16 +656,22 @@ def main():
         # Pure headless CLI execution (no GUI fallback or input provided)
         if not input_dir:
             raise SystemExit("Input folder not provided.")
-        # Persist last used input dir (headless CLI)
+        # Persist last used input dir and filters (headless CLI)
         save_last_input_dir_to_config(input_dir)
-        execute_module(module_fn, input_dir, freq_pre, freq_post)
+        save_last_filters_to_config(freq_filters_csv)
+        execute_module(module_fn, input_dir, freq_pre, freq_post, freq_filters_csv=freq_filters_csv)
         return
 
     # CASE B: No module specified -> GUI (if available)
     if not args.no_gui and tk is not None:
         # Loop to keep reopening the launcher after each module finishes
         while True:
-            sel = gui_config_dialog(default_input=default_input, default_pre=default_pre, default_post=default_post)
+            sel = gui_config_dialog(
+                default_input=default_input,
+                default_pre=default_pre,
+                default_post=default_post,
+                default_filters_csv=default_filters_csv
+            )
             if sel is None:
                 raise SystemExit("Cancelled.")
 
@@ -542,11 +679,12 @@ def main():
             if module_fn is None:
                 raise SystemExit(f"Unknown module selected: {sel.module}")
 
-            # Persist last used input dir
+            # Persist last used input dir and filters
             save_last_input_dir_to_config(sel.input_dir)
+            save_last_filters_to_config(sel.freq_filters_csv)
 
             try:
-                execute_module(module_fn, sel.input_dir, sel.freq_pre, sel.freq_post)
+                execute_module(module_fn, sel.input_dir, sel.freq_pre, sel.freq_post, freq_filters_csv=sel.freq_filters_csv)
             except Exception as e:
                 # Log nicely and keep the app alive
                 log_module_exception(sel.module, e)
@@ -556,21 +694,20 @@ def main():
                 break
         return
 
-
     # CASE C: Headless (no GUI)
     if not args.input:
         raise SystemExit("Input folder not provided and GUI disabled/unavailable. Use -i/--input.")
-    # Persist last used input dir (headless no-GUI path)
+    # Persist last used input dir and filters (headless no-GUI path)
     save_last_input_dir_to_config(args.input)
+    save_last_filters_to_config(default_filters_csv)
     try:
+        # Default to Consistency Checks in headless path (same behavior as before)
         run_consistency_checks(args.input, args.freq_pre or DEFAULT_FREQ_PRE, args.freq_post or DEFAULT_FREQ_POST)
     except Exception as e:
         log_module_exception("consistency-check", e)
-        # Same policy as above (choose A or B)
-        # raise SystemExit(1)
         return
 
-    # Log clossing
+    # Log closing
     print("\n[Logger] Execution finished.")
     # Restore stdout and close log file
     if isinstance(sys.stdout, LoggerDual):

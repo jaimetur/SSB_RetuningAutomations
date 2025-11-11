@@ -13,6 +13,7 @@
   
   - #### 🌟 New Features:
     - Configuration Audit now creates Pivot Table with useful Summary Information. 
+    - Added Frequencies selector in GUI to select which frequencies you want to run Audit for.
 
   - #### 🚀 Enhancements:
     
