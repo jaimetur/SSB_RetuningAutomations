@@ -14,9 +14,14 @@
   - #### 🌟 New Features:
 
   - #### 🚀 Enhancements:
+    - Improvements on Date detection method to do an smart detection of any date included in the input folder.
+    - Changed date format to YYYY-MM-DD for a better visualization.
+    - Changed color of Summary Sheets in output Excel to green for a better visualization. 
+    - Changed macos-x64 runer on GitHub workflow.
     
   - #### 🐛 Bug fixes:
     - Minor bug fixing.
+    - Added `Summary NRFrequency` table to `Configuration Audit` module.
     
   - #### 📚 Documentation: 
     - Updated documentation with latest changes

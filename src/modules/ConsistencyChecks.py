@@ -2,7 +2,6 @@
 
 import os
 import re
-from datetime import datetime
 from typing import Dict, Optional, List
 
 import pandas as pd
@@ -21,6 +20,9 @@ from src.modules.CommonMethods import (
     detect_key_columns,
     enforce_gu_columns,
     enforce_nr_columns,
+    color_summary_tabs,
+    enable_header_filters,
+    extract_date,
 )
 
 class ConsistencyChecks:
@@ -49,18 +51,6 @@ class ConsistencyChecks:
         if any(tok in name for tok in ConsistencyChecks.POST_TOKENS):
             return "Post"
         return None
-
-    @staticmethod
-    def _extract_date(folder_name: str) -> Optional[str]:
-        m = ConsistencyChecks.DATE_RE.search(folder_name)
-        if not m:
-            return None
-        s = m.group("date")
-        try:
-            datetime.strptime(s, "%Y%m%d")
-            return s
-        except ValueError:
-            return None
 
     @staticmethod
     def _insert_front_columns(df: pd.DataFrame, prepost: str, date_str: Optional[str]) -> pd.DataFrame:
@@ -99,7 +89,7 @@ class ConsistencyChecks:
             elif prepost == "Post":
                 self.post_folder_found = True
 
-            date_str = self._extract_date(entry.name)
+            date_str = extract_date(entry.name)
 
             for fname in os.listdir(entry.path):
                 lower = fname.lower()
@@ -517,3 +507,9 @@ class ConsistencyChecks:
                 enforce_nr_columns(pd.DataFrame()).to_excel(writer, sheet_name="NR_missing", index=False)
                 enforce_nr_columns(pd.DataFrame()).to_excel(writer, sheet_name="NR_new", index=False)
                 pd.DataFrame().to_excel(writer, sheet_name="NR_relations", index=False)
+
+            # <<< NEW: color the 'Summary*' tabs in green >>>
+            color_summary_tabs(writer, prefix="Summary", rgb_hex="00B050")
+
+            # <<< NEW: enable filters (and freeze header row) on all sheets >>>
+            enable_header_filters(writer, freeze_header=True)

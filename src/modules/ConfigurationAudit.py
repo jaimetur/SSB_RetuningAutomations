@@ -14,6 +14,8 @@ from src.modules.CommonMethods import (
     sanitize_sheet_name,
     unique_sheet_name,
     natural_logfile_key,
+    color_summary_tabs,
+    enable_header_filters,
 )
 
 
@@ -277,10 +279,10 @@ class ConfigurationAudit:
                 entry["df"].to_excel(writer, sheet_name=entry["final_sheet"], index=False)
 
             # <<< NEW: color the 'Summary*' tabs in green >>>
-            self._color_summary_tabs(writer, prefix="Summary", rgb_hex="00B050")
+            color_summary_tabs(writer, prefix="Summary", rgb_hex="00B050")
 
             # <<< NEW: enable filters (and freeze header row) on all sheets >>>
-            self._enable_header_filters(writer, freeze_header=True)
+            enable_header_filters(writer, freeze_header=True)
 
         print(f"{module_name} Wrote Excel with {len(table_entries)} sheet(s) in: '{excel_path}'")
         return excel_path
@@ -639,46 +641,6 @@ class ConfigurationAudit:
         except Exception:
             # Fallback: do not filter if selection fails for any reason
             return piv
-
-    def _color_summary_tabs(self, writer, prefix: str = "Summary", rgb_hex: str = "00B050") -> None:
-        """
-        Set tab color for every worksheet whose name starts with `prefix`.
-        Works with openpyxl-backed ExcelWriter.
-        - rgb_hex: 6-hex RGB (e.g., '00B050' = green).
-        """
-        try:
-            wb = writer.book  # openpyxl Workbook
-            for ws in wb.worksheets:
-                if ws.title.startswith(prefix):
-                    # Set tab color (expects hex without '#')
-                    ws.sheet_properties.tabColor = rgb_hex
-        except Exception:
-            # Hard-fail safe: never break file writing just for coloring tabs
-            pass
-
-    def _enable_header_filters(self, writer, freeze_header: bool = True) -> None:
-        """
-        Enable Excel AutoFilter on every worksheet for the used range.
-        Optionally freeze the header row (row 1) so data scrolls under it.
-        """
-        try:
-            wb = writer.book  # openpyxl Workbook
-            for ws in wb.worksheets:
-                # Skip empty sheets safely
-                if ws.max_row < 1 or ws.max_column < 1:
-                    continue
-
-                # Define used range for the filter, from A1 to last used cell
-                top_left = ws.cell(row=1, column=1).coordinate
-                bottom_right = ws.cell(row=ws.max_row, column=ws.max_column).coordinate
-                ws.auto_filter.ref = f"{top_left}:{bottom_right}"
-
-                # Optionally freeze header row
-                if freeze_header and ws.max_row >= 2:
-                    ws.freeze_panes = "A2"
-        except Exception:
-            # Never fail the export just for filters
-            pass
 
 
 # --------- kept local to preserve current behavior (module-level helper) ----

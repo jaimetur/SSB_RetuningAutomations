@@ -739,6 +739,8 @@ def main():
             # Persist last used input dir and filters
             save_last_input_dir_to_config(sel.input_dir)
             save_last_filters_to_config(sel.freq_filters_csv)
+            default_input = sel.input_dir
+            default_filters_csv = sel.freq_filters_csv
 
             try:
                 execute_module(module_fn, sel.input_dir, sel.freq_pre, sel.freq_post, freq_filters_csv=sel.freq_filters_csv)
