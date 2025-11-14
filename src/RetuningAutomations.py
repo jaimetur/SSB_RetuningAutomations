@@ -959,6 +959,7 @@ def main():
     # CASE B: No module specified -> GUI (if available)
     if not args.no_gui and tk is not None:
         while True:
+            # Use last in-memory defaults so they persist across module runs
             sel = gui_config_dialog(
                 default_input=default_input,
                 default_pre=default_pre,
@@ -974,24 +975,37 @@ def main():
             if module_fn is None:
                 raise SystemExit(f"Unknown module selected: {sel.module}")
 
-            # Persist inputs appropriately
+            # Persist inputs appropriately (config file + in-memory defaults)
             if _is_consistency_module(sel.module):
                 save_last_dual_to_config(sel.input_pre_dir, sel.input_post_dir)
                 input_dir = ""  # unused in dual mode
+
+                # Update in-memory defaults for next iterations
+                default_input_pre = sel.input_pre_dir
+                default_input_post = sel.input_post_dir
             else:
                 save_last_input_dir_to_config(sel.input_dir)
                 input_dir = sel.input_dir
 
+                # Update in-memory default for single-input modules
+                default_input = sel.input_dir
+
+            # Persist filters and frequencies (config file + in-memory defaults)
             save_last_filters_to_config(sel.freq_filters_csv)
+            default_filters_csv = sel.freq_filters_csv
+            default_pre = sel.freq_pre
+            default_post = sel.freq_post
 
             try:
-                execute_module(module_fn,
-                               input_dir=input_dir,
-                               freq_pre=sel.freq_pre,
-                               freq_post=sel.freq_post,
-                               freq_filters_csv=sel.freq_filters_csv,
-                               input_pre_dir=sel.input_pre_dir,
-                               input_post_dir=sel.input_post_dir)
+                execute_module(
+                    module_fn,
+                    input_dir=input_dir,
+                    freq_pre=sel.freq_pre,
+                    freq_post=sel.freq_post,
+                    freq_filters_csv=sel.freq_filters_csv,
+                    input_pre_dir=sel.input_pre_dir,
+                    input_post_dir=sel.input_post_dir,
+                )
             except Exception as e:
                 log_module_exception(sel.module, e)
 
