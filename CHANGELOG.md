@@ -14,8 +14,9 @@
   - #### 🌟 New Features:
 
   - #### 🚀 Enhancements:
-    - Added PPT Template
-    - Modified PPT to split nodes in chunks of 50 nodes per slide (2 columns of 50 nodes)
+    - Added PPT Template.
+    - Modified PPT to split nodes in chunks of 50 nodes per slide (2 columns of 50 nodes).
+    - Persist Allowed SSB and ARFCN lists between different executions.
     
   - #### 🐛 Bug fixes:
     - Minor bug fixing.
