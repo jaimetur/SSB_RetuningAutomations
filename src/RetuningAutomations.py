@@ -106,6 +106,7 @@ CONFIG_SECTION = "general"
 CONFIG_KEY_LAST_INPUT = "last_input_dir"
 CONFIG_KEY_LAST_INPUT_PRE = "last_input_dir_pre"
 CONFIG_KEY_LAST_INPUT_POST = "last_input_dir_post"
+CONFIG_KEY_N77B_SSB = "n77b_ssb_freq"  # NEW: persist N77B SSB frequency
 CONFIG_KEY_FREQ_FILTERS = "summary_freq_filters"  # comma-separated persistence for filters
 CONFIG_KEY_ALLOWED_N77_SSB = "allowed_n77_ssb_csv"       # NEW: persist N77 SSB list
 CONFIG_KEY_ALLOWED_N77_ARFCN = "allowed_n77_arfcn_csv" # NEW: persist N77 ARFCN list
@@ -843,6 +844,29 @@ def save_last_dual_to_config(pre_dir: str, post_dir: str) -> None:
     except Exception:
         pass
 
+def load_last_n77b_ssb_from_config() -> str:
+    """Load last used N77B SSB frequency from config file. Returns empty string if missing."""
+    try:
+        if not CONFIG_PATH.exists():
+            return ""
+        parser = _read_cfg()
+        return parser.get(CONFIG_SECTION, CONFIG_KEY_N77B_SSB, fallback="").strip()
+    except Exception:
+        return ""
+
+
+def save_last_n77b_ssb_to_config(n77b_ssb_freq: str) -> None:
+    """Persist last used N77B SSB frequency to config file."""
+    try:
+        CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+        parser = _read_cfg()
+        _ensure_cfg_section(parser)
+        parser[CONFIG_SECTION][CONFIG_KEY_N77B_SSB] = (n77b_ssb_freq or "").strip()
+        with CONFIG_PATH.open("w", encoding="utf-8") as f:
+            parser.write(f)
+    except Exception:
+        # Never break the tool just because config persistence fails
+        pass
 
 def load_last_filters_from_config() -> str:
     """Load last used frequency filters (CSV) from config file. Returns empty string if missing."""
@@ -1085,6 +1109,7 @@ def main():
     persisted_last_single = load_last_input_dir_from_config()
     persisted_pre, persisted_post = load_last_dual_from_config()
 
+    persisted_n77b_ssb = load_last_n77b_ssb_from_config()
     persisted_allowed_n77_ssb, persisted_allowed_n77_arfcn = load_last_allowed_lists_from_config()
 
 
@@ -1097,8 +1122,7 @@ def main():
 
     default_pre = args.freq_pre or DEFAULT_FREQ_PRE
     default_post = args.freq_post or DEFAULT_FREQ_POST
-
-    default_n77b_ssb = args.freq_n77b_ssb or DEFAULT_N77B_SSB
+    default_n77b_ssb = args.freq_n77b_ssb or persisted_n77b_ssb or DEFAULT_N77B_SSB
 
     # Defaults for ARFCN lists (CLI overrides persisted values, which override global defaults)
     default_allowed_n77_ssb_csv = _normalize_csv_list(
@@ -1146,6 +1170,7 @@ def main():
                     # Persist last used inputs/filters
                     # Persist last used inputs/filters/allowed lists
                     save_last_dual_to_config(input_pre_dir, input_post_dir)
+                    save_last_n77b_ssb_to_config(n77b_ssb_freq)
                     save_last_filters_to_config(freq_filters_csv)
                     save_last_allowed_lists_to_config(
                         default_allowed_n77_ssb_csv,
@@ -1177,6 +1202,7 @@ def main():
             if not (input_pre_dir and input_post_dir):
                 raise SystemExit("Both --input-pre and --input-post must be provided for consistency-check in headless mode.")
             save_last_dual_to_config(input_pre_dir, input_post_dir)
+            save_last_n77b_ssb_to_config(default_n77b_ssb)
             save_last_filters_to_config(default_filters_csv)
             save_last_allowed_lists_to_config(
                 default_allowed_n77_ssb_csv,
@@ -1223,6 +1249,7 @@ def main():
                     raise SystemExit("Cancelled.")
                 # Persist last used inputs/filters
                 save_last_input_dir_to_config(sel.input_dir)
+                save_last_n77b_ssb_to_config(sel.n77b_ssb_freq)
                 save_last_filters_to_config(sel.freq_filters_csv)
                 save_last_allowed_lists_to_config(
                     sel.allowed_n77_ssb_csv,
@@ -1260,6 +1287,7 @@ def main():
         if not input_dir:
             raise SystemExit("Input folder not provided.")
         save_last_input_dir_to_config(input_dir)
+        save_last_n77b_ssb_to_config(n77b_ssb_freq)
         save_last_filters_to_config(freq_filters_csv)
         save_last_allowed_lists_to_config(
             default_allowed_n77_ssb_csv,
@@ -1323,9 +1351,12 @@ def main():
                 default_filters_csv = sel.freq_filters_csv
                 default_pre = sel.freq_pre
                 default_post = sel.freq_post
-                default_n77b_ssb = sel.n77b_ssb_freq  # NEW
                 default_allowed_n77_ssb_csv = sel.allowed_n77_ssb_csv
                 default_allowed_n77_arfcn_csv = sel.allowed_n77_arfcn_csv
+
+            # Persist N77B SSB frequency for all modules
+            save_last_n77b_ssb_to_config(sel.n77b_ssb_freq)
+            default_n77b_ssb = sel.n77b_ssb_freq
 
             try:
                 execute_module(
