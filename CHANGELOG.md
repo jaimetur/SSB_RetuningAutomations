@@ -12,10 +12,21 @@
   - #### 🚨 Breaking Changes:
   
   - #### 🌟 New Features:
+    - Check if all EndcDistrProfile gUtranFreqRef is always set to (old_arfcn or new_arfcn) and &653952
 
   - #### 🚀 Enhancements:
     - Refactor module `ConfigurationAudit` and split in different submodules
-    
+    - Network Audit Enhancements (#26) now includes: 
+      - Count/List of Nodes/Cells per category:
+        - Count Nodes with N77 cells. NRCellDU Pivot table to check if all cells with SSB 648672&653952. NRSectorCarrier to check if all N77B sectors with ARFCN 654652, 655324, 655984 or 656656
+        - Count NR nodes with NrFrequency/NrFreqRelation 648672 defined. Pivot tables to detect if 647328 already defined 
+        - Count LTE nodes with GUtranSyncSignalFrequency/GUtranFreqRelation 648672 defined. Pivot table to detect if 647328 already defined
+      - Check if any referece to new SSB in any node: FreqRelation, Frequency. If autocreated might need additional actions
+      - Check if any cell reached max FreqRelation cardinality (max 16 NrFreqRelation and 16 GUtranFreqRelation per Cell)
+      - Check if any nodes reached max 24 GUtranSyncSignalFrequency definitions
+      - Check if any nodes reached max 64 NRFrequency definitions
+      - Check if all EndcDistrProfile gUtranFreqRef always set to 648672&653952
+  
   - #### 🐛 Bug fixes:
     - Minor bug fixing.
     

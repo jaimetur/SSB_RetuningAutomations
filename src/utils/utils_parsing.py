@@ -246,3 +246,7 @@ def cap_rows(
         df = df.iloc[:max_rows_excel, :].copy()
         note = (note + " | " if note else "") + f"Trimmed to {max_rows_excel} rows"
     return df, note
+
+
+def normalize_ref(s: str) -> str:
+    return str(s).replace(" ", "").strip()

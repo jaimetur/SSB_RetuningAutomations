@@ -144,3 +144,11 @@ def is_n77_from_string(value: object) -> bool:
         return False
     s = str(value).strip()
     return bool(s) and s[0] == "6"
+
+
+def extract_sync_frequencies(value: str):
+    """Extract all ARFCN values from GUtranSyncSignalFrequency=XXXX-xx patterns."""
+    if not value or not isinstance(value, str):
+        return set()
+    matches = re.findall(r"GUtranSyncSignalFrequency=(\d+)-", value)
+    return set(matches)
