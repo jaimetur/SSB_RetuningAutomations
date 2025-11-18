@@ -42,16 +42,16 @@ from pathlib import Path
 import inspect
 
 # Import our different Classes
-from src.modules.ConsistencyChecks import ConsistencyChecks
+from src.modules.ConsistencyChecks.ConsistencyChecks import ConsistencyChecks
 from src.modules.ConfigurationAudit import ConfigurationAudit
-from src.modules.InitialCleanUp import InitialCleanUp
-from src.modules.FinalCleanUp import FinalCleanUp
+from src.modules.CleanUp.InitialCleanUp import InitialCleanUp
+from src.modules.CleanUp.FinalCleanUp import FinalCleanUp
 
 # ================================ VERSIONING ================================ #
 
 TOOL_NAME           = "RetuningAutomations"
-TOOL_VERSION        = "0.2.8"
-TOOL_DATE           = "2025-11-17"
+TOOL_VERSION        = "0.2.9"
+TOOL_DATE           = "2025-11-18"
 TOOL_NAME_VERSION   = f"{TOOL_NAME}_v{TOOL_VERSION}"
 COPYRIGHT_TEXT      = "(c) 2025 - Jaime Tur (jaime.tur@ericsson.com)"
 TOOL_DESCRIPTION    = textwrap.dedent(f"""
