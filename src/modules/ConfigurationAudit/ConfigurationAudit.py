@@ -4,22 +4,12 @@ import os
 from typing import List, Tuple, Optional, Dict
 import pandas as pd
 
-from src.modules.CommonMethods import (
-    read_text_with_encoding,
-    find_all_subnetwork_headers,
-    extract_mo_from_subnetwork_line,
-    parse_table_slice_from_subnetwork,
-    SUMMARY_RE,
-    sanitize_sheet_name,
-    unique_sheet_name,
-    natural_logfile_key,
-    color_summary_tabs,
-    enable_header_filters, concat_or_empty, safe_pivot_count, safe_crosstab_count, apply_frequency_column_filter, find_log_files, read_text_file, parse_log_lines, find_subnetwork_header_index, extract_mo_name_from_previous_line, cap_rows,
-)
-
-from .ca_summary_audit import (
-    build_summary_audit,
-)
+from src.utils.utils_io import find_log_files, read_text_file
+from src.utils.utils_parsing import SUMMARY_RE, find_all_subnetwork_headers, extract_mo_from_subnetwork_line, parse_table_slice_from_subnetwork, parse_log_lines, find_subnetwork_header_index, extract_mo_name_from_previous_line, cap_rows
+from src.utils.utils_excel import sanitize_sheet_name, unique_sheet_name, color_summary_tabs, enable_header_filters
+from src.utils.utils_sorting import natural_logfile_key
+from src.utils.utils_pivot import concat_or_empty, safe_pivot_count, safe_crosstab_count, apply_frequency_column_filter
+from .ca_excel_summary import build_summary_audit
 from .ca_ppt_summary import generate_ppt_summary
 
 

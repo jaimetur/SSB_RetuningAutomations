@@ -4,7 +4,7 @@ import os
 from typing import Dict, List, Optional
 import pandas as pd
 
-from src.utils.Utils import get_resource_path
+from src.utils.utils_general import get_resource_path
 
 
 def build_text_summary_structure(
@@ -185,7 +185,7 @@ def generate_ppt_summary(
 
                     for node in nodes[:50]:
                         p_node = tf.add_paragraph()
-                        p_node.text = f"- {node}"
+                        p_node.text = f"{node}"
                         p_node.level = 1
                         _set_paragraph_font_size(p_node, SUB_BULLET_SIZE)
 

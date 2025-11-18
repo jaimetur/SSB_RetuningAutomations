@@ -3,8 +3,7 @@
 from typing import List, Dict
 import pandas as pd
 
-from src.modules.CommonMethods import resolve_column_case_insensitive, parse_int_frequency, is_n77_from_string
-
+from src.utils.utils_frequency import resolve_column_case_insensitive, parse_int_frequency, is_n77_from_string
 
 # =====================================================================
 #              GENERIC HELPERS (columns, frequencies, pivots)
@@ -63,6 +62,10 @@ def build_summary_audit(
     def is_old(v: object) -> bool:
         freq = parse_int_frequency(v)
         return freq == old_arfcn
+    
+    def has_value(v: object) -> bool:
+        freq = parse_int_frequency(v)
+        return freq is not None
 
     def is_allowed_n77_ssb(v: object) -> bool:
         freq = parse_int_frequency(v)
@@ -94,24 +97,21 @@ def build_summary_audit(
     # ----------------------------- NRCellDU (N77 detection) -----------------------------
     try:
         if df_nr_cell_du is not None and not df_nr_cell_du.empty:
-            node_col = resolve_column_case_insensitive(df_nr_cell_du, ["NodeId"])
-            ssb_col = resolve_column_case_insensitive(
-                df_nr_cell_du,
-                ["ssbFrequency", "ssbFreq", "ssb"],
-            )
+            node_col = resolve_column_case_insensitive(df_nr_cell_du, ["NRCellDUId"])
+            ssb_col = resolve_column_case_insensitive(df_nr_cell_du,["ssbFrequency", "ssbFreq", "ssb"])
             if node_col and ssb_col:
                 work = df_nr_cell_du[[node_col, ssb_col]].copy()
                 work[node_col] = work[node_col].astype(str)
 
+                # NR Frequency Audit: N77 cells with SSB starting with '6' in NRCellDU
                 mask_n77 = work[ssb_col].map(is_n77_from_string)
-                n77_nodes = sorted(set(work.loc[mask_n77, node_col].astype(str)))
-
+                n77_sector_carriers = sorted(set(work.loc[mask_n77, node_col].astype(str)))
                 add_row(
                     "NR Frequency Audit",
                     "NRCellDU",
-                    "N77 nodes (NRCellDU SSB starting with '6')",
-                    len(n77_nodes),
-                    ", ".join(n77_nodes),
+                    "N77 cells with SSB starting with '6' in NRCellDU",
+                    len(n77_sector_carriers),
+                    ", ".join(n77_sector_carriers),
                 )
             else:
                 add_row(
@@ -139,35 +139,38 @@ def build_summary_audit(
     try:
         if df_nr_sector_carrier is not None and not df_nr_sector_carrier.empty:
             node_col = resolve_column_case_insensitive(df_nr_sector_carrier, ["NodeId"])
-            arfcn_col = resolve_column_case_insensitive(
-                df_nr_sector_carrier,
-                ["arfcnDL", "arfcn", "arfcnValueNRDl"],
-            )
+            arfcn_col = resolve_column_case_insensitive(df_nr_sector_carrier,["arfcnDL"])
+            sector_carrier_id_col = resolve_column_case_insensitive(df_nr_sector_carrier,["NRSectorCarrierId"])
+
             if node_col and arfcn_col:
-                work = df_nr_sector_carrier[[node_col, arfcn_col]].copy()
+                # work = df_nr_sector_carrier[[node_col, arfcn_col]].copy()
+                work = df_nr_sector_carrier[[node_col, arfcn_col, sector_carrier_id_col]].copy()
+
                 work[node_col] = work[node_col].astype(str)
 
                 # N77 nodes = those having at least one ARFCN starting with "6"
                 mask_n77 = work[arfcn_col].map(is_n77_from_string)
                 n77_rows = work.loc[mask_n77].copy()
+                n77_rows["unique_id"] = (n77_rows[node_col].astype(str) + "-" + n77_rows[sector_carrier_id_col].astype(str))
 
-                n77_nodes = sorted(set(n77_rows[node_col].astype(str)))
+                # NR Frequency Audit: N77 nodes with ARFCN starting with '6' in NRSectorCarrier
+                # n77_sector_carriers = sorted(set(n77_rows[node_col].astype(str)))
+                n77_sector_carriers = sorted(set(n77_rows["unique_id"]))
+
                 add_row(
                     "NR Frequency Audit",
                     "NRSectorCarrier",
-                    "N77 nodes with ARFCN starting with '6'",
-                    len(n77_nodes),
-                    ", ".join(n77_nodes),
+                    "N77 sectors with ARFCN starting with '6' in NRSectorCarrier",
+                    len(n77_sector_carriers),
+                    ", ".join(n77_sector_carriers),
                 )
 
-                # Inconsistencies: N77 ARFCN not in allowed list
+                # NR Frequency Inconsistencies: N77 ARFCN not in allowed list
                 if allowed_n77_arfcn_set:
-                    bad_rows = n77_rows.loc[
-                        ~n77_rows[arfcn_col].map(is_allowed_n77_arfcn)
-                    ]
+                    bad_rows = n77_rows.loc[~n77_rows[arfcn_col].map(is_allowed_n77_arfcn)]
                     bad_nodes = sorted(set(bad_rows[node_col].astype(str)))
                     extra = "; ".join(
-                        f"{r[node_col]}: {r[arfcn_col]}"
+                        f"{r[node_col]}: {r[arfcn_col]}-{r[sector_carrier_id_col]}"
                         for _, r in bad_rows.head(200).iterrows()
                     )
                     if len(bad_rows) > 200:
@@ -175,7 +178,7 @@ def build_summary_audit(
                     add_row(
                         "NR Frequency Inconsistencies",
                         "NRSectorCarrier",
-                        "N77 nodes with ARFCN not in allowed list",
+                        "N77 sectors with ARFCN not in allowed list",
                         len(bad_nodes),
                         extra,
                     )
@@ -183,7 +186,7 @@ def build_summary_audit(
                     add_row(
                         "NR Frequency Inconsistencies",
                         "NRSectorCarrier",
-                        "N77 nodes with ARFCN not in allowed list (no allowed list configured)",
+                        "N77 sectors with ARFCN not in allowed list (no allowed list configured)",
                         "N/A",
                     )
             else:
@@ -212,10 +215,7 @@ def build_summary_audit(
     try:
         if df_nr_freq is not None and not df_nr_freq.empty:
             node_col = resolve_column_case_insensitive(df_nr_freq, ["NodeId"])
-            arfcn_col = resolve_column_case_insensitive(
-                df_nr_freq,
-                ["arfcnValueNRDl", "arfcn", "arfcnDL"],
-            )
+            arfcn_col = resolve_column_case_insensitive(df_nr_freq,["arfcnValueNRDl", "NRFrequencyId", "nRFrequencyId"])
 
             if node_col and arfcn_col:
                 work = df_nr_freq[[node_col, arfcn_col]].copy()
@@ -227,29 +227,18 @@ def build_summary_audit(
                 if not n77_work.empty:
                     grouped = n77_work.groupby(node_col)[arfcn_col]
 
-                    not_old_not_new_nodes = sorted(
-                        str(node)
-                        for node, series in grouped
-                        if series_only_not_old_not_new(series)
-                    )
-                    new_nodes = sorted(
-                        str(node)
-                        for node, series in grouped
-                        if any(is_new(v) for v in series)
-                    )
-                    old_nodes = sorted(
-                        str(node)
-                        for node, series in grouped
-                        if any(is_old(v) for v in series)
-                    )
-
+                    # NR Frequency Audit: N77 nodes with ARFCN defined in NRFrequency
+                    all_nodes_with_freq = sorted(str(node) for node, series in grouped if any(has_value(v) for v in series))
                     add_row(
-                        "NR Frequency Inconsistencies",
+                        "NR Frequency Audit",
                         "NRFrequency",
-                        f"N77 nodes with the ARFCN not in ({old_arfcn}, {new_arfcn}) in NRFrequency",
-                        len(not_old_not_new_nodes),
-                        ", ".join(not_old_not_new_nodes),
+                        f"N77 nodes with ARFCN defined in NRFrequency",
+                        len(all_nodes_with_freq),
+                        ", ".join(all_nodes_with_freq),
                     )
+                    
+                    # NR Frequency Audit: N77 nodes with the old ARFCN in NRFrequency
+                    old_nodes = sorted(str(node) for node, series in grouped if any(is_old(v) for v in series))
                     add_row(
                         "NR Frequency Audit",
                         "NRFrequency",
@@ -257,12 +246,25 @@ def build_summary_audit(
                         len(old_nodes),
                         ", ".join(old_nodes),
                     )
+                    
+                    # NR Frequency Audit: N77 nodes with the new ARFCN in NRFrequency
+                    new_nodes = sorted(str(node) for node, series in grouped if any(is_new(v) for v in series))
                     add_row(
                         "NR Frequency Audit",
                         "NRFrequency",
                         f"N77 nodes with the new ARFCN ({new_arfcn}) in NRFrequency",
                         len(new_nodes),
                         ", ".join(new_nodes),
+                    )
+                    
+                    # NR Frequency Inconsistencies: N77 nodes with the ARFCN not in (old_freq, new_freq) in NRFrequency
+                    not_old_not_new_nodes = sorted(str(node) for node, series in grouped if series_only_not_old_not_new(series))
+                    add_row(
+                        "NR Frequency Inconsistencies",
+                        "NRFrequency",
+                        f"N77 nodes with the ARFCN not in ({old_arfcn}, {new_arfcn}) in NRFrequency",
+                        len(not_old_not_new_nodes),
+                        ", ".join(not_old_not_new_nodes),
                     )
                 else:
                     add_row(
@@ -297,10 +299,7 @@ def build_summary_audit(
     try:
         if df_nr_freq_rel is not None and not df_nr_freq_rel.empty:
             node_col = resolve_column_case_insensitive(df_nr_freq_rel, ["NodeId"])
-            arfcn_col = resolve_column_case_insensitive(
-                df_nr_freq_rel,
-                ["NRFreqRelationId"],
-            )
+            arfcn_col = resolve_column_case_insensitive(df_nr_freq_rel,["NRFreqRelationId"])
 
             if node_col and arfcn_col:
                 work = df_nr_freq_rel[[node_col, arfcn_col]].copy()
@@ -311,29 +310,8 @@ def build_summary_audit(
                 if not n77_work.empty:
                     grouped = n77_work.groupby(node_col)[arfcn_col]
 
-                    not_old_not_new_nodes = sorted(
-                        str(node)
-                        for node, series in grouped
-                        if series_only_not_old_not_new(series)
-                    )
-                    new_nodes = sorted(
-                        str(node)
-                        for node, series in grouped
-                        if any(is_new(v) for v in series)
-                    )
-                    old_nodes = sorted(
-                        str(node)
-                        for node, series in grouped
-                        if any(is_old(v) for v in series)
-                    )
-
-                    add_row(
-                        "NR Frequency Inconsistencies",
-                        "NRFreqRelation",
-                        f"N77 nodes with the ARFCN not in ({old_arfcn}, {new_arfcn}) in NRFreqRelation",
-                        len(not_old_not_new_nodes),
-                        ", ".join(not_old_not_new_nodes),
-                    )
+                    # NR Frequency Audit: N77 nodes with the old ARFCN in NRFreqRelation
+                    old_nodes = sorted(str(node) for node, series in grouped if any(is_old(v) for v in series))
                     add_row(
                         "NR Frequency Audit",
                         "NRFreqRelation",
@@ -341,12 +319,25 @@ def build_summary_audit(
                         len(old_nodes),
                         ", ".join(old_nodes),
                     )
+                    
+                    # NR Frequency Audit: N77 nodes with the new ARFCN in NRFreqRelation
+                    new_nodes = sorted(str(node) for node, series in grouped if any(is_new(v) for v in series))
                     add_row(
                         "NR Frequency Audit",
                         "NRFreqRelation",
                         f"N77 nodes with the new ARFCN ({new_arfcn}) in NRFreqRelation",
                         len(new_nodes),
                         ", ".join(new_nodes),
+                    )
+                    
+                    # NR Frequency Inconsistencies: N77 nodes with the ARFCN not in ({old_arfcn}, {new_arfcn}) in NRFreqRelation
+                    not_old_not_new_nodes = sorted(str(node) for node, series in grouped if series_only_not_old_not_new(series))
+                    add_row(
+                        "NR Frequency Inconsistencies",
+                        "NRFreqRelation",
+                        f"N77 nodes with the ARFCN not in ({old_arfcn}, {new_arfcn}) in NRFreqRelation",
+                        len(not_old_not_new_nodes),
+                        ", ".join(not_old_not_new_nodes),
                     )
                 else:
                     add_row(
@@ -381,10 +372,7 @@ def build_summary_audit(
     try:
         if df_gu_sync_signal_freq is not None and not df_gu_sync_signal_freq.empty:
             node_col = resolve_column_case_insensitive(df_gu_sync_signal_freq, ["NodeId"])
-            arfcn_col = resolve_column_case_insensitive(
-                df_gu_sync_signal_freq,
-                ["arfcn", "arfcnDL"],
-            )
+            arfcn_col = resolve_column_case_insensitive(df_gu_sync_signal_freq,["arfcn", "arfcnDL"])
 
             if node_col and arfcn_col:
                 work = df_gu_sync_signal_freq[[node_col, arfcn_col]].copy()
@@ -392,60 +380,52 @@ def build_summary_audit(
 
                 grouped = work.groupby(node_col)[arfcn_col]
 
-                not_old_not_new_nodes = sorted(
-                    str(node)
-                    for node, series in grouped
-                    if series_only_not_old_not_new(series)
-                )
-                new_nodes = sorted(
-                    str(node)
-                    for node, series in grouped
-                    if any(is_new(v) for v in series)
-                )
-                old_nodes = sorted(
-                    str(node)
-                    for node, series in grouped
-                    if any(is_old(v) for v in series)
-                )
-
+                # GUtran Frequency Audit: LTE nodes with the old ARFCN in GUtranSyncSignalFrequency
+                old_nodes = sorted(str(node) for node, series in grouped if any(is_old(v) for v in series))
                 add_row(
-                    "Gutran Frequency Inconsistences",
-                    "GUtranSyncSignalFrequency",
-                    f"LTE nodes with the ARFCN not in ({old_arfcn}, {new_arfcn}) in GUtranSyncSignalFrequency",
-                    len(not_old_not_new_nodes),
-                    ", ".join(not_old_not_new_nodes),
-                )
-                add_row(
-                    "Gutran Frequency Audit",
+                    "GUtran Frequency Audit",
                     "GUtranSyncSignalFrequency",
                     f"LTE nodes with the old ARFCN ({old_arfcn}) in GUtranSyncSignalFrequency",
                     len(old_nodes),
                     ", ".join(old_nodes),
                 )
+
+                # GUtran Frequency Audit: LTE nodes with the new ARFCN in GUtranSyncSignalFrequency
+                new_nodes = sorted(str(node) for node, series in grouped if any(is_new(v) for v in series))
                 add_row(
-                    "Gutran Frequency Audit",
+                    "GUtran Frequency Audit",
                     "GUtranSyncSignalFrequency",
                     f"LTE nodes with the new ARFCN ({new_arfcn}) in GUtranSyncSignalFrequency",
                     len(new_nodes),
                     ", ".join(new_nodes),
                 )
+
+                # GUtran Frequency Inconsistences: LTE nodes with the ARFCN not in ({old_arfcn}, {new_arfcn}) in GUtranSyncSignalFrequency
+                not_old_not_new_nodes = sorted(str(node) for node, series in grouped if series_only_not_old_not_new(series))
+                add_row(
+                    "GUtran Frequency Inconsistences",
+                    "GUtranSyncSignalFrequency",
+                    f"LTE nodes with the ARFCN not in ({old_arfcn}, {new_arfcn}) in GUtranSyncSignalFrequency",
+                    len(not_old_not_new_nodes),
+                    ", ".join(not_old_not_new_nodes),
+                )
             else:
                 add_row(
-                    "Gutran Frequency Audit",
+                    "GUtran Frequency Audit",
                     "GUtranSyncSignalFrequency",
                     "GUtranSyncSignalFrequency table present but required columns missing",
                     "N/A",
                 )
         else:
             add_row(
-                "Gutran Frequency Audit",
+                "GUtran Frequency Audit",
                 "GUtranSyncSignalFrequency",
                 "GUtranSyncSignalFrequency table",
                 "Table not found or empty",
             )
     except Exception as ex:
         add_row(
-            "Gutran Frequency Audit",
+            "GUtran Frequency Audit",
             "GUtranSyncSignalFrequency",
             "Error while checking GUtranSyncSignalFrequency",
             f"ERROR: {ex}",
@@ -455,10 +435,7 @@ def build_summary_audit(
     try:
         if df_gu_freq_rel is not None and not df_gu_freq_rel.empty:
             node_col = resolve_column_case_insensitive(df_gu_freq_rel, ["NodeId"])
-            arfcn_col = resolve_column_case_insensitive(
-                df_gu_freq_rel,
-                ["GUtranFreqRelationId", "gUtranFreqRelationId"],
-            )
+            arfcn_col = resolve_column_case_insensitive(df_gu_freq_rel,["GUtranFreqRelationId", "gUtranFreqRelationId"])
 
             if node_col and arfcn_col:
                 work = df_gu_freq_rel[[node_col, arfcn_col]].copy()
@@ -466,60 +443,52 @@ def build_summary_audit(
 
                 grouped = work.groupby(node_col)[arfcn_col]
 
-                not_old_not_new_nodes = sorted(
-                    str(node)
-                    for node, series in grouped
-                    if series_only_not_old_not_new(series)
-                )
-                new_nodes = sorted(
-                    str(node)
-                    for node, series in grouped
-                    if any(is_new(v) for v in series)
-                )
-                old_nodes = sorted(
-                    str(node)
-                    for node, series in grouped
-                    if any(is_old(v) for v in series)
-                )
-
+                # GUtran Frequency Audit: LTE nodes with the old ARFCN in GUtranFreqRelation
+                old_nodes = sorted(str(node) for node, series in grouped if any(is_old(v) for v in series))
                 add_row(
-                    "Gutran Frequency Inconsistences",
-                    "GUtranFreqRelation",
-                    f"LTE nodes with the ARFCN not in ({old_arfcn}, {new_arfcn}) in GUtranFreqRelation",
-                    len(not_old_not_new_nodes),
-                    ", ".join(not_old_not_new_nodes),
-                )
-                add_row(
-                    "Gutran Frequency Audit",
+                    "GUtran Frequency Audit",
                     "GUtranFreqRelation",
                     f"LTE nodes with the old ARFCN ({old_arfcn}) in GUtranFreqRelation",
                     len(old_nodes),
                     ", ".join(old_nodes),
                 )
+
+                # GUtran Frequency Audit: LTE nodes with the new ARFCN in GUtranFreqRelation
+                new_nodes = sorted(str(node) for node, series in grouped if any(is_new(v) for v in series))
                 add_row(
-                    "Gutran Frequency Audit",
+                    "GUtran Frequency Audit",
                     "GUtranFreqRelation",
                     f"LTE nodes with the new ARFCN ({new_arfcn}) in GUtranFreqRelation",
                     len(new_nodes),
                     ", ".join(new_nodes),
                 )
+
+                # GUtran Frequency Inconsistences: LTE nodes with the ARFCN not in ({old_arfcn}, {new_arfcn}) in GUtranFreqRelation
+                not_old_not_new_nodes = sorted(str(node) for node, series in grouped if series_only_not_old_not_new(series))
+                add_row(
+                    "GUtran Frequency Inconsistences",
+                    "GUtranFreqRelation",
+                    f"LTE nodes with the ARFCN not in ({old_arfcn}, {new_arfcn}) in GUtranFreqRelation",
+                    len(not_old_not_new_nodes),
+                    ", ".join(not_old_not_new_nodes),
+                )
             else:
                 add_row(
-                    "Gutran Frequency Audit",
+                    "GUtran Frequency Audit",
                     "GUtranFreqRelation",
                     "GUtranFreqRelation table present but ARFCN/NodeId missing",
                     "N/A",
                 )
         else:
             add_row(
-                "Gutran Frequency Audit",
+                "GUtran Frequency Audit",
                 "GUtranFreqRelation",
                 "GUtranFreqRelation table",
                 "Table not found or empty",
             )
     except Exception as ex:
         add_row(
-            "Gutran Frequency Audit",
+            "GUtran Frequency Audit",
             "GUtranFreqRelation",
             "Error while checking GUtranFreqRelation",
             f"ERROR: {ex}",
@@ -529,10 +498,7 @@ def build_summary_audit(
     # Max 16 NRFreqRelation per NR cell
     try:
         if df_nr_freq_rel is not None and not df_nr_freq_rel.empty:
-            cell_col = resolve_column_case_insensitive(
-                df_nr_freq_rel,
-                ["NRCellCUId", "NRCellId", "CellId"],
-            )
+            cell_col = resolve_column_case_insensitive(df_nr_freq_rel,["NRCellCUId", "NRCellId", "CellId"])
             if cell_col:
                 counts = df_nr_freq_rel[cell_col].value_counts(dropna=False)
                 max_count = int(counts.max()) if not counts.empty else 0
@@ -582,10 +548,7 @@ def build_summary_audit(
     # Max 16 GUtranFreqRelation per LTE cell
     try:
         if df_gu_freq_rel is not None and not df_gu_freq_rel.empty:
-            cell_col_gu = resolve_column_case_insensitive(
-                df_gu_freq_rel,
-                ["EUtranCellFDDId", "EUtranCellId", "CellId", "GUCellId"],
-            )
+            cell_col_gu = resolve_column_case_insensitive(df_gu_freq_rel,["EUtranCellFDDId", "EUtranCellId", "CellId", "GUCellId"])
             if cell_col_gu:
                 counts = df_gu_freq_rel[cell_col_gu].value_counts(dropna=False)
                 max_count = int(counts.max()) if not counts.empty else 0
@@ -635,10 +598,7 @@ def build_summary_audit(
     # Max 24 GUtranSyncSignalFrequency per node
     try:
         if df_gu_sync_signal_freq is not None and not df_gu_sync_signal_freq.empty:
-            node_col = resolve_column_case_insensitive(
-                df_gu_sync_signal_freq,
-                ["NodeId"],
-            )
+            node_col = resolve_column_case_insensitive(df_gu_sync_signal_freq,["NodeId"])
             if node_col:
                 counts = df_gu_sync_signal_freq[node_col].astype(str).value_counts(dropna=False)
                 max_count = int(counts.max()) if not counts.empty else 0
@@ -688,10 +648,7 @@ def build_summary_audit(
     # Max 64 NRFrequency per node
     try:
         if df_nr_freq is not None and not df_nr_freq.empty:
-            node_col = resolve_column_case_insensitive(
-                df_nr_freq,
-                ["NodeId"],
-            )
+            node_col = resolve_column_case_insensitive(df_nr_freq,["NodeId"])
             if node_col:
                 counts = df_nr_freq[node_col].astype(str).value_counts(dropna=False)
                 max_count = int(counts.max()) if not counts.empty else 0
@@ -741,14 +698,8 @@ def build_summary_audit(
     # ----------------------------- EndcDistrProfile gUtranFreqRef -----------------------------
     try:
         if df_endc_distr_profile is not None and not df_endc_distr_profile.empty:
-            node_col_edp = resolve_column_case_insensitive(
-                df_endc_distr_profile,
-                ["NodeId"],
-            )
-            ref_col = resolve_column_case_insensitive(
-                df_endc_distr_profile,
-                ["gUtranFreqRef"],
-            )
+            node_col_edp = resolve_column_case_insensitive(df_endc_distr_profile,["NodeId"])
+            ref_col = resolve_column_case_insensitive(df_endc_distr_profile,["gUtranFreqRef"])
             if node_col_edp and ref_col:
                 work = df_endc_distr_profile[[node_col_edp, ref_col]].copy()
                 work[node_col_edp] = work[node_col_edp].astype(str)
@@ -814,40 +765,28 @@ def build_summary_audit(
     if not df.empty and all(col in df.columns for col in ["Category", "SubCategory", "Metric"]):
         desired_order = [
             # NR Frequency Audit
-            ("NR Frequency Audit", "NRCellDU", "N77 nodes (NRCellDU SSB starting with '6')"),
-            ("NR Frequency Audit", "NRSectorCarrier", "N77 nodes with ARFCN starting with '6'"),
-            ("NR Frequency Audit", "NRFrequency",
-             f"N77 nodes with the new ARFCN ({new_arfcn}) in NRFrequency"),
-            ("NR Frequency Audit", "NRFrequency",
-             f"N77 nodes with the old ARFCN ({old_arfcn}) in NRFrequency"),
-            ("NR Frequency Audit", "NRFreqRelation",
-             f"N77 nodes with the new ARFCN ({new_arfcn}) in NRFreqRelation"),
-            ("NR Frequency Audit", "NRFreqRelation",
-             f"N77 nodes with the old ARFCN ({old_arfcn}) in NRFreqRelation"),
+            ("NR Frequency Audit", "NRFrequency", "N77 nodes with ARFCN defined in NRFrequency"),
+            ("NR Frequency Audit", "NRFrequency", f"N77 nodes with the new ARFCN ({new_arfcn}) in NRFrequency"),
+            ("NR Frequency Audit", "NRFrequency", f"N77 nodes with the old ARFCN ({old_arfcn}) in NRFrequency"),
+            ("NR Frequency Audit", "NRFreqRelation", f"N77 nodes with the new ARFCN ({new_arfcn}) in NRFreqRelation"),
+            ("NR Frequency Audit", "NRFreqRelation", f"N77 nodes with the old ARFCN ({old_arfcn}) in NRFreqRelation"),
+            ("NR Frequency Audit", "NRSectorCarrier", "N77 sectors with ARFCN starting with '6' in NRSectorCarrier"),
+            ("NR Frequency Audit", "NRCellDU", "N77 cells with SSB starting with '6' in NRCellDU"),
 
             # NR Frequency Inconsistencies
-            ("NR Frequency Inconsistencies", "NRSectorCarrier",
-             "N77 nodes with ARFCN not in allowed list"),
-            ("NR Frequency Inconsistencies", "NRFrequency",
-             f"N77 nodes with the ARFCN not in ({old_arfcn}, {new_arfcn}) in NRFrequency"),
-            ("NR Frequency Inconsistencies", "NRFreqRelation",
-             f"N77 nodes with the ARFCN not in ({old_arfcn}, {new_arfcn}) in NRFreqRelation"),
+            ("NR Frequency Inconsistencies", "NRSectorCarrier", "N77 sectors with ARFCN not in allowed list"),
+            ("NR Frequency Inconsistencies", "NRFrequency", f"N77 nodes with the ARFCN not in ({old_arfcn}, {new_arfcn}) in NRFrequency"),
+            ("NR Frequency Inconsistencies", "NRFreqRelation", f"N77 nodes with the ARFCN not in ({old_arfcn}, {new_arfcn}) in NRFreqRelation"),
 
             # GUtran Frequency Audit
-            ("Gutran Frequency Audit", "GUtranSyncSignalFrequency",
-             f"LTE nodes with the new ARFCN ({new_arfcn}) in GUtranSyncSignalFrequency"),
-            ("Gutran Frequency Audit", "GUtranSyncSignalFrequency",
-             f"LTE nodes with the old ARFCN ({old_arfcn}) in GUtranSyncSignalFrequency"),
-            ("Gutran Frequency Audit", "GUtranFreqRelation",
-             f"LTE nodes with the new ARFCN ({new_arfcn}) in GUtranFreqRelation"),
-            ("Gutran Frequency Audit", "GUtranFreqRelation",
-             f"LTE nodes with the old ARFCN ({old_arfcn}) in GUtranFreqRelation"),
+            ("GUtran Frequency Audit", "GUtranSyncSignalFrequency", f"LTE nodes with the new ARFCN ({new_arfcn}) in GUtranSyncSignalFrequency"),
+            ("GUtran Frequency Audit", "GUtranSyncSignalFrequency", f"LTE nodes with the old ARFCN ({old_arfcn}) in GUtranSyncSignalFrequency"),
+            ("GUtran Frequency Audit", "GUtranFreqRelation", f"LTE nodes with the new ARFCN ({new_arfcn}) in GUtranFreqRelation"),
+            ("GUtran Frequency Audit", "GUtranFreqRelation", f"LTE nodes with the old ARFCN ({old_arfcn}) in GUtranFreqRelation"),
 
             # GUtran Frequency Inconsistences
-            ("Gutran Frequency Inconsistences", "GUtranSyncSignalFrequency",
-             f"LTE nodes with the ARFCN not in ({old_arfcn}, {new_arfcn}) in GUtranSyncSignalFrequency"),
-            ("Gutran Frequency Inconsistences", "GUtranFreqRelation",
-             f"LTE nodes with the ARFCN not in ({old_arfcn}, {new_arfcn}) in GUtranFreqRelation"),
+            ("GUtran Frequency Inconsistences", "GUtranSyncSignalFrequency", f"LTE nodes with the ARFCN not in ({old_arfcn}, {new_arfcn}) in GUtranSyncSignalFrequency"),
+            ("GUtran Frequency Inconsistences", "GUtranFreqRelation", f"LTE nodes with the ARFCN not in ({old_arfcn}, {new_arfcn}) in GUtranFreqRelation"),
 
             # Cardinality Audit
             ("Cardinality Audit", "Cardinality", "Max NRFreqRelation per NR cell (limit 16)"),
@@ -856,18 +795,13 @@ def build_summary_audit(
             ("Cardinality Audit", "Cardinality", "Max GUtranSyncSignalFrequency definitions per node (limit 24)"),
 
             # Cardinality Inconsistencies
-            ("Cardinality Inconsistencies", "Cardinality",
-             "Nodes with #NRFreqRelation per NR cell above limit (16)"),
-            ("Cardinality Inconsistencies", "Cardinality",
-             "Nodes with #NRFrequency definitions per node above limit (64)"),
-            ("Cardinality Inconsistencies", "Cardinality",
-             "Nodes with #GUtranFreqRelation per LTE cell above limit (16)"),
-            ("Cardinality Inconsistencies", "Cardinality",
-             "Nodes with #GUtranSyncSignalFrequency definitions per node above limit (24)"),
+            ("Cardinality Inconsistencies", "Cardinality", "Nodes with #NRFreqRelation per NR cell above limit (16)"),
+            ("Cardinality Inconsistencies", "Cardinality", "Nodes with #NRFrequency definitions per node above limit (64)"),
+            ("Cardinality Inconsistencies", "Cardinality", "Nodes with #GUtranFreqRelation per LTE cell above limit (16)"),
+            ("Cardinality Inconsistencies", "Cardinality", "Nodes with #GUtranSyncSignalFrequency definitions per node above limit (24)"),
 
             # EndcDistrProfile Audit
-            ("EndcDistrProfile Audit", "EndcDistrProfile",
-             f"EndcDistrProfile rows with gUtranFreqRef not containing {new_arfcn}"),
+            ("EndcDistrProfile Audit", "EndcDistrProfile", f"EndcDistrProfile rows with gUtranFreqRef not containing {new_arfcn}"),
         ]
 
         # Map (Category, SubCategory, Metric) to an integer order
@@ -892,5 +826,3 @@ def build_summary_audit(
         )
 
     return df
-
-
