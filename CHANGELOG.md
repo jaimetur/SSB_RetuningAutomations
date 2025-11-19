@@ -18,6 +18,7 @@
     - Added ARFCN 650006 to default Allowed ARFCN list
     - Added 'LTE nodes with GUtranSyncSignalFrequency defined' to GUtran Frequency Audit
     - Changed N77 band detection to filter freqs within range 646600-660000
+    - Avoid adding Inconsistencies slides if there is no any inconsistency found for each metric
   
   - #### 🐛 Bug fixes:
     - Fix PPT template not found

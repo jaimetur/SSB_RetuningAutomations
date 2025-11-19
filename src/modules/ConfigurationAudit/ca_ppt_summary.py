@@ -70,7 +70,7 @@ def generate_ppt_summary(
         • If Category name contains 'inconsist' (case-insensitive):
             - One or more slides per Category.
             - Title = Category.
-            - For each row:
+            - For each row with Value > 0 and a non-empty node list:
                 · Main bullet "Metric: Value".
                 · Level-1 bullets with the node list parsed from ExtraInfo
                   (comma/semicolon separated), split into blocks of 50 items
@@ -94,6 +94,18 @@ def generate_ppt_summary(
     def _set_paragraph_font_size(paragraph, size: Pt) -> None:
         for run in paragraph.runs:
             run.font.size = size
+
+    def _value_is_positive(v: object) -> bool:
+        """Return True if the given value represents a numeric value > 0."""
+        try:
+            if isinstance(v, (int, float)):
+                return v > 0
+            s = str(v).strip()
+            if not s or s.upper() == "N/A":
+                return False
+            return float(s) > 0
+        except Exception:
+            return False
 
     template_path = get_resource_path("ppt_templates/ConfigurationAuditTemplate.pptx")
     try:
@@ -128,21 +140,7 @@ def generate_ppt_summary(
         # ---------------------- INCONSISTENCIES: may need multiple slides ----------------------
         if is_incons:
             if not items:
-                # Create a single empty slide for this category
-                slide = prs.slides.add_slide(content_layout)
-                title_shape = slide.shapes.title
-                body = slide.placeholders[1] if len(slide.placeholders) > 1 else None
-
-                title_shape.text = category
-                if body is None:
-                    continue
-
-                tf = body.text_frame
-                tf.clear()
-                p = tf.paragraphs[0]
-                p.text = "No data available for this category."
-                p.level = 0
-                _set_paragraph_font_size(p, MAIN_BULLET_SIZE)
+                # No items at all: skip creating slides for this category
                 continue
 
             for item in items:
@@ -150,30 +148,19 @@ def generate_ppt_summary(
                 value = item.get("Value", "")
                 extra = item.get("ExtraInfo", "")
 
-                main_text = f"{metric}: {value}"
+                # Skip rows with non-positive value
+                if not _value_is_positive(value):
+                    continue
 
                 # Parse node/cell list from ExtraInfo
                 cleaned_extra = str(extra).replace(";", ",") if extra else ""
                 nodes = [t.strip() for t in cleaned_extra.split(",") if t.strip()]
 
-                # If there are no nodes, still create a single slide with only the main bullet
+                # Skip rows with empty node/cell list
                 if not nodes:
-                    slide = prs.slides.add_slide(content_layout)
-                    title_shape = slide.shapes.title
-                    body = slide.placeholders[1] if len(slide.placeholders) > 1 else None
-
-                    title_shape.text = category
-                    if body is None:
-                        continue
-
-                    tf = body.text_frame
-                    tf.clear()
-
-                    p_main = tf.paragraphs[0]
-                    p_main.text = main_text
-                    p_main.level = 0
-                    _set_paragraph_font_size(p_main, MAIN_BULLET_SIZE)
                     continue
+
+                main_text = f"{metric}: {value}"
 
                 # Split the node list into chunks of 50 per slide (no truncation)
                 for chunk_start in range(0, len(nodes), 50):
@@ -257,4 +244,3 @@ def generate_ppt_summary(
 
     prs.save(ppt_path)
     return ppt_path
-
