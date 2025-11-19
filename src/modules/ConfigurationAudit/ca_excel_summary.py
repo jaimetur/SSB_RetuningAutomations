@@ -386,6 +386,16 @@ def build_summary_audit(
                     work = df_gu_sync_signal_freq[[node_col, arfcn_col]].copy()
                     work[node_col] = work[node_col].astype(str)
 
+                    # LTE nodes with any GUtranSyncSignalFrequency defined
+                    all_nodes_with_freq = sorted(work.loc[work[arfcn_col].map(has_value), node_col].astype(str).unique())
+                    add_row(
+                        "GUtran Frequency Audit",
+                        "GUtranSyncSignalFrequency",
+                        "LTE nodes with GUtranSyncSignalFrequency defined:",
+                        len(all_nodes_with_freq),
+                        ", ".join(all_nodes_with_freq),
+                    )
+
                     grouped = work.groupby(node_col)[arfcn_col]
 
                     # GUtran Frequency Audit: LTE nodes with the old ARFCN in GUtranSyncSignalFrequency
@@ -844,6 +854,7 @@ def build_summary_audit(
                 ("NR Frequency Inconsistencies", "NRFreqRelation", f"NR nodes with the ARFCN not in ({old_arfcn}, {new_arfcn}) in NRFreqRelation"),
 
                 # GUtran Frequency Audit
+                ("GUtran Frequency Audit", "GUtranSyncSignalFrequency", "LTE nodes with GUtranSyncSignalFrequency defined:"),
                 ("GUtran Frequency Audit", "GUtranSyncSignalFrequency", f"LTE nodes with the new ARFCN ({new_arfcn}) in GUtranSyncSignalFrequency"),
                 ("GUtran Frequency Audit", "GUtranSyncSignalFrequency", f"LTE nodes with the old ARFCN ({old_arfcn}) in GUtranSyncSignalFrequency"),
                 ("GUtran Frequency Audit", "GUtranFreqRelation", f"LTE nodes with the new ARFCN ({new_arfcn}) in GUtranFreqRelation"),
