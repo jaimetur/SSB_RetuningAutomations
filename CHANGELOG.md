@@ -15,19 +15,20 @@
 
   - #### 🚀 Enhancements:
     - Refactor main module `RetuningAutomations` to simplify the logic.
-    - Added ARFCN 650006 to default Allowed ARFCN list
-    - Added 'LTE nodes with GUtranSyncSignalFrequency defined' to GUtran Frequency Audit
-    - Changed N77 band detection to filter freqs within range 646600-660000
-    - Avoid adding Inconsistencies slides if there is no any inconsistency found for each metric
+    - Added ARFCN 650006 to default Allowed ARFCN list.
+    - Added 'LTE nodes with GUtranSyncSignalFrequency defined' to GUtran Frequency Audit.
+    - Changed N77 band detection to filter freqs within range 646600-660000.
+    - Avoid adding Inconsistencies slides if there is no any inconsistency found for each metric.
   
   - #### 🐛 Bug fixes:
-    - Fix PPT template not found
-    - Fixed some Configuration Audit Metrics
-    - Fixed truncated lists of nodes in Configuration Audit
+    - Fix PPT template not found.
+    - Fixed some Configuration Audit Metrics.
+    - Fixed truncated lists of nodes in Configuration Audit.
+    - Fixed duplicates in extra column of NR_Sector_Carrier Inconsistencies.
     - Minor bug fixing.
     
   - #### 📚 Documentation: 
-    - Updated documentation with latest changes
+    - Updated documentation with latest changes.
 
 ---
 

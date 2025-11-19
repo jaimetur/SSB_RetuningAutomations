@@ -264,7 +264,7 @@ def build_summary_audit(
 
                     work[node_col] = work[node_col].astype(str).str.strip()
 
-                    # N77 nodes = those having at least one ARFCN starting with "6"
+                    # N77 nodes = those having at least one ARFCN in N77 band (646600-660000)
                     mask_n77 = work[arfcn_col].map(is_n77_from_string)
                     n77_rows = work.loc[mask_n77].copy()
 
@@ -283,12 +283,15 @@ def build_summary_audit(
                     if allowed_n77_arfcn_set:
                         bad_rows = n77_rows.loc[~n77_rows[arfcn_col].map(is_allowed_n77_arfcn)]
 
+                        # Unique nodes with at least one non-allowed ARFCN
                         bad_nodes = sorted(bad_rows[node_col].astype(str).unique())
 
-                        extra = "; ".join(
-                            f"{r[node_col]}: {r[arfcn_col]}"
-                            for _, r in bad_rows.iterrows()
+                        # Build a unique (NodeId, ARFCN) list to avoid duplicated lines in ExtraInfo
+                        unique_pairs = sorted(
+                            {(str(r[node_col]).strip(), str(r[arfcn_col]).strip()) for _, r in bad_rows.iterrows()}
                         )
+
+                        extra = "; ".join(f"{node}: {arfcn}" for node, arfcn in unique_pairs)
 
                         add_row(
                             "NR Frequency Inconsistencies",
