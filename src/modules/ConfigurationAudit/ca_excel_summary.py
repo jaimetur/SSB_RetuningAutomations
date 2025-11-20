@@ -297,7 +297,7 @@ def build_summary_audit(
                         add_row(
                             "NR Frequency Inconsistencies",
                             "NRSectorCarrier",
-                            "NR nodes with ARFCN not in allowed list",
+                            "NR nodes with ARFCN not in allowed list (from NRSectorCarrier table)",
                             len(bad_nodes),
                             extra,
                         )
