@@ -405,7 +405,7 @@ def build_summary_audit(
                         add_row(
                             "NR Frequency Audit",
                             "FreqPrioNR",
-                            "N77 NR nodes with RATFreqPrioId = 'fwa' in FreqPrioNR",
+                            "NR nodes with RATFreqPrioId = 'fwa' in N77 FreqPrioNR",
                             len(fwa_nodes),
                             ", ".join(fwa_nodes),
                         )
@@ -417,7 +417,7 @@ def build_summary_audit(
                         add_row(
                             "NR Frequency Audit",
                             "FreqPrioNR",
-                            "N77 NR nodes with RATFreqPrioId = 'publicsafety' in FreqPrioNR",
+                            "NR nodes with RATFreqPrioId = 'publicsafety' in N77 FreqPrioNR",
                             len(publicsafety_nodes),
                             ", ".join(publicsafety_nodes),
                         )
@@ -429,7 +429,7 @@ def build_summary_audit(
                         add_row(
                             "NR Frequency Inconsistencies",
                             "FreqPrioNR",
-                            "N77 NR nodes with RATFreqPrioId different from 'fwa'/'publicsafety' in FreqPrioNR",
+                            "NR nodes with RATFreqPrioId different from 'fwa'/'publicsafety' in N77 FreqPrioNR",
                             len(other_nodes),
                             ", ".join(other_nodes),
                         )

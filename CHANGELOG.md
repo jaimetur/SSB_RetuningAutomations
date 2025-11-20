@@ -16,6 +16,9 @@
   - #### 🚀 Enhancements:
     - From table FreqPrioNR, detect how many N77 nodes has RATFreqPrioId equal to 'fwa' and 'publicsafety' and add them to Frequency Audit.
     - From table FreqPrioNR, detect how many N77 nodes has any RATFreqPrioId different from 'fwa' or 'publicsafety' and add them to Frequency Inconsistencies.
+    - Included Pivot `GUtranFreqRelation` in `ConfigurationAudit` module
+    - Included LogPath in Summary tab of `ConfigurationAudit`
+    - Other minor changes to `ConfigurationAudit`
   
   - #### 🐛 Bug fixes:
     - Minor bug fixing.
