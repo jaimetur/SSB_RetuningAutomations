@@ -14,10 +14,14 @@
   - #### 🌟 New Features:
 
   - #### 🚀 Enhancements:
-    - From table FreqPrioNR, detect how many N77 nodes has RATFreqPrioId equal to 'fwa' and 'publicsafety' and add them to Frequency Audit.
-    - From table FreqPrioNR, detect how many N77 nodes has any RATFreqPrioId different from 'fwa' or 'publicsafety' and add them to Frequency Inconsistencies.
     - Included Pivot `GUtranFreqRelation` in `ConfigurationAudit` module.
     - Included LogPath in Summary tab of `ConfigurationAudit`.
+    - Check that all nodes with NrFrequency=old_arfcn also have NrFrequency=new_arfcn. (#36)
+    - Check that all NRCellCUId with NrFreqRelation=old_arfcn also have NrFreqRelation=new_arfcn and all params are same (except nRFreqRelationId, nRFrequencyRef and reservedBy). (#36)
+    - Check that all nodes with GUtranSyncSignalFrequency=old_arfcn also have GUtranSyncSignalFrequency=new_arfcn. (#36)
+    - Check that all EUtranCellFDDId with GUtranFreqRelationId=old_arfcn-30-20-0-1 also have GUtranFreqRelationId=new_arfcn-30-20-0-1 and all params are same (except gUtranFreqRelationId and gUtranSyncSignalFrequencyRef). (#36)
+    - From table FreqPrioNR, detect how many N77 nodes has RATFreqPrioId equal to 'fwa' and 'publicsafety' and add them to Frequency Audit. (#40)
+    - From table FreqPrioNR, detect how many N77 nodes has any RATFreqPrioId different from 'fwa' or 'publicsafety' and add them to Frequency Inconsistencies. (#40)
     - Increased up to 100 nodes/slide (max 4 columns) for the Inconsistencies slides in `ConfigurationAudit` module.
     - Other minor changes to `ConfigurationAudit`.
   
