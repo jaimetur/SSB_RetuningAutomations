@@ -2,7 +2,7 @@
 .github_ignore/
 
 # Exclude the script to update download version
-Update_download_version.py
+# Update_download_version.py
 
 # Pycharm Folder
 #.idea/

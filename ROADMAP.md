@@ -4,7 +4,7 @@
 
 ---
 
-## Release: v0.3.0 
+## Release: v0.4.0 
 
 - ### TODO:
   - #### 🌟 New Features:

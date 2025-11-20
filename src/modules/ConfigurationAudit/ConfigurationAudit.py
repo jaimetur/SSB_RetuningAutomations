@@ -239,12 +239,13 @@ class ConfigurationAudit:
         # Collect dataframes for the specific MOs we need
         mo_collectors: Dict[str, List[pd.DataFrame]] = {
             "GUtranSyncSignalFrequency": [],
-            "GUtranFreqRelation": [],      # for LTE freq relation checks
+            "GUtranFreqRelation": [],   # for LTE freq relation checks
             "NRCellDU": [],
             "NRFrequency": [],
             "NRFreqRelation": [],
-            "NRSectorCarrier": [],        # for N77B ARFCN checks
-            "EndcDistrProfile": [],       # for gUtranFreqRef checks
+            "NRSectorCarrier": [],      # for N77 ARFCN checks
+            "FreqPrioNR": [],           # for RATFreqPrioId checks
+            "EndcDistrProfile": [],     # for gUtranFreqRef checks
         }
         for entry in table_entries:
             mo_name = str(entry.get("sheet_candidate", "")).strip()
@@ -314,8 +315,8 @@ class ConfigurationAudit:
         pivot_gu_sync_signal_freq = apply_frequency_column_filter(pivot_gu_sync_signal_freq, freq_filters)
 
         # Extra tables for audit logic
+        df_freq_prio_nr = concat_or_empty(mo_collectors["FreqPrioNR"])
         df_gu_freq_rel = concat_or_empty(mo_collectors["GUtranFreqRelation"])
-        # df_nr_sector_carrier = concat_or_empty(mo_collectors["NRSectorCarrier"])
         df_endc_distr_profile = concat_or_empty(mo_collectors["EndcDistrProfile"])
 
         # =====================================================================
@@ -326,6 +327,7 @@ class ConfigurationAudit:
             df_nr_freq=df_nr_freq,
             df_nr_freq_rel=df_nr_freq_rel,
             df_nr_sector_carrier=df_nr_sector_carrier,
+            df_freq_prio_nr=df_freq_prio_nr,
             df_gu_sync_signal_freq=df_gu_sync_signal_freq,
             df_gu_freq_rel=df_gu_freq_rel,
             df_endc_distr_profile=df_endc_distr_profile,

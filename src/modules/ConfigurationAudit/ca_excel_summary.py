@@ -19,6 +19,7 @@ def build_summary_audit(
     df_nr_cell_du: pd.DataFrame,
     df_nr_freq: pd.DataFrame,
     df_nr_freq_rel: pd.DataFrame,
+    df_freq_prio_nr: pd.DataFrame,
     df_gu_sync_signal_freq: pd.DataFrame,
     df_gu_freq_rel: pd.DataFrame,
     df_nr_sector_carrier: pd.DataFrame,
@@ -374,6 +375,90 @@ def build_summary_audit(
                 "NR Frequency Audit",
                 "NRCellDU",
                 "Error while checking NRCellDU",
+                f"ERROR: {ex}",
+            )
+
+    # ----------------------------- FreqPrioNR (RATFreqPrioId on N77 only) -----------------------------
+    def process_freq_prio_nr():
+        try:
+            if df_freq_prio_nr is not None and not df_freq_prio_nr.empty:
+                node_col = resolve_column_case_insensitive(df_freq_prio_nr, ["NodeId"])
+                freq_col = resolve_column_case_insensitive(df_freq_prio_nr, ["FreqPrioNRId"])
+                ratfreqprio_col = resolve_column_case_insensitive(df_freq_prio_nr, ["RATFreqPrioId"])
+
+                if node_col and freq_col and ratfreqprio_col:
+                    work = df_freq_prio_nr[[node_col, freq_col, ratfreqprio_col]].copy()
+
+                    # Normalize NodeId and RATFreqPrioId for consistent comparison
+                    work[node_col] = work[node_col].astype(str).str.strip()
+                    work[ratfreqprio_col] = work[ratfreqprio_col].astype(str).str.strip().str.lower()
+
+                    # Keep only N77 rows based on FreqPrioNRId
+                    mask_n77 = work[freq_col].map(is_n77_from_string)
+                    n77_work = work.loc[mask_n77].copy()
+
+                    if not n77_work.empty:
+                        # N77 nodes with RATFreqPrioId = "fwa"
+                        mask_fwa = n77_work[ratfreqprio_col] == "fwa"
+                        fwa_nodes = sorted(n77_work.loc[mask_fwa, node_col].astype(str).unique())
+
+                        add_row(
+                            "NR Frequency Audit",
+                            "FreqPrioNR",
+                            "N77 NR nodes with RATFreqPrioId = 'fwa' in FreqPrioNR",
+                            len(fwa_nodes),
+                            ", ".join(fwa_nodes),
+                        )
+
+                        # N77 nodes with RATFreqPrioId = "publicsafety"
+                        mask_publicsafety = n77_work[ratfreqprio_col] == "publicsafety"
+                        publicsafety_nodes = sorted(n77_work.loc[mask_publicsafety, node_col].astype(str).unique())
+
+                        add_row(
+                            "NR Frequency Audit",
+                            "FreqPrioNR",
+                            "N77 NR nodes with RATFreqPrioId = 'publicsafety' in FreqPrioNR",
+                            len(publicsafety_nodes),
+                            ", ".join(publicsafety_nodes),
+                        )
+
+                        # N77 nodes with any RATFreqPrioId different from "fwa" / "publicsafety"
+                        mask_other = ~(mask_fwa | mask_publicsafety)
+                        other_nodes = sorted(n77_work.loc[mask_other, node_col].astype(str).unique())
+
+                        add_row(
+                            "NR Frequency Inconsistencies",
+                            "FreqPrioNR",
+                            "N77 NR nodes with RATFreqPrioId different from 'fwa'/'publicsafety' in FreqPrioNR",
+                            len(other_nodes),
+                            ", ".join(other_nodes),
+                        )
+                    else:
+                        add_row(
+                            "NR Frequency Audit",
+                            "FreqPrioNR",
+                            "FreqPrioNR table has no N77 rows (based on FreqPrioNRId)",
+                            0,
+                        )
+                else:
+                    add_row(
+                        "NR Frequency Audit",
+                        "FreqPrioNR",
+                        "FreqPrioNR table present but NodeId/FreqPrioNRId/RATFreqPrioId missing",
+                        "N/A",
+                    )
+            else:
+                add_row(
+                    "NR Frequency Audit",
+                    "FreqPrioNR",
+                    "FreqPrioNR table",
+                    "Table not found or empty",
+                )
+        except Exception as ex:
+            add_row(
+                "NR Frequency Audit",
+                "FreqPrioNR",
+                "Error while checking FreqPrioNR",
                 f"ERROR: {ex}",
             )
 
@@ -841,6 +926,7 @@ def build_summary_audit(
         process_nr_freq_rel()
         process_nr_cell_du()
         process_nr_sector_carrier()
+        process_freq_prio_nr()
 
         process_gu_sync_signal_freq()
         process_gu_freq_rel()
@@ -871,11 +957,13 @@ def build_summary_audit(
                 ("NR Frequency Audit", "NRFreqRelation"),
                 ("NR Frequency Audit", "NRSectorCarrier"),
                 ("NR Frequency Audit", "NRCellDU"),
+                ("NR Frequency Audit", "FreqPrioNR"),
 
                 # NR Frequency Inconsistencies
                 ("NR Frequency Inconsistencies", "NRFrequency"),
                 ("NR Frequency Inconsistencies", "NRFreqRelation"),
                 ("NR Frequency Inconsistencies", "NRSectorCarrier"),
+                ("NR Frequency Inconsistencies", "FreqPrioNR"),
 
                 # GUtran Frequency Audit
                 ("GUtran Frequency Audit", "GUtranSyncSignalFrequency"),
