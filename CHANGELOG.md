@@ -4,6 +4,27 @@
 
 ---
 
+## Release: v0.3.1
+- ### Release Date: 2025-11-20
+
+- ### Main Changes:
+  
+  - #### 🚨 Breaking Changes:
+  
+  - #### 🌟 New Features:
+
+  - #### 🚀 Enhancements:
+    - From table FreqPrioNR, detect how many nodes has RATFreqPrioId equal to 'fwa' and 'publicsafety' and add them to Frequency Audit.
+    - From table FreqPrioNR, detect how many nodes has any RATFreqPrioId different from 'fwa' or 'publicsafety' and add them to Frequency Inconsistencies.
+  
+  - #### 🐛 Bug fixes:
+    - Minor bug fixing.
+    
+  - #### 📚 Documentation: 
+    - Updated documentation with latest changes.
+
+---
+
 ## Release: v0.3.0
 - ### Release Date: 2025-11-19
 
