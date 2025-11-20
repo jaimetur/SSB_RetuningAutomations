@@ -14,8 +14,8 @@
   - #### 🌟 New Features:
 
   - #### 🚀 Enhancements:
-    - From table FreqPrioNR, detect how many nodes has RATFreqPrioId equal to 'fwa' and 'publicsafety' and add them to Frequency Audit.
-    - From table FreqPrioNR, detect how many nodes has any RATFreqPrioId different from 'fwa' or 'publicsafety' and add them to Frequency Inconsistencies.
+    - From table FreqPrioNR, detect how many N77 nodes has RATFreqPrioId equal to 'fwa' and 'publicsafety' and add them to Frequency Audit.
+    - From table FreqPrioNR, detect how many N77 nodes has any RATFreqPrioId different from 'fwa' or 'publicsafety' and add them to Frequency Inconsistencies.
   
   - #### 🐛 Bug fixes:
     - Minor bug fixing.

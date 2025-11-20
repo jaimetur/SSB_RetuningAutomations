@@ -239,12 +239,13 @@ class ConfigurationAudit:
         # Collect dataframes for the specific MOs we need
         mo_collectors: Dict[str, List[pd.DataFrame]] = {
             "GUtranSyncSignalFrequency": [],
-            "GUtranFreqRelation": [],      # for LTE freq relation checks
+            "GUtranFreqRelation": [],   # for LTE freq relation checks
             "NRCellDU": [],
             "NRFrequency": [],
             "NRFreqRelation": [],
-            "NRSectorCarrier": [],        # for N77B ARFCN checks
-            "EndcDistrProfile": [],       # for gUtranFreqRef checks
+            "NRSectorCarrier": [],      # for N77 ARFCN checks
+            "FreqPrioNR": [],           # for RATFreqPrioId checks
+            "EndcDistrProfile": [],     # for gUtranFreqRef checks
         }
         for entry in table_entries:
             mo_name = str(entry.get("sheet_candidate", "")).strip()
