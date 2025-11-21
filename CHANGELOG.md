@@ -4,6 +4,32 @@
 
 ---
 
+## Release: v0.3.2
+- ### Release Date: 2025-11-21
+
+- ### Main Changes:
+  
+  - #### 🚨 Breaking Changes:
+  
+  - #### 🌟 New Features:
+    - Detect Auto-created NRFreqRelation to new SSB, will not follow VZ naming convention NRFreqRelation=647328.
+    - Detect Auto-created GUtranFreqRelation to new SSB, will not follow VZ naming convention GUtranFreqRelation=647328-30-20-0-1.
+    - Added two new lists of `Allowed N77 SSB (Post)` and `Allowed N77 ARFCN (Post)` to use in 'ConfigurationAudit'.
+    - Added new check to detect number of nodes from NRSectorCarrier whose ARFCN is in the list of allowed ARFCN (Pre).
+    - Added new check to detect number of nodes from NRSectorCarrier whose ARFCN is in the list of allowed ARFCN (Post).
+    - Added new check to detect those nodes from NRSectorCarrier whose ARFCN is not in the list of allowed ARFCN (Pre) nor allowed ARFCN (Post).
+
+  - #### 🚀 Enhancements:
+    - 
+  
+  - #### 🐛 Bug fixes:
+    - Minor bug fixing.
+    
+  - #### 📚 Documentation: 
+    - Updated documentation with latest changes.
+
+---
+
 ## Release: v0.3.1
 - ### Release Date: 2025-11-20
 

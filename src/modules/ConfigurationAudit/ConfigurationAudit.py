@@ -29,10 +29,12 @@ class ConfigurationAudit:
 
     def __init__(
         self,
-        old_arfcn: int,
-        new_arfcn: int,
-        allowed_n77_ssb: Optional[List[int]] = None,
-        allowed_n77_arfcn: Optional[List[int]] = None,
+        old_ssb: int,
+        new_ssb: int,
+        allowed_n77_ssb_pre: Optional[set[int]] = None,
+        allowed_n77_arfcn_pre: Optional[set[int]] = None,
+        allowed_n77_ssb_post: Optional[set[int]] = None,
+        allowed_n77_arfcn_post: Optional[set[int]] = None,
         n77b_ssb_arfcn: Optional[int] = None
     ):
         """
@@ -41,21 +43,34 @@ class ConfigurationAudit:
         All values are converted to integers/sets of integers internally to make checks robust.
         """
         # Core ARFCN values
-        self.OLD_ARFCN: int = int(old_arfcn)
-        self.NEW_ARFCN: int = int(new_arfcn)
+        self.OLD_ARFCN: int = int(old_ssb)
+        self.NEW_ARFCN: int = int(new_ssb)
         self.N77B_SSB: int = int(n77b_ssb_arfcn)
 
-        # Allowed SSB values for N77 cells (e.g. {648672, 653952})
-        if allowed_n77_ssb is None:
-            self.ALLOWED_N77_SSB = set()
+        # Allowed SSB (Pre) values for N77 cells (e.g. {648672, 653952})
+        if allowed_n77_ssb_pre is None:
+            self.ALLOWED_N77_SSB_PRE = set()
         else:
-            self.ALLOWED_N77_SSB = {int(v) for v in allowed_n77_ssb}
+            self.ALLOWED_N77_SSB_PRE = {int(v) for v in allowed_n77_ssb_pre}
 
-        # Allowed ARFCN values for N77B sectors (e.g. {654652, 655324, 655984, 656656})
-        if allowed_n77_arfcn is None:
-            self.ALLOWED_N77_ARFCN = set()
+        # Allowed ARFCN (Pre) values for N77 sectors (e.g. {654652, 655324, 655984, 656656})
+        if allowed_n77_arfcn_pre is None:
+            self.ALLOWED_N77_ARFCN_PRE = set()
         else:
-            self.ALLOWED_N77_ARFCN = {int(v) for v in allowed_n77_arfcn}
+            self.ALLOWED_N77_ARFCN_PRE = {int(v) for v in allowed_n77_arfcn_pre}
+
+
+        # Allowed SSB (Post) values for N77 cells (e.g. {648672, 653952})
+        if allowed_n77_ssb_post is None:
+            self.ALLOWED_N77_SSB_POST = set()
+        else:
+            self.ALLOWED_N77_SSB_POST = {int(v) for v in allowed_n77_ssb_post}
+
+        # Allowed ARFCN (Post) values for N77 sectors (e.g. {654652, 655324, 655984, 656656})
+        if allowed_n77_arfcn_post is None:
+            self.ALLOWED_N77_ARFCN_POST = set()
+        else:
+            self.ALLOWED_N77_ARFCN_POST = {int(v) for v in allowed_n77_arfcn_post}
 
     # =====================================================================
     #                            PUBLIC API
@@ -342,11 +357,13 @@ class ConfigurationAudit:
             df_gu_sync_signal_freq=df_gu_sync_signal_freq,
             df_gu_freq_rel=df_gu_freq_rel,
             df_endc_distr_profile=df_endc_distr_profile,
-            old_arfcn=self.OLD_ARFCN,
-            new_arfcn=self.NEW_ARFCN,
+            old_ssb=self.OLD_ARFCN,
+            new_ssb=self.NEW_ARFCN,
             n77b_ssb=self.N77B_SSB,
-            allowed_n77_ssb=self.ALLOWED_N77_SSB,
-            allowed_n77_arfcn=self.ALLOWED_N77_ARFCN,
+            allowed_n77_ssb_pre=self.ALLOWED_N77_SSB_PRE,
+            allowed_n77_arfcn_pre=self.ALLOWED_N77_ARFCN_PRE,
+            allowed_n77_ssb_post=self.ALLOWED_N77_SSB_POST,
+            allowed_n77_arfcn_post=self.ALLOWED_N77_ARFCN_POST,
         )
 
         # =====================================================================
