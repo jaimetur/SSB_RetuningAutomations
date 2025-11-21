@@ -18,9 +18,9 @@
     - Added new check to detect number of nodes from NRSectorCarrier whose ARFCN is in the list of allowed ARFCN (Pre).
     - Added new check to detect number of nodes from NRSectorCarrier whose ARFCN is in the list of allowed ARFCN (Post).
     - Added new check to detect those nodes from NRSectorCarrier whose ARFCN is not in the list of allowed ARFCN (Pre) nor allowed ARFCN (Post).
+    - Added mismatching params between cells with old SSB and cells with new SSB in tables NRFreqRelation and GUtranFreqRelation
 
   - #### 🚀 Enhancements:
-    - 
   
   - #### 🐛 Bug fixes:
     - Minor bug fixing.
