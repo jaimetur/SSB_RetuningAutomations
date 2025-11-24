@@ -3,7 +3,8 @@
 import re
 from typing import Set
 
-from openpyxl.styles import Alignment
+from openpyxl.worksheet.worksheet import Worksheet
+from openpyxl.styles import Alignment, PatternFill
 
 
 # ============================ EXCEL HELPERS ============================
@@ -79,3 +80,60 @@ def unique_sheet_name(base: str, used: Set[str]) -> str:
         cand = f"{base[:28]}_{i:02d}"
         i += 1
     return cand
+
+def apply_alternating_category_row_fills(
+    ws: Worksheet,
+    category_header: str = "Category",
+    header_row: int = 1,
+    start_row: int | None = None,
+    end_row: int | None = None,
+    fill_color_1: str = "E0F7FA",
+    fill_color_2: str = "B2EBF2",
+) -> None:
+    """
+    Apply alternating background fills to row blocks based on Category changes.
+
+    Each time the value in the Category column changes, the row fill color
+    toggles between two similar colors so that each Category block is visually
+    separated in the Excel sheet.
+    """
+
+    # Find the Category column index based on the header name
+    category_col_idx: int | None = None
+    for cell in ws[header_row]:
+        header_value = str(cell.value).strip() if cell.value is not None else ""
+        if header_value == category_header:
+            category_col_idx = cell.column
+            break
+
+    if category_col_idx is None:
+        # Category column not found, nothing to do
+        return
+
+    if start_row is None:
+        start_row = header_row + 1
+    if end_row is None:
+        end_row = ws.max_row
+
+    fill1 = PatternFill(fill_type="solid", fgColor=fill_color_1)
+    fill2 = PatternFill(fill_type="solid", fgColor=fill_color_2)
+
+    last_category = None
+    use_first = True
+    current_fill = fill1
+
+    for row_idx in range(start_row, end_row + 1):
+        cell_category = ws.cell(row=row_idx, column=category_col_idx).value
+        if cell_category != last_category:
+            # Category changed: toggle fill (starting with fill1 for the first block)
+            if last_category is None:
+                use_first = True
+            else:
+                use_first = not use_first
+            current_fill = fill1 if use_first else fill2
+            last_category = cell_category
+
+        # Apply the current fill to the entire row
+        for col_idx in range(1, ws.max_column + 1):
+            ws.cell(row=row_idx, column=col_idx).fill = current_fill
+

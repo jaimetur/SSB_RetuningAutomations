@@ -4,6 +4,28 @@
 
 ---
 
+## Release: v0.3.3
+- ### Release Date: 2025-11-24
+
+- ### Main Changes:
+  
+  - #### 🚨 Breaking Changes:
+  
+  - #### 🌟 New Features:
+
+  - #### 🚀 Enhancements:
+    - Swapped columns Category/SubCategory in 'ConfigurationAudit`.
+    - Added more Checks to `NRCellDU` Category.
+    - Other changes to 'ConfigurationAudit`.
+  
+  - #### 🐛 Bug fixes:
+    - Minor bug fixing.
+    
+  - #### 📚 Documentation: 
+    - Updated documentation with latest changes.
+
+---
+
 ## Release: v0.3.2
 - ### Release Date: 2025-11-21
 

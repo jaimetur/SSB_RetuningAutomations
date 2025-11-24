@@ -6,7 +6,7 @@ import pandas as pd
 
 from src.utils.utils_io import find_log_files, read_text_file
 from src.utils.utils_parsing import SUMMARY_RE, find_all_subnetwork_headers, extract_mo_from_subnetwork_line, parse_table_slice_from_subnetwork, parse_log_lines, find_subnetwork_header_index, extract_mo_name_from_previous_line, cap_rows
-from src.utils.utils_excel import sanitize_sheet_name, unique_sheet_name, color_summary_tabs, enable_header_filters
+from src.utils.utils_excel import sanitize_sheet_name, unique_sheet_name, color_summary_tabs, enable_header_filters, apply_alternating_category_row_fills
 from src.utils.utils_sorting import natural_logfile_key
 from src.utils.utils_pivot import concat_or_empty, safe_pivot_count, safe_crosstab_count, apply_frequency_column_filter
 from .ca_excel_summary import build_summary_audit
@@ -375,6 +375,11 @@ class ConfigurationAudit:
 
             # SummaryAudit with high-level checks
             summary_audit_df.to_excel(writer, sheet_name="SummaryAudit", index=False)
+            # Apply alternating background colors by Category for SummaryAudit sheet
+            wb = writer.book
+            ws_summary_audit = writer.sheets.get("SummaryAudit")
+            if ws_summary_audit is not None:
+                apply_alternating_category_row_fills(ws_summary_audit, category_header="Category")
 
             # Extra summary sheets
             pivot_nr_cells_du.to_excel(writer, sheet_name="Summary NR_CellDU", index=False)

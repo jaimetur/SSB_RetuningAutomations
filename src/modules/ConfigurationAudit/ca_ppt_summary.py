@@ -39,14 +39,15 @@ def build_text_summary_structure(
         return sections
 
     for _, row in summary_audit_df.iterrows():
-        category = str(row.get("Category", "") or "Info")
+        # Group by SubCategory instead of Category
+        top_key = str(row.get("SubCategory", "") or "Info")
         item = {
             "SubCategory": str(row.get("SubCategory", "") or ""),
             "Metric": str(row.get("Metric", "") or ""),
             "Value": row.get("Value", ""),
             "ExtraInfo": str(row.get("ExtraInfo", "") or ""),
         }
-        sections.setdefault(category, []).append(item)
+        sections.setdefault(top_key, []).append(item)
 
     return sections
 
