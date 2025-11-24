@@ -43,8 +43,8 @@ class ConfigurationAudit:
         All values are converted to integers/sets of integers internally to make checks robust.
         """
         # Core ARFCN values
-        self.OLD_SSB: int = int(n77_ssb_pre)
-        self.NEW_SSB: int = int(n77_ssb_post)
+        self.N77_SSB_PRE: int = int(n77_ssb_pre)
+        self.N77_SSB_POST: int = int(n77_ssb_post)
         self.N77B_SSB: int = int(n77b_ssb_arfcn)
 
         # Allowed SSB (Pre) values for N77 cells (e.g. {648672, 653952})
@@ -364,8 +364,8 @@ class ConfigurationAudit:
             df_gu_sync_signal_freq=df_gu_sync_signal_freq,
             df_gu_freq_rel=df_gu_freq_rel,
             df_endc_distr_profile=df_endc_distr_profile,
-            n77_ssb_pre=self.OLD_SSB,
-            n77_ssb_post=self.NEW_SSB,
+            n77_ssb_pre=self.N77_SSB_PRE,
+            n77_ssb_post=self.N77_SSB_POST,
             n77b_ssb=self.N77B_SSB,
             allowed_n77_ssb_pre=self.ALLOWED_N77_SSB_PRE,
             allowed_n77_arfcn_pre=self.ALLOWED_N77_ARFCN_PRE,
