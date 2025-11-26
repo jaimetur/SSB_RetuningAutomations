@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 
-from typing import List, Dict
+from typing import List, Dict, Any
 import pandas as pd
+from pandas import DataFrame, Series
 
 from src.utils.utils_frequency import resolve_column_case_insensitive, parse_int_frequency, is_n77_from_string, extract_sync_frequencies
 
@@ -13,9 +14,11 @@ def build_summary_audit(
     df_nr_cell_du: pd.DataFrame,
     df_nr_freq: pd.DataFrame,
     df_nr_freq_rel: pd.DataFrame,
+    df_nr_cell_rel: pd.DataFrame,
     df_freq_prio_nr: pd.DataFrame,
     df_gu_sync_signal_freq: pd.DataFrame,
     df_gu_freq_rel: pd.DataFrame,
+    df_gu_cell_rel: pd.DataFrame,
     df_nr_sector_carrier: pd.DataFrame,
     df_endc_distr_profile: pd.DataFrame,
     n77_ssb_pre: int,
@@ -25,7 +28,7 @@ def build_summary_audit(
     allowed_n77_arfcn_pre,
     allowed_n77_ssb_post,
     allowed_n77_arfcn_post,
-) -> pd.DataFrame:
+) -> tuple[DataFrame, DataFrame, DataFrame]:
     """
     Build a synthetic 'SummaryAudit' table with high-level checks:
 
@@ -48,14 +51,31 @@ def build_summary_audit(
 
     rows: List[Dict[str, object]] = []
 
-    # Detailed parameter mismatching rows to build Excel sheet "Summary Param Missmatching"
-    param_mismatch_rows: List[Dict[str, object]] = []
-    param_mismatch_columns = [
-        "Layer",  # e.g. "NR" / "LTE"
-        "Table",  # e.g. "NRFreqRelation" / "GUtranFreqRelation"
+    # Detailed parameter mismatching rows to build Excel sheets "Summary NR Param Missmatching" and
+    # "Summary LTE Param Missmatching"
+    param_mismatch_rows_nr: List[Dict[str, object]] = []
+    param_mismatch_rows_gu: List[Dict[str, object]] = []
+
+    param_mismatch_columns_nr = [
+        "Layer",  # "NR"
+        "Table",  # "NRFreqRelation"
         "NodeId",
-        "CellId",
-        "RelationId",
+        "GNBCUCPFunctionId",
+        "NRCellCUId",
+        "NRFreqRelationId",
+        "Parameter",
+        "OldSSB",
+        "NewSSB",
+        "OldValue",
+        "NewValue",
+    ]
+
+    param_mismatch_columns_gu = [
+        "Layer",  # "LTE"
+        "Table",  # "GUtranFreqRelation"
+        "NodeId",
+        "EUtranCellId",  # generic LTE cell id
+        "GUtranFreqRelationId",
         "Parameter",
         "OldSSB",
         "NewSSB",
@@ -235,11 +255,13 @@ def build_summary_audit(
             )
 
     # ----------------------------- NRFreqRelation (OLD/NEW SSB on NR rows) -----------------------------
+    # ----------------------------- NRFreqRelation (OLD/NEW SSB on NR rows) -----------------------------
     def process_nr_freq_rel():
         try:
             if df_nr_freq_rel is not None and not df_nr_freq_rel.empty:
                 node_col = resolve_column_case_insensitive(df_nr_freq_rel, ["NodeId"])
                 arfcn_col = resolve_column_case_insensitive(df_nr_freq_rel, ["NRFreqRelationId"])
+                gnb_col = resolve_column_case_insensitive(df_nr_freq_rel, ["GNBCUCPFunctionId"])
 
                 if node_col and arfcn_col:
                     work = df_nr_freq_rel[[node_col, arfcn_col]].copy()
@@ -401,11 +423,13 @@ def build_summary_audit(
                                         if old_rel.empty or new_rel.empty:
                                             continue
 
-                                        old_clean = (old_rel.drop(columns=list(cols_to_ignore),errors="ignore",)
+                                        old_clean = (
+                                            old_rel.drop(columns=list(cols_to_ignore), errors="ignore")
                                             .drop_duplicates()
                                             .reset_index(drop=True)
                                         )
-                                        new_clean = (new_rel.drop(columns=list(cols_to_ignore),errors="ignore",)
+                                        new_clean = (
+                                            new_rel.drop(columns=list(cols_to_ignore), errors="ignore")
                                             .drop_duplicates()
                                             .reset_index(drop=True)
                                         )
@@ -427,8 +451,18 @@ def build_summary_audit(
                                                 return (pd.isna(a) and not pd.isna(b)) or (not pd.isna(a) and pd.isna(b)) or (a != b)
 
                                             node_val = ""
+                                            gnb_val = ""
+                                            nrcell_val = ""
+                                            nrfreqrel_val = ""
                                             try:
-                                                node_val = str(cell_rows[node_col].iloc[0])
+                                                base_row = old_rel.iloc[0]
+                                                node_val = str(base_row[node_col]) if node_col in base_row.index else ""
+                                                if gnb_col and gnb_col in base_row.index:
+                                                    gnb_val = str(base_row[gnb_col])
+                                                if cell_col in base_row.index:
+                                                    nrcell_val = str(base_row[cell_col])
+                                                if arfcn_col in base_row.index:
+                                                    nrfreqrel_val = str(base_row[arfcn_col])
                                             except Exception:
                                                 node_val = ""
 
@@ -436,13 +470,14 @@ def build_summary_audit(
                                                 old_val = old_row[col_name]
                                                 new_val = new_row[col_name]
                                                 if _values_differ(old_val, new_val):
-                                                    param_mismatch_rows.append(
+                                                    param_mismatch_rows_nr.append(
                                                         {
                                                             "Layer": "NR",
                                                             "Table": "NRFreqRelation",
                                                             "NodeId": node_val,
-                                                            "CellId": str(cell_id),
-                                                            "RelationId": str(rel_id),
+                                                            "GNBCUCPFunctionId": gnb_val,
+                                                            "NRCellCUId": nrcell_val,
+                                                            "NRFreqRelationId": nrfreqrel_val,
                                                             "Parameter": str(col_name),
                                                             "OldSSB": n77_ssb_pre,
                                                             "NewSSB": n77_ssb_post,
@@ -457,14 +492,16 @@ def build_summary_audit(
 
                                 else:
                                     # Fallback: sin NRCellRelationId, se compara todo el bloque OLD vs NEW
-                                    old_clean = (old_rows.drop(columns=list(cols_to_ignore), errors="ignore", )
-                                                 .drop_duplicates()
-                                                 .reset_index(drop=True)
-                                                 )
-                                    new_clean = (new_rows.drop(columns=list(cols_to_ignore), errors="ignore", )
-                                                 .drop_duplicates()
-                                                 .reset_index(drop=True)
-                                                 )
+                                    old_clean = (
+                                        old_rows.drop(columns=list(cols_to_ignore), errors="ignore")
+                                        .drop_duplicates()
+                                        .reset_index(drop=True)
+                                    )
+                                    new_clean = (
+                                        new_rows.drop(columns=list(cols_to_ignore), errors="ignore")
+                                        .drop_duplicates()
+                                        .reset_index(drop=True)
+                                    )
 
                                     old_clean = old_clean.reindex(sorted(old_clean.columns), axis=1)
                                     new_clean = new_clean.reindex(sorted(new_clean.columns), axis=1)
@@ -481,8 +518,18 @@ def build_summary_audit(
                                             return (pd.isna(a) and not pd.isna(b)) or (not pd.isna(a) and pd.isna(b)) or (a != b)
 
                                         node_val = ""
+                                        gnb_val = ""
+                                        nrcell_val = ""
+                                        nrfreqrel_val = ""
                                         try:
-                                            node_val = str(cell_rows[node_col].iloc[0])
+                                            base_row = old_rows.iloc[0]
+                                            node_val = str(base_row[node_col]) if node_col in base_row.index else ""
+                                            if gnb_col and gnb_col in base_row.index:
+                                                gnb_val = str(base_row[gnb_col])
+                                            if cell_col in base_row.index:
+                                                nrcell_val = str(base_row[cell_col])
+                                            if arfcn_col in base_row.index:
+                                                nrfreqrel_val = str(base_row[arfcn_col])
                                         except Exception:
                                             node_val = ""
 
@@ -490,13 +537,14 @@ def build_summary_audit(
                                             old_val = old_row[col_name]
                                             new_val = new_row[col_name]
                                             if _values_differ(old_val, new_val):
-                                                param_mismatch_rows.append(
+                                                param_mismatch_rows_nr.append(
                                                     {
                                                         "Layer": "NR",
                                                         "Table": "NRFreqRelation",
                                                         "NodeId": node_val,
-                                                        "CellId": str(cell_id),
-                                                        "RelationId": "",
+                                                        "GNBCUCPFunctionId": gnb_val,
+                                                        "NRCellCUId": nrcell_val,
+                                                        "NRFreqRelationId": nrfreqrel_val,
                                                         "Parameter": str(col_name),
                                                         "OldSSB": n77_ssb_pre,
                                                         "NewSSB": n77_ssb_post,
@@ -665,7 +713,6 @@ def build_summary_audit(
                 f"ERROR: {ex}",
             )
 
-    # ----------------------------- NRCellDU (N77 detection) -----------------------------
     # ----------------------------- NRCellDU (N77 detection + allowed SSB) -----------------------------
     def process_nr_cell_du():
         try:
@@ -804,6 +851,82 @@ def build_summary_audit(
                 f"ERROR: {ex}",
             )
 
+    # ------------------------------------- NRCellRelations --------------------------------------------
+    def process_nr_cell_relation():
+        try:
+            if df_nr_cell_rel is not None and not df_nr_cell_rel.empty:
+                node_col = resolve_column_case_insensitive(df_nr_cell_rel, ["NodeId"])
+                freq_col = resolve_column_case_insensitive(df_nr_cell_rel, ["nRFreqRelationRef", "NRFreqRelationRef"])
+
+                # Helper embedded inside the main function
+                def _extract_freq_from_nrfreqrelationref(value: object) -> int | None:
+                    """Extract NRFreqRelation integer from NRCellRelation reference string."""
+                    if value is None:
+                        return None
+                    s = str(value)
+                    key = "NRFreqRelation="
+                    idx = s.rfind(key)
+                    if idx == -1:
+                        return None
+                    substr = s[idx + len(key):]
+                    digits = []
+                    for ch in substr:
+                        if ch.isdigit():
+                            digits.append(ch)
+                        else:
+                            break
+                    if not digits:
+                        return None
+                    try:
+                        return int("".join(digits))
+                    except Exception:
+                        return None
+
+                if node_col and freq_col:
+                    work = df_nr_cell_rel[[node_col, freq_col]].copy()
+                    work[node_col] = work[node_col].astype(str).str.strip()
+                    work["_freq_int_"] = work[freq_col].map(_extract_freq_from_nrfreqrelationref)
+
+                    # Use your variables for pre/post frequencies
+                    old_ssb = n77_ssb_pre
+                    new_ssb = n77_ssb_post
+
+                    count_old = int((work["_freq_int_"] == old_ssb).sum())
+                    count_new = int((work["_freq_int_"] == new_ssb).sum())
+
+                    add_row(
+                        "NRCellRelation",
+                        "NR Frequency Audit",
+                        f"NR cellRelations to old SSB ({old_ssb}) (from NRCellRelation table)",
+                        count_old,
+                    )
+                    add_row(
+                        "NRCellRelation",
+                        "NR Frequency Audit",
+                        f"NR cellRelations to new SSB ({new_ssb}) (from NRCellRelation table)",
+                        count_new,
+                    )
+                else:
+                    add_row(
+                        "NRCellRelation",
+                        "NR Frequency Audit",
+                        "NRCellRelation table present but NodeId / nRFreqRelationRef column missing",
+                        "N/A",
+                    )
+            else:
+                add_row(
+                    "NRCellRelation",
+                    "NR Frequency Audit",
+                    "NRCellRelation table",
+                    "Table not found or empty",
+                )
+        except Exception as ex:
+            add_row(
+                "NRCellRelation",
+                "NR Frequency Audit",
+                "Error while checking NRCellRelation",
+                f"ERROR: {ex}",
+            )
 
     # ----------------------------- LTE GUtranSyncSignalFrequency (OLD/NEW ARFCN) -----------------------------
     def process_gu_sync_signal_freq():
@@ -1079,13 +1202,13 @@ def build_summary_audit(
                                     old_val = old_row[col_name]
                                     new_val = new_row[col_name]
                                     if _values_differ(old_val, new_val):
-                                        param_mismatch_rows.append(
+                                        param_mismatch_rows_gu.append(
                                             {
                                                 "Layer": "LTE",
                                                 "Table": "GUtranFreqRelation",
                                                 "NodeId": node_val,
-                                                "CellId": str(cell_id),
-                                                "RelationId": "",  # here RelationId is not explicit, we rely on GUtranFreqRelationId in the table
+                                                "EUtranCellId": str(cell_id),
+                                                "GUtranFreqRelationId": expected_new_rel_id,
                                                 "Parameter": str(col_name),
                                                 "OldSSB": n77_ssb_pre,
                                                 "NewSSB": n77_ssb_post,
@@ -1131,6 +1254,57 @@ def build_summary_audit(
                 "GUtranFreqRelation",
                 "LTE Frequency Audit",
                 "Error while checking GUtranFreqRelation",
+                f"ERROR: {ex}",
+            )
+
+    # ------------------------------------- GUtranCellRelation --------------------------------------------
+    def process_gu_cell_relation():
+        try:
+            if df_gu_cell_rel is not None and not df_gu_cell_rel.empty:
+                node_col = resolve_column_case_insensitive(df_gu_cell_rel, ["NodeId"])
+                freq_col = resolve_column_case_insensitive(df_gu_cell_rel, ["GUtranFreqRelationId"])
+
+                if node_col and freq_col:
+                    work = df_gu_cell_rel[[node_col, freq_col]].copy()
+                    work[node_col] = work[node_col].astype(str).str.strip()
+
+                    # Extract numeric frequency from GUtranFreqRelationId (part before first '-')
+                    work["_freq_int_"] = work[freq_col].map(lambda v: parse_int_frequency(str(v).split("-", 1)[0]) if pd.notna(v) else None)
+
+                    count_old = int((work["_freq_int_"] == n77_ssb_pre).sum())
+                    count_new = int((work["_freq_int_"] == n77_ssb_post).sum())
+
+                    add_row(
+                        "GUtranCellRelation",
+                        "LTE Frequency Audit",
+                        f"LTE cellRelations to old SSB ({n77_ssb_pre}) (from GUtranCellRelation table)",
+                        count_old,
+                    )
+                    add_row(
+                        "GUtranCellRelation",
+                        "LTE Frequency Audit",
+                        f"LTE cellRelations to new SSB ({n77_ssb_post}) (from GUtranCellRelation table)",
+                        count_new,
+                    )
+                else:
+                    add_row(
+                        "GUtranCellRelation",
+                        "LTE Frequency Audit",
+                        "GUtranCellRelation table present but NodeId / GUtranFreqRelationId column missing",
+                        "N/A",
+                    )
+            else:
+                add_row(
+                    "GUtranCellRelation",
+                    "LTE Frequency Audit",
+                    "GUtranCellRelation table",
+                    "Table not found or empty",
+                )
+        except Exception as ex:
+            add_row(
+                "GUtranCellRelation",
+                "LTE Frequency Audit",
+                "Error while checking GUtranCellRelation",
                 f"ERROR: {ex}",
             )
 
@@ -1239,6 +1413,113 @@ def build_summary_audit(
                     # Normalize NodeId and RATFreqPrioId for consistent comparison
                     work[node_col] = work[node_col].astype(str).str.strip()
                     work[ratfreqprio_col] = work[ratfreqprio_col].astype(str).str.strip().str.lower()
+
+                    # Parse frequency as integer to compare specific SSBs
+                    work["_freq_int_"] = work[freq_col].map(parse_int_frequency)
+
+                    # ------------------------------------------------------------------
+                    # New checks: old SSB (648672) vs new SSB (647328) in FreqPrioNR
+                    # ------------------------------------------------------------------
+                    old_ssb = 648672
+                    new_ssb = 647328
+
+                    old_rows = work.loc[work["_freq_int_"] == old_ssb].copy()
+                    new_rows = work.loc[work["_freq_int_"] == new_ssb].copy()
+
+                    old_nodes = set(old_rows[node_col].astype(str))
+                    new_nodes = set(new_rows[node_col].astype(str))
+
+                    nodes_old_only = sorted(old_nodes - new_nodes)
+                    nodes_both = sorted(old_nodes & new_nodes)
+
+                    # LTE nodes with the old SSB (648672) but without the new SSB (647328)
+                    add_row(
+                        "FreqPrioNR",
+                        "ENDC Audit",
+                        f"LTE nodes with the old SSB ({old_ssb}) but without the new SSB ({new_ssb}) (from FreqPrioNR table)",
+                        len(nodes_old_only),
+                        ", ".join(nodes_old_only),
+                    )
+
+                    # LTE nodes with both, the old SSB (648672) and the new SSB (647328)
+                    add_row(
+                        "FreqPrioNR",
+                        "ENDC Audit",
+                        f"LTE nodes with both, the old SSB ({old_ssb}) and the new SSB ({new_ssb}) (from FreqPrioNR table)",
+                        len(nodes_both),
+                        ", ".join(nodes_both),
+                    )
+
+                    # LTE cells with mismatching params between FreqPrioNR 648672 and 647328
+                    cell_col = resolve_column_case_insensitive(
+                        df_freq_prio_nr,
+                        [
+                            "EUtranCellFDDId",
+                            "EUtranCellId",
+                            "EutranCellId",
+                            "Cellname",
+                            "CellId",
+                            "LTECellId",
+                        ],
+                    )
+
+                    mismatching_cells_details: list[str] = []
+
+                    if cell_col:
+                        # Work only with rows for old/new SSB and non-null LTE cell
+                        cell_work = df_freq_prio_nr[[node_col, cell_col, freq_col, ratfreqprio_col]].copy()
+                        cell_work[node_col] = cell_work[node_col].astype(str).str.strip()
+                        cell_work[cell_col] = cell_work[cell_col].astype(str).str.strip()
+                        cell_work[ratfreqprio_col] = cell_work[ratfreqprio_col].astype(str).str.strip().str.lower()
+                        cell_work["_freq_int_"] = cell_work[freq_col].map(parse_int_frequency)
+
+                        cell_work = cell_work.loc[
+                            cell_work["_freq_int_"].isin([old_ssb, new_ssb]) & (cell_work[cell_col] != "")
+                            ].copy()
+
+                        # Build mapping {(node, cell): {freq: row}}
+                        pairs: Dict[tuple, Dict[int, pd.Series]] = {}
+                        for _, row in cell_work.iterrows():
+                            key = (row[node_col], row[cell_col])
+                            freq_val = row["_freq_int_"]
+                            if freq_val not in (old_ssb, new_ssb):
+                                continue
+                            freq_map = pairs.setdefault(key, {})
+                            if freq_val not in freq_map:
+                                freq_map[freq_val] = row
+
+                        # Compare params for cells that have both SSBs
+                        for (node_id, lte_cell), freq_map in pairs.items():
+                            if old_ssb in freq_map and new_ssb in freq_map:
+                                row_old = freq_map[old_ssb]
+                                row_new = freq_map[new_ssb]
+                                diff_cols: list[str] = []
+
+                                for col in cell_work.columns:
+                                    if col in {node_col, cell_col, freq_col, "_freq_int_"}:
+                                        continue
+                                    val_old = row_old[col]
+                                    val_new = row_new[col]
+
+                                    if pd.isna(val_old) and pd.isna(val_new):
+                                        continue
+                                    if pd.isna(val_old) != pd.isna(val_new):
+                                        diff_cols.append(col)
+                                    elif str(val_old) != str(val_new):
+                                        diff_cols.append(col)
+
+                                if diff_cols:
+                                    mismatching_cells_details.append(
+                                        f"{node_id}/{lte_cell}: {', '.join(sorted(diff_cols))}"
+                                    )
+
+                    add_row(
+                        "FreqPrioNR",
+                        "ENDC Inconsistencies",
+                        f"LTE cells with mismatching params between FreqPrioNR {old_ssb} and {new_ssb}",
+                        len(mismatching_cells_details),
+                        "; ".join(mismatching_cells_details),
+                    )
 
                     # Keep only N77 rows (from FreqPrioNR table)
                     mask_n77 = work[freq_col].map(is_n77_from_string)
@@ -1540,18 +1821,21 @@ def build_summary_audit(
     # =======================================================================
     # ============================ MAIN CODE ================================
     # =======================================================================
-    def main()-> pd.DataFrame:
+    def main()-> tuple[DataFrame, DataFrame, DataFrame]:
 
         process_nr_freq()
         process_nr_freq_rel()
-        process_nr_cell_du()
         process_nr_sector_carrier()
+        process_nr_cell_du()
+        process_nr_cell_relation()
 
         process_gu_sync_signal_freq()
         process_gu_freq_rel()
+        process_gu_cell_relation()
 
         process_endc_distr_profile()
         process_freq_prio_nr()
+
         process_cardinalities()
 
         # If nothing was added, return at least an informational row
@@ -1580,6 +1864,10 @@ def build_summary_audit(
                 ("NRFreqRelation", "NR Frequency Audit"),
                 ("NRFreqRelation", "NR Frequency Inconsistencies"),
 
+                # NR Frequency NRCellRelation
+                ("NRCellRelation", "NR Frequency Audit"),
+                ("NRCellRelation", "NR Frequency Inconsistencies"),
+
                 # NR Frequency NRSectorCarrier
                 ("NRSectorCarrier", "NR Frequency Audit"),
                 ("NRSectorCarrier", "NR Frequency Inconsistencies"),
@@ -1595,6 +1883,10 @@ def build_summary_audit(
                 # LTE Frequency GUtranSyncSignalFrequency
                 ("GUtranFreqRelation", "LTE Frequency Audit"),
                 ("GUtranFreqRelation", "LTE Frequency Inconsistencies"),
+
+                # LTE Frequency GUtranCellRelation
+                ("GUtranCellRelation", "LTE Frequency Audit"),
+                ("GUtranCellRelation", "LTE Frequency Inconsistencies"),
 
                 # EndcDistrProfile
                 ("EndcDistrProfile", "ENDC Audit"),
@@ -1640,22 +1932,31 @@ def build_summary_audit(
                 .reset_index(drop=True)
             )
 
-        # Build Param Missmatching DataFrame
-        if param_mismatch_rows:
-            df_param_mismatch = pd.DataFrame(param_mismatch_rows)
-            # Ensure columns order is consistent
-            for col_name in param_mismatch_columns:
-                if col_name not in df_param_mismatch.columns:
-                    df_param_mismatch[col_name] = ""
-            df_param_mismatch = df_param_mismatch[param_mismatch_columns]
+        # Build Param Missmatching DataFrames (NR / LTE)
+        if param_mismatch_rows_nr:
+            df_param_mismatch_nr = pd.DataFrame(param_mismatch_rows_nr)
+            for col_name in param_mismatch_columns_nr:
+                if col_name not in df_param_mismatch_nr.columns:
+                    df_param_mismatch_nr[col_name] = ""
+            df_param_mismatch_nr = df_param_mismatch_nr[param_mismatch_columns_nr]
         else:
-            df_param_mismatch = pd.DataFrame(columns=param_mismatch_columns)
+            df_param_mismatch_nr = pd.DataFrame(columns=param_mismatch_columns_nr)
 
-        return df, df_param_mismatch
+        if param_mismatch_rows_gu:
+            df_param_mismatch_gu = pd.DataFrame(param_mismatch_rows_gu)
+            for col_name in param_mismatch_columns_gu:
+                if col_name not in df_param_mismatch_gu.columns:
+                    df_param_mismatch_gu[col_name] = ""
+            df_param_mismatch_gu = df_param_mismatch_gu[param_mismatch_columns_gu]
+        else:
+            df_param_mismatch_gu = pd.DataFrame(columns=param_mismatch_columns_gu)
+
+        return df, df_param_mismatch_nr, df_param_mismatch_gu
 
     # =======================================================================
     # ========================= END OF MAIN CODE ============================
     # =======================================================================
 
-    df_summary, df_param_mismatch = main()
-    return df_summary, df_param_mismatch
+    df_summary, df_param_mismatch_nr, df_param_mismatch_gu = main()
+    return df_summary, df_param_mismatch_nr, df_param_mismatch_gu
+

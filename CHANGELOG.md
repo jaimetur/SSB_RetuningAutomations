@@ -4,6 +4,35 @@
 
 ---
 
+## Release: v0.3.5
+- ### Release Date: 2025-11-26
+
+- ### Main Changes:
+  
+  - #### 🚨 Breaking Changes:
+  
+  - #### 🌟 New Features:
+
+  - #### 🚀 Enhancements:
+    - Added new checks to `Configuration Audit` module.
+      - NR cellRelations to old SSB (from NRCellRelation table)
+      - NR cellRelations to new SSB (from NRCellRelation table)
+      - LTE cellRelations to old SSB (from GUtranCellRelation table)
+      - LTE cellRelations to new SSB (from GUtranCellRelation table)
+      - LTE nodes with the old SSB but without the new SSB (from FreqPrioNR table)
+      - LTE nodes with both, the old SSB and the new SSB (from FreqPrioNR table)
+      - LTE cells with mismatching params between FreqPrioNR 648672 and 647328
+    - Added new sheet `Summary NR Params Missmatching` with columns `NodeId`, `GNBCUCPFunctionId`, `NRCellCUId` and `NRFreqRelationId`.
+    - Added new sheet `Summary LTE Params Missmatching` with columns `NodeId`, `EUtranCellId` and `GUtranFreqRelationId`.
+  
+  - #### 🐛 Bug fixes:
+    - Minor bug fixing.
+    
+  - #### 📚 Documentation: 
+    - Updated documentation with latest changes.
+
+---
+
 ## Release: v0.3.4
 - ### Release Date: 2025-11-25
 

@@ -261,14 +261,16 @@ class ConfigurationAudit:
         # =====================================================================
         # Collect dataframes for the specific MOs we need
         mo_collectors: Dict[str, List[pd.DataFrame]] = {
-            "GUtranSyncSignalFrequency": [],
-            "GUtranFreqRelation": [],  # for LTE freq relation checks
-            "NRCellDU": [],
             "NRFrequency": [],
             "NRFreqRelation": [],
-            "NRSectorCarrier": [],  # for N77 ARFCN checks
-            "FreqPrioNR": [],  # for RATFreqPrioId checks
-            "EndcDistrProfile": [],  # for gUtranFreqRef checks
+            "NRSectorCarrier": [],
+            "NRCellDU": [],
+            "NRCellRelation": [],
+            "GUtranSyncSignalFrequency": [],
+            "GUtranFreqRelation": [],
+            "GUtranCellRelation": [],
+            "FreqPrioNR": [],
+            "EndcDistrProfile": [],
         }
         for entry in table_entries:
             mo_name = str(entry.get("sheet_candidate", "")).strip()
@@ -349,20 +351,24 @@ class ConfigurationAudit:
         pivot_gu_sync_signal_freq = apply_frequency_column_filter(pivot_gu_sync_signal_freq, freq_filters)
 
         # Extra tables for audit logic
+        df_nr_cell_rel = concat_or_empty(mo_collectors["NRCellRelation"])
+        df_gu_cell_rel = concat_or_empty(mo_collectors["GUtranCellRelation"])
         df_freq_prio_nr = concat_or_empty(mo_collectors["FreqPrioNR"])
         df_endc_distr_profile = concat_or_empty(mo_collectors["EndcDistrProfile"])
 
         # =====================================================================
         #                PHASE 4.2: Build SummaryAudit
         # =====================================================================
-        summary_audit_df, param_mismatch_df = build_summary_audit(
+        summary_audit_df, param_mismatch_nr_df, param_mismatch_gu_df = build_summary_audit(
             df_nr_cell_du=df_nr_cell_du,
             df_nr_freq=df_nr_freq,
             df_nr_freq_rel=df_nr_freq_rel,
+            df_nr_cell_rel=df_nr_cell_rel,
             df_nr_sector_carrier=df_nr_sector_carrier,
             df_freq_prio_nr=df_freq_prio_nr,
             df_gu_sync_signal_freq=df_gu_sync_signal_freq,
             df_gu_freq_rel=df_gu_freq_rel,
+            df_gu_cell_rel=df_gu_cell_rel,
             df_endc_distr_profile=df_endc_distr_profile,
             n77_ssb_pre=self.N77_SSB_PRE,
             n77_ssb_post=self.N77_SSB_POST,
@@ -396,8 +402,12 @@ class ConfigurationAudit:
             pivot_gu_sync_signal_freq.to_excel(writer, sheet_name="Summary GU_SyncSignalFrequency", index=False)
             pivot_gu_freq_rel.to_excel(writer, sheet_name="Summary GU_FreqRelation", index=False)
 
-            if not param_mismatch_df.empty:
-                param_mismatch_df.to_excel(writer, sheet_name="Summary Params Missmatching", index=False)
+            # New: separate NR / LTE param mismatching sheets
+            if not param_mismatch_nr_df.empty:
+                param_mismatch_nr_df.to_excel(writer, sheet_name="Summary NR Param Mismatching", index=False)
+
+            if not param_mismatch_gu_df.empty:
+                param_mismatch_gu_df.to_excel(writer, sheet_name="Summary LTE Param Mismatching", index=False)
 
             # Then write each table in the final determined order
             for entry in table_entries:
