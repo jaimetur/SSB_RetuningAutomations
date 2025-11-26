@@ -355,7 +355,7 @@ class ConfigurationAudit:
         # =====================================================================
         #                PHASE 4.2: Build SummaryAudit
         # =====================================================================
-        summary_audit_df = build_summary_audit(
+        summary_audit_df, param_mismatch_df = build_summary_audit(
             df_nr_cell_du=df_nr_cell_du,
             df_nr_freq=df_nr_freq,
             df_nr_freq_rel=df_nr_freq_rel,
@@ -395,6 +395,9 @@ class ConfigurationAudit:
             pivot_nr_freq_rel.to_excel(writer, sheet_name="Summary NR_FreqRelation", index=False)
             pivot_gu_sync_signal_freq.to_excel(writer, sheet_name="Summary GU_SyncSignalFrequency", index=False)
             pivot_gu_freq_rel.to_excel(writer, sheet_name="Summary GU_FreqRelation", index=False)
+
+            if not param_mismatch_df.empty:
+                param_mismatch_df.to_excel(writer, sheet_name="Summary Params Missmatching", index=False)
 
             # Then write each table in the final determined order
             for entry in table_entries:

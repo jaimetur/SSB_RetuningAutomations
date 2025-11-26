@@ -48,6 +48,21 @@ def build_summary_audit(
 
     rows: List[Dict[str, object]] = []
 
+    # Detailed parameter mismatching rows to build Excel sheet "Summary Param Missmatching"
+    param_mismatch_rows: List[Dict[str, object]] = []
+    param_mismatch_columns = [
+        "Layer",  # e.g. "NR" / "LTE"
+        "Table",  # e.g. "NRFreqRelation" / "GUtranFreqRelation"
+        "NodeId",
+        "CellId",
+        "RelationId",
+        "Parameter",
+        "OldSSB",
+        "NewSSB",
+        "OldValue",
+        "NewValue",
+    ]
+
     def is_not_old_not_new(v: object) -> bool:
         freq = parse_int_frequency(v)
         return freq not in (n77_ssb_pre, n77_ssb_post)
@@ -404,19 +419,52 @@ def build_summary_audit(
                                         new_clean = new_clean.sort_values(by=sort_cols).reset_index(drop=True)
 
                                         if not old_clean.equals(new_clean):
+                                            # Take first row of each side to report parameter-level differences
+                                            old_row = old_clean.iloc[0]
+                                            new_row = new_clean.iloc[0]
+
+                                            def _values_differ(a: object, b: object) -> bool:
+                                                return (pd.isna(a) and not pd.isna(b)) or (not pd.isna(a) and pd.isna(b)) or (a != b)
+
+                                            node_val = ""
+                                            try:
+                                                node_val = str(cell_rows[node_col].iloc[0])
+                                            except Exception:
+                                                node_val = ""
+
+                                            for col_name in sort_cols:
+                                                old_val = old_row[col_name]
+                                                new_val = new_row[col_name]
+                                                if _values_differ(old_val, new_val):
+                                                    param_mismatch_rows.append(
+                                                        {
+                                                            "Layer": "NR",
+                                                            "Table": "NRFreqRelation",
+                                                            "NodeId": node_val,
+                                                            "CellId": str(cell_id),
+                                                            "RelationId": str(rel_id),
+                                                            "Parameter": str(col_name),
+                                                            "OldSSB": n77_ssb_pre,
+                                                            "NewSSB": n77_ssb_post,
+                                                            "OldValue": "" if pd.isna(old_val) else str(old_val),
+                                                            "NewValue": "" if pd.isna(new_val) else str(new_val),
+                                                        }
+                                                    )
+
                                             bad_cells_params.append(str(cell_id))
                                             # con una relación que falle es suficiente para marcar la celda
                                             break
+
                                 else:
                                     # Fallback: sin NRCellRelationId, se compara todo el bloque OLD vs NEW
-                                    old_clean = (old_rows.drop(columns=list(cols_to_ignore),errors="ignore",)
-                                        .drop_duplicates()
-                                        .reset_index(drop=True)
-                                    )
-                                    new_clean = (new_rows.drop(columns=list(cols_to_ignore),errors="ignore",)
-                                        .drop_duplicates()
-                                        .reset_index(drop=True)
-                                    )
+                                    old_clean = (old_rows.drop(columns=list(cols_to_ignore), errors="ignore", )
+                                                 .drop_duplicates()
+                                                 .reset_index(drop=True)
+                                                 )
+                                    new_clean = (new_rows.drop(columns=list(cols_to_ignore), errors="ignore", )
+                                                 .drop_duplicates()
+                                                 .reset_index(drop=True)
+                                                 )
 
                                     old_clean = old_clean.reindex(sorted(old_clean.columns), axis=1)
                                     new_clean = new_clean.reindex(sorted(new_clean.columns), axis=1)
@@ -426,6 +474,37 @@ def build_summary_audit(
                                     new_clean = new_clean.sort_values(by=sort_cols).reset_index(drop=True)
 
                                     if not old_clean.equals(new_clean):
+                                        old_row = old_clean.iloc[0]
+                                        new_row = new_clean.iloc[0]
+
+                                        def _values_differ(a: object, b: object) -> bool:
+                                            return (pd.isna(a) and not pd.isna(b)) or (not pd.isna(a) and pd.isna(b)) or (a != b)
+
+                                        node_val = ""
+                                        try:
+                                            node_val = str(cell_rows[node_col].iloc[0])
+                                        except Exception:
+                                            node_val = ""
+
+                                        for col_name in sort_cols:
+                                            old_val = old_row[col_name]
+                                            new_val = new_row[col_name]
+                                            if _values_differ(old_val, new_val):
+                                                param_mismatch_rows.append(
+                                                    {
+                                                        "Layer": "NR",
+                                                        "Table": "NRFreqRelation",
+                                                        "NodeId": node_val,
+                                                        "CellId": str(cell_id),
+                                                        "RelationId": "",
+                                                        "Parameter": str(col_name),
+                                                        "OldSSB": n77_ssb_pre,
+                                                        "NewSSB": n77_ssb_post,
+                                                        "OldValue": "" if pd.isna(old_val) else str(old_val),
+                                                        "NewValue": "" if pd.isna(new_val) else str(new_val),
+                                                    }
+                                                )
+
                                         bad_cells_params.append(str(cell_id))
 
                             bad_cells_params = sorted(set(bad_cells_params))
@@ -984,6 +1063,37 @@ def build_summary_audit(
                             new_clean = new_clean.sort_values(by=sort_cols).reset_index(drop=True)
 
                             if not old_clean.equals(new_clean):
+                                old_row = old_clean.iloc[0]
+                                new_row = new_clean.iloc[0]
+
+                                def _values_differ(a: object, b: object) -> bool:
+                                    return (pd.isna(a) and not pd.isna(b)) or (not pd.isna(a) and pd.isna(b)) or (a != b)
+
+                                node_val = ""
+                                try:
+                                    node_val = str(cell_rows[node_col].iloc[0])
+                                except Exception:
+                                    node_val = ""
+
+                                for col_name in sort_cols:
+                                    old_val = old_row[col_name]
+                                    new_val = new_row[col_name]
+                                    if _values_differ(old_val, new_val):
+                                        param_mismatch_rows.append(
+                                            {
+                                                "Layer": "LTE",
+                                                "Table": "GUtranFreqRelation",
+                                                "NodeId": node_val,
+                                                "CellId": str(cell_id),
+                                                "RelationId": "",  # here RelationId is not explicit, we rely on GUtranFreqRelationId in the table
+                                                "Parameter": str(col_name),
+                                                "OldSSB": n77_ssb_pre,
+                                                "NewSSB": n77_ssb_post,
+                                                "OldValue": "" if pd.isna(old_val) else str(old_val),
+                                                "NewValue": "" if pd.isna(new_val) else str(new_val),
+                                            }
+                                        )
+
                                 bad_cells_params.append(str(cell_id))
 
                         bad_cells_params = sorted(set(bad_cells_params))
@@ -1530,10 +1640,22 @@ def build_summary_audit(
                 .reset_index(drop=True)
             )
 
-        return df
+        # Build Param Missmatching DataFrame
+        if param_mismatch_rows:
+            df_param_mismatch = pd.DataFrame(param_mismatch_rows)
+            # Ensure columns order is consistent
+            for col_name in param_mismatch_columns:
+                if col_name not in df_param_mismatch.columns:
+                    df_param_mismatch[col_name] = ""
+            df_param_mismatch = df_param_mismatch[param_mismatch_columns]
+        else:
+            df_param_mismatch = pd.DataFrame(columns=param_mismatch_columns)
+
+        return df, df_param_mismatch
+
     # =======================================================================
     # ========================= END OF MAIN CODE ============================
     # =======================================================================
 
-    df = main()
-    return df
+    df_summary, df_param_mismatch = main()
+    return df_summary, df_param_mismatch

@@ -12,6 +12,7 @@
   - #### 🚨 Breaking Changes:
   
   - #### 🌟 New Features:
+    - Added new table `Summary Param Missmatching` to `Configuration Audit` module to show which cells/nodes has changed and which params have been changed. 
 
   - #### 🚀 Enhancements:
   
@@ -19,6 +20,7 @@
     - Minor bug fixing.
     
   - #### 📚 Documentation: 
+    - README.md updated.
     - Updated documentation with latest changes.
 
 
