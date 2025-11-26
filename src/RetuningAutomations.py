@@ -441,7 +441,7 @@ def parse_args() -> argparse.Namespace:
              "If omitted and no other args are provided, GUI appears (if available)."
     )
     # Single-input (most modules)
-    parser.add_argument("-i", "--input", help="Input folder to process (single-input modules)")
+    parser.add_argument("--input", help="Input folder to process (single-input modules)")
     # Dual-input (consistency-check)
     parser.add_argument("--input-pre", help="PRE input folder (only for consistency-check)")
     parser.add_argument("--input-post", help="POST input folder (only for consistency-check)")

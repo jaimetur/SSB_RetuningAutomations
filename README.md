@@ -101,9 +101,9 @@ The tool automatically adds a **timestamped + versioned suffix** to outputs, whi
 
 ---
 
-## 🖥️ Run Modes
+# 🔀 Run Modes
 
-### GUI (no arguments)
+## 🖥️ GUI (no arguments)
 Running the launcher **without CLI arguments** opens a compact Tkinter dialog where you can:
 - Pick the **module** from a combo box.  
 - Choose the **input folder** (Browse…).  
@@ -118,80 +118,151 @@ python RetuningAutomations.py
 
 ---
 
-### CLI (headless)
-You can run any module directly from the command line.
+## ⌨️ Command-Line Usage
 
-**General form:**
+This tool can be executed either with **GUI mode** (default when no arguments are provided) or entirely through **CLI mode** using the options described below.
+
+### ▶️ Basic Syntax
+
 ```bash
-python RetuningAutomations.py --module {consistency-checks|excel|cleanup} -i "<INPUT_FOLDER>"   --freq-pre 648672 --freq-post 647328
+RetuningAutomations.exe/bin --module <module-name> [options]
+
+--module                     Module to run: configuration-audit | consistency-check | initial-cleanup | final-cleanup
+--input                      Input folder to process (single-input modules)
+--input-pre                  PRE input folder (only for consistency-check)
+--input-post                 POST input folder (only for consistency-check)
+
+--n77-ssb-pre                N77 SSB frequency before refarming (Pre), e.g. 647328
+--n77-ssb-post               N77 SSB frequency after refarming (Post), e.g. 653952
+--n77b-ssb                   N77B SSB frequency (ARFCN), e.g. 650334
+
+--freq-filters               Comma-separated list of frequency substrings to filter pivot columns in Configuration Audit
+
+--allowed-n77-ssb-pre        Comma-separated allowed N77 SSB (Pre) values for Configuration Audit
+--allowed-n77-arfcn-pre      Comma-separated allowed N77 ARFCN (Pre) values for Configuration Audit
+
+--allowed-n77-ssb-post       Comma-separated allowed N77 SSB (Post) values for Configuration Audit
+--allowed-n77-arfcn-post     Comma-separated allowed N77 ARFCN (Post) values for Configuration Audit
+
+--no-gui                     Disable GUI usage (force CLI mode even with missing arguments)
 ```
 
-> If you omit `-i` but do **not** pass `--no-gui` and Tkinter is available, the tool will offer the GUI to complete missing fields.  
-> If both `--no-gui` and `-i` are omitted, the tool exits with an error.
+If `--module` is omitted and **no other arguments** are provided, the GUI will launch automatically unless `--no-gui` is specified.
 
 ---
 
-## ⚙️ CLI Reference
+### 🔧 Available Modules
 
-```text
---module     Module to run: consistency-checks | configuration-audit | initial-cleanup | final-cleanup
--i, --input  Input folder to process
---freq-pre   Frequency before refarming (Pre), e.g. 648672
---freq-post  Frequency after refarming (Post), e.g. 647328
---no-gui     Disable GUI prompts (require CLI args)
+| Module                | Description                                                         |
+|-----------------------|---------------------------------------------------------------------|
+| `configuration-audit` | Runs the Configuration Audit module (single input folder).          |
+| `consistency-check`   | Runs the Pre/Post Relations Consistency Check (dual input folders). |
+| `initial-cleanup`     | Runs the Initial Clean-Up module (single input folder).             |
+| `final-cleanup`       | Runs the Final Clean-Up module (single input folder).               |
+
+---
+
+### 📂 Input Options
+
+#### Single-Input Modules (`configuration-audit`, `initial-cleanup`, `final-cleanup`)
+
+```
+--input <folder>
 ```
 
-### Examples
+#### Dual-Input Module (`consistency-check`)
 
-
-**A. Configuration Audit:**
-```bash
-python RetuningAutomations.py --module configuration-audit   -i "/data/retuning/logs/PA6"
 ```
-
-**B. Consistency Checks (Pre/Post comparison) (full):**
-```bash
-python RetuningAutomations.py --module consistency-checks   -i "C:\Projects\Retuning\Round_01\Input"   --freq-pre 648672   --freq-post 647328
-```
-- Writes:
-  - `CellRelation.xlsx`
-  - `CellRelationDiscrepancies.xlsx`
-  - Under: `ConsistencyChecks_<YYYYMMDD-HHMMSS>_v0.2.0/`
-
-**C. Consistency Checks (Pre/Post comparison) (tables only):**
-```bash
-python RetuningAutomations.py --module consistency-checks   -i "/data/retuning/PA6/Input"
-```
-- Writes:
-  - `CellRelation.xlsx` (no comparison workbook)
-
-**D. Initial Clean-Up (scaffold):**
-```bash
-python RetuningAutomations.py --module initial-cleanup   -i "/data/retuning/outputs"
-```
-
-**E. Final Clean-Up (scaffold):**
-```bash
-python RetuningAutomations.py --module final-cleanup   -i "/data/retuning/outputs"
+--input-pre  <folder>
+--input-post <folder>
 ```
 
 ---
 
-## 📂 Expected Input & Produced Output
+### 📡 Frequency Arguments
 
-### Input folder
-A typical **input folder** for `PrePostRelations` contains source logs / CSVs / tables exported from your planning or OSS tools.  
-The loader in `PrePostRelations.loadPrePost(input_dir)` expects the needed tables (naming/format depends on your pipeline); extend the loader to your conventions.
+#### Pre/Post SSB reference frequencies
 
-### Output structure
 ```
-<INPUT_FOLDER>/
-└─ ConsistencyChecks_<YYYYMMDD-HHMMSS>_v0.2.0/
-   ├─ CellRelation.xlsx
-   └─ CellRelationDiscrepancies.xlsx        # only when both frequencies provided
+--n77-ssb-pre  <freq>     # Frequency before refarming
+--n77-ssb-post <freq>     # Frequency after refarming
 ```
 
-For `CreateExcelFromLogs`, the module itself returns the **path** of the artifact it writes (if any). It also appends the standard `_<YYYYMMDD-HHMMSS>_v<TOOL_VERSION>` suffix to the filename.
+#### N77B SSB Frequency
+
+```
+--n77b-ssb <arfcn>
+```
+
+#### Configuration Audit pivot filtering
+
+```
+--freq-filters <comma-separated-list>
+```
+Filters pivot columns by substring match.
+
+---
+
+### 📜 Allowed List Arguments (Configuration Audit)
+
+#### PRE allowed lists
+
+```
+--allowed-n77-ssb-pre   <comma-separated-values>
+--allowed-n77-arfcn-pre <comma-separated-values>
+```
+
+#### POST allowed lists
+
+```
+--allowed-n77-ssb-post   <comma-separated-values>
+--allowed-n77-arfcn-post <comma-separated-values>
+```
+
+---
+
+### 🖥️ GUI Control
+
+```
+--no-gui
+```
+
+Forces CLI-only mode even if arguments are missing.
+
+---
+
+## 🧪 Usage Examples
+
+### 1. Configuration Audit
+
+```bash
+python RetuningAutomations.py \
+  --module configuration-audit \
+  --input "./AuditInput" \
+  --n77-ssb-pre 647328 \
+  --n77-ssb-post 653952
+```
+
+### 2. Consistency Check (Pre/Post folders)
+
+```bash
+python RetuningAutomations.py \
+  --module consistency-check \
+  --input-pre "./Step0" \
+  --input-post "./Step3" \
+  --n77-ssb-pre 647328 \
+  --n77-ssb-post 653952
+```
+
+### 3. Configuration Audit with custom allowed lists
+
+```bash
+python RetuningAutomations.py \
+  --module configuration-audit \
+  --input "./audit" \
+  --allowed-n77-ssb-pre 648672,649200 \
+  --allowed-n77-arfcn-pre 648648,648984
+```
 
 ---
 
