@@ -20,6 +20,7 @@
     - Minor bug fixing.
     
   - #### 📚 Documentation: 
+    - README.md updated.
     - Updated documentation with latest changes.
 
 
