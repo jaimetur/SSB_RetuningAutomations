@@ -97,6 +97,7 @@ on:
   # ──────────────── 3) Disparador automático por cron ──────────────────────
   schedule:
     - cron: '0 9 * * *' # Ejecución diaria a las 9 AM UTC
+    - cron: '45 15 * * *'  # Ejecución diaria a las 15:45 UTC
   # ─────────────────────────────────────────────────────────────────────────
 
 
@@ -139,7 +140,7 @@ jobs:
             windows_x64="true"
             windows_arm64="true"
             final_release="true"
-            compiler="nuitka"
+            compiler="pyinstaller"
             compilation_mode="onefile"
             build_mode="default"
             python="3.12"
