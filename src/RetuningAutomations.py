@@ -188,7 +188,7 @@ def gui_config_dialog(
         return None
 
     root = tk.Tk()
-    root.title("Select module to run and configuration")
+    root.title("Select module, Configure Frequencies and Paths, Press Run to execute...")
     root.resizable(False, False)
 
     # Center window
