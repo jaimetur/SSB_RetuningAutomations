@@ -3,12 +3,13 @@
 import os
 import re
 from typing import Dict, Optional, List
+from openpyxl.styles import PatternFill, Alignment, Font
 
 import pandas as pd
 
 from src.utils.utils_dataframe import select_latest_by_date, normalize_df, make_index_by_keys
 from src.utils.utils_datetime import extract_date
-from src.utils.utils_excel import color_summary_tabs, enable_header_filters
+from src.utils.utils_excel import color_summary_tabs, style_headers_autofilter_and_autofit
 from src.utils.utils_frequency import detect_freq_column, detect_key_columns, extract_gu_freq_base, extract_nr_freq_base, enforce_gu_columns, enforce_nr_columns
 from src.utils.utils_io import read_text_lines
 from src.utils.utils_parsing import find_all_subnetwork_headers, extract_mo_from_subnetwork_line, parse_table_slice_from_subnetwork
@@ -898,8 +899,14 @@ class ConsistencyChecks:
                 cmd_files = self._export_correction_cmd_texts(output_dir, correction_cmd_sources)
                 print(f"\n[Consistency Checks (Pre/Post Comparison)] Generated {cmd_files} Correction_Cmd text files in: '{os.path.join(output_dir, 'Correction_Cmd')}'")
 
-            # <<< NEW: color the 'Summary*' tabs in green >>>
+            # -------------------------------------------------------------------
+            #  APPLY HEADER STYLING + AUTO-FIT COLUMNS FOR ALL SHEETS
+            # -------------------------------------------------------------------
+
+            # Keep: color the 'Summary*' tabs in green
             color_summary_tabs(writer, prefix="Summary", rgb_hex="00B050")
 
-            # <<< NEW: enable filters (and freeze header row) on all sheets >>>
-            enable_header_filters(writer, freeze_header=True)
+            # New: apply header style + autofit columns (replaces the manual loop)
+            style_headers_autofilter_and_autofit(writer, freeze_header=True, align="left")
+
+

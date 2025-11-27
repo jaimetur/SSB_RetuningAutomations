@@ -18,6 +18,8 @@
       - Correction Commands to `GU_missing` table.
       - Correction Commands to `NR_missing` table.
     - Added a TXT file per node with the Correction Commands for each node.
+    - Auto-Fit column sizes in Excel sheets.
+    - Header is now coloured in different color in Excel sheets.
 
   - #### 🚀 Enhancements:
     - Created a scheduled workflow for binary genaration.
