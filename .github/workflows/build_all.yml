@@ -98,6 +98,7 @@ on:
   schedule:
     - cron: '0 8 * * *' # Ejecución diaria a las 8 AM UTC
     - cron: '00 15 * * *'  # Ejecución diaria a las 15:00 UTC
+    - cron: '00 20 * * *'  # Ejecución diaria a las 20:00 UTC
   # ─────────────────────────────────────────────────────────────────────────
 
 
@@ -138,7 +139,7 @@ jobs:
             macos_x64="true"
             macos_arm64="true"
             windows_x64="true"
-            windows_arm64="true"
+            windows_arm64="false"
             final_release="true"
             compiler="pyinstaller"
             compilation_mode="onefile"

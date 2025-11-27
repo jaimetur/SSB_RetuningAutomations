@@ -560,7 +560,9 @@ class ConsistencyChecks:
             user_label = str(row.get("userLabel") or "").strip()
             coverage = str(row.get("coverageIndicator") or "").strip()
 
-            freq_rel = "647328-30-20-0-1" # Overwrite GUtranFreqRelationId to a hardcoded value (the new SSB)
+            # Overwrite GUtranFreqRelationId to a hardcoded value (new SSB) only when old SSB (648672) is found
+            if freq_rel.startswith("648672"):
+                freq_rel = "647328-30-20-0-1"
 
             if not user_label:
                 # Safe default label if none is provided in the row
@@ -641,8 +643,9 @@ class ConsistencyChecks:
                 nr_cell_for_freq = m_nr_cell.group(1) if m_nr_cell else ""
                 freq_id = m_freq.group(1) if m_freq else ""
 
-                # Overwrite NRFreqRelation to a hardcoded value (new SSB)
-                freq_id = "647328"
+                # Overwrite NRFreqRelation to a hardcoded value (new SSB) only when old SSB (648672) is found
+                if freq_id == "648672":
+                    freq_id = "647328"
 
                 if gnb_val and nr_cell_for_freq and freq_id:
                     clean_nrfreq_ref = f"GNBCUCPFunction={gnb_val},NRCellCU={nr_cell_for_freq},NRFreqRelation={freq_id}"
