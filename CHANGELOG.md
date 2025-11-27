@@ -13,10 +13,11 @@
   
   - #### 🌟 New Features:
     - Added commands to `Consistency Checks` module.
-      - Correction_Commands to `GU_new` table.
-      - Correction_Commands to `NR_new` table.
-      - Correction_Commands to `GU_missing` table.
-      - Correction_Commands to `NR_missing` table.
+      - Correction Commands to `GU_new` table.
+      - Correction Commands to `NR_new` table.
+      - Correction Commands to `GU_missing` table.
+      - Correction Commands to `NR_missing` table.
+    - Added a TXT file per node with the Correction Commands for each node.
 
   - #### 🚀 Enhancements:
     - Created a scheduled workflow for binary genaration.
