@@ -596,6 +596,7 @@ class ConsistencyChecks:
         return df
 
     @staticmethod
+    @staticmethod
     def _add_correction_command_nr_missing(df: pd.DataFrame) -> pd.DataFrame:
         """
         Add 'Correction_Cmd' column for NR_missing sheet, building a multiline correction script.
@@ -623,25 +624,11 @@ class ConsistencyChecks:
             if not (nr_cell_cu and nr_cell_rel):
                 return ""
 
-            # --------- nRCellRef cleanup: GNBCUCPFunction=X,NRCellCU=Y ---------
+            # --------- nRCellRef cleanup: keep everything from GNBCUCPFunction= ---------
             clean_nrcell_ref = ""
             if "GNBCUCPFunction=" in nrcell_ref:
-                sub = nrcell_ref[nrcell_ref.find("GNBCUCPFunction="):]
-                # Extract GNBCUCPFunction value
-                gnb_part = sub.split(",", 1)[0]  # e.g. "GNBCUCPFunction=1"
-                gnb_val = gnb_part.split("=", 1)[1] if "=" in gnb_part else ""
-
-                # Try to get ExternalNRCellCU or NRCellCU from the same path
-                target_nr_cu = ""
-                m_ext = re.search(r"ExternalNRCellCU=([^,]+)", sub)
-                m_int = re.search(r"NRCellCU=([^,]+)", sub)
-                if m_ext:
-                    target_nr_cu = m_ext.group(1)
-                elif m_int:
-                    target_nr_cu = m_int.group(1)
-
-                if gnb_val and target_nr_cu:
-                    clean_nrcell_ref = f"GNBCUCPFunction={gnb_val},NRCellCU={target_nr_cu}"
+                # Keep the full tail starting at GNBCUCPFunction (NRNetwork, ExternalGNBCUCPFunction, ExternalNRCellCU, etc.)
+                clean_nrcell_ref = nrcell_ref[nrcell_ref.find("GNBCUCPFunction="):]
 
             # --------- nRFreqRelationRef cleanup: GNBCUCPFunction=X,NRCellCU=Y,NRFreqRelation=Z ---------
             clean_nrfreq_ref = ""
@@ -655,7 +642,8 @@ class ConsistencyChecks:
                 nr_cell_for_freq = m_nr_cell.group(1) if m_nr_cell else ""
                 freq_id = m_freq.group(1) if m_freq else ""
 
-                freq_id = "647328" # Overwrite NRFreqRelation to a hardcoded value (new SSB)
+                # Overwrite NRFreqRelation to a hardcoded value (new SSB)
+                freq_id = "647328"
 
                 if gnb_val and nr_cell_for_freq and freq_id:
                     clean_nrfreq_ref = f"GNBCUCPFunction={gnb_val},NRCellCU={nr_cell_for_freq},NRFreqRelation={freq_id}"
