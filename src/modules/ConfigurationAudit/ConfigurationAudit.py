@@ -4,7 +4,7 @@ import os
 from typing import List, Tuple, Optional, Dict
 import pandas as pd
 
-from src.utils.utils_io import find_log_files, read_text_file, to_long_path
+from src.utils.utils_io import find_log_files, read_text_file, to_long_path, pretty_path
 from src.utils.utils_parsing import SUMMARY_RE, find_all_subnetwork_headers, extract_mo_from_subnetwork_line, parse_table_slice_from_subnetwork, parse_log_lines, find_subnetwork_header_index, extract_mo_name_from_previous_line, cap_rows
 from src.utils.utils_excel import sanitize_sheet_name, unique_sheet_name, color_summary_tabs, apply_alternating_category_row_fills, style_headers_autofilter_and_autofit
 from src.utils.utils_sorting import natural_logfile_key
@@ -422,7 +422,7 @@ class ConfigurationAudit:
             # Apply header color + auto-fit to all sheets
             style_headers_autofilter_and_autofit(writer, freeze_header=True, align="left")
 
-        print(f"{module_name} Wrote Excel with {len(table_entries)} sheet(s) in: '{excel_path}'")
+        print(f"{module_name} Wrote Excel with {len(table_entries)} sheet(s) in: '{pretty_path(excel_path)}'")
 
         # =====================================================================
         #                PHASE 6: Generate PPT textual summary
@@ -430,7 +430,7 @@ class ConfigurationAudit:
         try:
             ppt_path = generate_ppt_summary(summary_audit_df, excel_path, module_name)
             if ppt_path:
-                print(f"{module_name} PPT summary generated in: '{ppt_path}'")
+                print(f"{module_name} PPT summary generated in: '{pretty_path(ppt_path)}'")
         except Exception as ex:
             # Never fail the whole module just for PPT creation
             print(f"{module_name} [WARN] PPT summary generation failed: {ex}")

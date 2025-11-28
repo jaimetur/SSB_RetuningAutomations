@@ -14,6 +14,7 @@
   - #### 🌟 New Features:
 
   - #### 🚀 Enhancements:
+    - Redesigned GUI Dialog.
   
   - #### 🐛 Bug fixes:
     - Fixed Long path issues on Windows.

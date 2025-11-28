@@ -255,3 +255,9 @@ def to_long_path(path: str) -> str:
     else:
         # Local drive path: C:\...
         return "\\\\?\\" + abs_path
+
+def pretty_path(path: str) -> str:
+    """Remove Windows long-path prefix (\\?\\) for logging/display."""
+    if os.name == "nt" and isinstance(path, str) and path.startswith("\\\\?\\"):
+        return path[4:]
+    return path

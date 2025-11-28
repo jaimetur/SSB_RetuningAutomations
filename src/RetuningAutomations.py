@@ -29,7 +29,7 @@ from pathlib import Path
 # Import our different Classes
 from src.utils.utils_datetime import format_duration_hms
 from src.utils.utils_infrastructure import LoggerDual
-from src.utils.utils_io import normalize_csv_list, parse_arfcn_csv_to_set, load_cfg_values, save_cfg_values, log_module_exception
+from src.utils.utils_io import normalize_csv_list, parse_arfcn_csv_to_set, load_cfg_values, save_cfg_values, log_module_exception, to_long_path, pretty_path
 
 from src.modules.ConsistencyChecks.ConsistencyChecks import ConsistencyChecks
 from src.modules.ConfigurationAudit import ConfigurationAudit
@@ -194,7 +194,7 @@ def gui_config_dialog(
     # Center window
     try:
         root.update_idletasks()
-        w, h = 740, 680
+        w, h = 760, 720
         sw = root.winfo_screenwidth()
         sh = root.winfo_screenheight()
         x = (sw // 2) - (w // 2)
@@ -228,22 +228,29 @@ def gui_config_dialog(
     cmb = ttk.Combobox(frm, textvariable=module_var, values=MODULE_NAMES, state="readonly", width=50)
     cmb.grid(row=0, column=1, columnspan=2, sticky="ew", **pad)
 
-    # Single-input frame
-    single_frame = ttk.Frame(frm)
-    ttk.Label(single_frame, text="Input folder:").grid(row=0, column=0, sticky="w", **pad)
-    ttk.Entry(single_frame, textvariable=input_var, width=58).grid(row=0, column=1, sticky="ew", **pad)
-
     def browse_single():
         path = filedialog.askdirectory(title="Select input folder", initialdir=input_var.get() or os.getcwd())
         if path:
             input_var.set(path)
 
-    ttk.Button(single_frame, text="Browse…", command=browse_single).grid(row=0, column=2, sticky="ew", **pad)
+    # Single-input frame
+    single_frame = ttk.Frame(frm)
+
+    # Spacer row so single_frame has similar height to dual_frame
+    ttk.Label(single_frame, text="").grid(row=0, column=0, columnspan=3, sticky="w")
+
+    # Single-input frame
+    ttk.Label(single_frame, text="Input folder:").grid(row=1, column=0, sticky="w", **pad)
+    ttk.Entry(single_frame, textvariable=input_var, width=80).grid(row=1, column=1, sticky="ew", **pad)
+    ttk.Button(single_frame, text="Browse…", command=browse_single).grid(row=1, column=2, sticky="ew", **pad)
+
+    # Spacer row so single_frame has similar height to dual_frame
+    ttk.Label(single_frame, text="").grid(row=2, column=0, columnspan=3, sticky="w")
 
     # Dual-input frame
     dual_frame = ttk.Frame(frm)
     ttk.Label(dual_frame, text="Pre input folder:").grid(row=0, column=0, sticky="w", **pad)
-    ttk.Entry(dual_frame, textvariable=input_pre_var, width=58).grid(row=0, column=1, sticky="ew", **pad)
+    ttk.Entry(dual_frame, textvariable=input_pre_var, width=80).grid(row=0, column=1, sticky="ew", **pad)
 
     def browse_pre():
         path = filedialog.askdirectory(title="Select PRE input folder", initialdir=input_pre_var.get() or os.getcwd())
@@ -253,7 +260,7 @@ def gui_config_dialog(
     ttk.Button(dual_frame, text="Browse…", command=browse_pre).grid(row=0, column=2, sticky="ew", **pad)
 
     ttk.Label(dual_frame, text="Post input folder:").grid(row=1, column=0, sticky="w", **pad)
-    ttk.Entry(dual_frame, textvariable=input_post_var, width=58).grid(row=1, column=1, sticky="ew", **pad)
+    ttk.Entry(dual_frame, textvariable=input_post_var, width=80).grid(row=1, column=1, sticky="ew", **pad)
 
     def browse_post():
         path = filedialog.askdirectory(title="Select POST input folder", initialdir=input_post_var.get() or os.getcwd())
@@ -274,23 +281,39 @@ def gui_config_dialog(
     refresh_input_mode()
 
     # Frecuencias
-    ttk.Label(frm, text="N77 SSB Frequency (Pre):").grid(row=2, column=0, sticky="w", **pad)
-    ttk.Entry(frm, textvariable=n77_ssb_pre_var, width=22).grid(row=2, column=1, sticky="w", **pad)
+    ttk.Separator(frm).grid(row=2, column=0, columnspan=3, sticky="ew", **pad)
+    ttk.Label(frm, text="SSB Frequencies:").grid(row=3, column=0, columnspan=3, sticky="w", **pad)
+    ttk.Label(frm, text="N77 SSB Frequency (Pre):").grid(row=4, column=0, sticky="w", **pad)
+    ttk.Entry(frm, textvariable=n77_ssb_pre_var, width=22).grid(row=4, column=1, sticky="w", **pad)
 
-    ttk.Label(frm, text="N77 SSB Frequency (Post):").grid(row=3, column=0, sticky="w", **pad)
-    ttk.Entry(frm, textvariable=n77_ssb_post_var, width=22).grid(row=3, column=1, sticky="w", **pad)
+    ttk.Label(frm, text="N77 SSB Frequency (Post):").grid(row=5, column=0, sticky="w", **pad)
+    ttk.Entry(frm, textvariable=n77_ssb_post_var, width=22).grid(row=5, column=1, sticky="w", **pad)
 
-    ttk.Label(frm, text="N77B SSB Frequency:").grid(row=4, column=0, sticky="w", **pad)
-    ttk.Entry(frm, textvariable=n77b_ssb_var, width=22).grid(row=4, column=1, sticky="w", **pad)
+    ttk.Label(frm, text="N77B SSB Frequency:").grid(row=6, column=0, sticky="w", **pad)
+    ttk.Entry(frm, textvariable=n77b_ssb_var, width=22).grid(row=6, column=1, sticky="w", **pad)
+
+    # ARFCN lists
+    ttk.Separator(frm).grid(row=7, column=0, columnspan=3, sticky="ew", **pad)
+    ttk.Label(frm, text="Allowed SSB & ARFCN sets for Configuration Audit (comma separated values):").grid(row=8, column=0, columnspan=3, sticky="w", **pad)
+
+    ttk.Label(frm, text="[PRE]: Allowed N77 SSB (comma separated values):").grid(row=9, column=0, sticky="w", **pad)
+    ttk.Entry(frm, textvariable=allowed_n77_ssb_pre_var, width=40).grid(row=9, column=1, columnspan=2, sticky="ew", **pad)
+
+    ttk.Label(frm, text="[PRE]: Allowed N77 ARFCN (comma separated values):").grid(row=10, column=0, sticky="w", **pad)
+    ttk.Entry(frm, textvariable=allowed_n77_arfcn_pre_var, width=40).grid(row=10, column=1, columnspan=2, sticky="ew", **pad)
+
+    ttk.Label(frm, text="[POST]: Allowed N77 SSB (comma separated values):").grid(row=11, column=0, sticky="w", **pad)
+    ttk.Entry(frm, textvariable=allowed_n77_ssb_post_var, width=40).grid(row=11, column=1, columnspan=2, sticky="ew", **pad)
+
+    ttk.Label(frm, text="[POST]: Allowed N77 ARFCN (comma separated values):").grid(row=12, column=0, sticky="w", **pad)
+    ttk.Entry(frm, textvariable=allowed_n77_arfcn_post_var, width=40).grid(row=12, column=1, columnspan=2, sticky="ew", **pad)
 
     # Filtros Summary
-    ttk.Separator(frm).grid(row=5, column=0, columnspan=3, sticky="ew", **pad)
-    ttk.Label(frm, text="Summary Filters (for pivot columns in Configuration Audit):").grid(
-        row=6, column=0, columnspan=3, sticky="w", **pad
-    )
+    ttk.Separator(frm).grid(row=13, column=0, columnspan=3, sticky="ew", **pad)
+    ttk.Label(frm, text="Summary Filters (for pivot columns in Configuration Audit):").grid(row=14, column=0, columnspan=3, sticky="w", **pad)
 
     list_frame = ttk.Frame(frm)
-    list_frame.grid(row=7, column=0, columnspan=1, sticky="nsw", **pad_tight)
+    list_frame.grid(row=15, column=0, columnspan=1, sticky="nsw", **pad_tight)
     ttk.Label(list_frame, text="Available frequencies:").pack(anchor="w")
 
     lb_container = ttk.Frame(list_frame)
@@ -313,10 +336,10 @@ def gui_config_dialog(
     scrollbar.config(command=lb.yview)
 
     btns_frame = ttk.Frame(frm)
-    btns_frame.grid(row=7, column=1, sticky="n", **pad_tight)
+    btns_frame.grid(row=15, column=1, sticky="n", **pad_tight)
 
     right_frame = ttk.Frame(frm)
-    right_frame.grid(row=7, column=2, sticky="nsew", **pad_tight)
+    right_frame.grid(row=15, column=2, sticky="nsew", **pad_tight)
     ttk.Label(right_frame, text="Frequencies Filter (Empty = No Filter):").grid(row=0, column=0, sticky="w")
     ttk.Entry(right_frame, textvariable=selected_csv_var, width=40).grid(row=1, column=0, sticky="ew")
 
@@ -347,26 +370,8 @@ def gui_config_dialog(
     ttk.Button(btns_frame, text="Select all", command=select_all).pack(pady=4, fill="x")
     ttk.Button(btns_frame, text="Clear Filter", command=clear_filters).pack(pady=4, fill="x")
 
-    # ARFCN lists
-    ttk.Separator(frm).grid(row=8, column=0, columnspan=3, sticky="ew", **pad)
-    ttk.Label(frm, text="Allowed SSB & ARFCN sets for Configuration Audit (comma separated values):").grid(
-        row=9, column=0, columnspan=3, sticky="w", **pad
-    )
-
-    ttk.Label(frm, text="[PRE]: Allowed N77 SSB (comma separated values):").grid(row=10, column=0, sticky="w", **pad)
-    ttk.Entry(frm, textvariable=allowed_n77_ssb_pre_var, width=40).grid(row=10, column=1, columnspan=2, sticky="ew", **pad)
-
-    ttk.Label(frm, text="[PRE]: Allowed N77 ARFCN (comma separated values):").grid(row=11, column=0, sticky="w", **pad)
-    ttk.Entry(frm, textvariable=allowed_n77_arfcn_pre_var, width=40).grid(row=11, column=1, columnspan=2, sticky="ew", **pad)
-
-    ttk.Label(frm, text="[POST]: Allowed N77 SSB (comma separated values):").grid(row=12, column=0, sticky="w", **pad)
-    ttk.Entry(frm, textvariable=allowed_n77_ssb_post_var, width=40).grid(row=12, column=1, columnspan=2, sticky="ew", **pad)
-
-    ttk.Label(frm, text="[POST]: Allowed N77 ARFCN (comma separated values):").grid(row=13, column=0, sticky="w", **pad)
-    ttk.Entry(frm, textvariable=allowed_n77_arfcn_post_var, width=40).grid(row=13, column=1, columnspan=2, sticky="ew", **pad)
-
     btns = ttk.Frame(frm)
-    btns.grid(row=14, column=0, columnspan=3, sticky="e", **pad)
+    btns.grid(row=999, column=0, columnspan=3, sticky="e", **pad)
 
     def on_run():
         nonlocal result
@@ -481,11 +486,14 @@ def run_configuration_audit(
 
     module_name = "[Configuration Audit]"
     print(f"{module_name} Running…")
-    print(f"{module_name} Input folder: '{input_dir}'")
+    print(f"{module_name} Input folder: '{pretty_path(input_dir)}'")
     if freq_filters_csv:
         print(f"{module_name} Summary column filters: {freq_filters_csv}")
 
-    # ARFCN principales
+    # Use long-path version for filesystem operations
+    input_dir_fs = to_long_path(input_dir) if input_dir else input_dir
+
+    # SSB Pre/Post
     try:
         n77_ssb_pre = int(n77_ssb_pre) if n77_ssb_pre else int(DEFAULT_N77_SSB_PRE)
     except ValueError:
@@ -549,9 +557,9 @@ def run_configuration_audit(
     versioned_suffix = f"{timestamp}_v{TOOL_VERSION}"
 
     # <<< Create dedicated output folder for ConfigurationAudit >>>
-    output_dir = os.path.join(input_dir, f"ConfigurationAudit_{versioned_suffix}")
+    output_dir = os.path.join(input_dir_fs, f"ConfigurationAudit_{versioned_suffix}")
     os.makedirs(output_dir, exist_ok=True)
-    print(f"{module_name} Output folder: '{output_dir}'")
+    print(f"{module_name} Output folder: '{pretty_path(output_dir)}'")
 
     # Progressive fallback in case the installed ConfigurationAudit has an older signature
     try:
@@ -592,24 +600,29 @@ def run_configuration_audit(
                 )
 
     # <<< Include output_dir in kwargs passed to ConfigurationAudit.run >>>
-    kwargs = dict(module_name=module_name, versioned_suffix=versioned_suffix, tables_order=TABLES_ORDER, output_dir=output_dir)
+    kwargs = dict(
+        module_name=module_name,
+        versioned_suffix=versioned_suffix,
+        tables_order=TABLES_ORDER,
+        output_dir=output_dir,
+    )
     if freq_filters_csv:
         kwargs["filter_frequencies"] = [x.strip() for x in freq_filters_csv.split(",") if x.strip()]
 
     try:
-        out = app.run(input_dir, **kwargs)
+        out = app.run(input_dir_fs, **kwargs)
     except TypeError:
         # Legacy fallback: ConfigurationAudit without output_dir / filters
         print(f"{module_name} [WARN] Installed ConfigurationAudit does not support 'output_dir' and/or 'filter_frequencies'. Running with legacy signature.")
-        out = app.run(input_dir, module_name=module_name, versioned_suffix=versioned_suffix, tables_order=TABLES_ORDER)
+        out = app.run(input_dir_fs, module_name=module_name, versioned_suffix=versioned_suffix, tables_order=TABLES_ORDER)
 
     if out:
-        print(f"{module_name} Done → '{out}'")
-        # <<< Hint about folder when using the new layout >>>
+        print(f"{module_name} Done → '{pretty_path(out)}'")
         if os.path.isdir(output_dir):
-            print(f"{module_name} Outputs saved to: '{output_dir}'")
+            print(f"{module_name} Outputs saved to: '{pretty_path(output_dir)}'")
     else:
         print(f"{module_name}  No logs found or nothing written.")
+
 
 
 
@@ -628,16 +641,21 @@ def run_consistency_checks(input_pre_dir: Optional[str], input_post_dir: Optiona
     app = ConsistencyChecks(n77_ssb_pre=n77_ssb_pre, n77_ssb_post=n77_ssb_post)
 
     if input_pre_dir and input_post_dir:
-        print(f"{module_name} PRE folder:  '{input_pre_dir}'")
-        print(f"{module_name} POST folder: '{input_post_dir}'")
+        # Rutas que usamos para el filesystem (long path safe en Windows)
+        input_pre_dir_fs = to_long_path(input_pre_dir)
+        input_post_dir_fs = to_long_path(input_post_dir)
+
+        # Logs “bonitos” sin el prefijo \\?\
+        print(f"{module_name} PRE folder:  '{pretty_path(input_pre_dir_fs)}'")
+        print(f"{module_name} POST folder: '{pretty_path(input_post_dir_fs)}'")
 
         loaded = False
         try:
-            app.loadPrePost(input_pre_dir, input_post_dir)
+            app.loadPrePost(input_pre_dir_fs, input_post_dir_fs)
             loaded = True
         except TypeError:
             try:
-                app.loadPrePostFromFolders(input_pre_dir, input_post_dir)
+                app.loadPrePostFromFolders(input_pre_dir_fs, input_post_dir_fs)
                 loaded = True
             except Exception:
                 loaded = False
@@ -647,14 +665,16 @@ def run_consistency_checks(input_pre_dir: Optional[str], input_post_dir: Optiona
             print(f"{module_name}         Please update ConsistencyChecks.loadPrePost(pre_dir, post_dir) to enable dual-input mode.")
             return
 
-        output_dir = os.path.join(input_post_dir, f"ConsistencyChecks_{versioned_suffix}")
+        output_dir = os.path.join(input_post_dir_fs, f"ConsistencyChecks_{versioned_suffix}")
     else:
         input_dir = input_pre_dir or ""
-        print(f"{module_name} Input folder: '{input_dir}'")
+        input_dir_fs = to_long_path(input_dir) if input_dir else input_dir
+
+        print(f"{module_name} Input folder: '{pretty_path(input_dir_fs)}'")
 
         pre_found, post_found = False, False
         try:
-            for entry in os.scandir(input_dir):
+            for entry in os.scandir(input_dir_fs or input_dir):
                 if not entry.is_dir():
                     continue
                 tag = ConsistencyChecks._detect_prepost(entry.name)
@@ -682,8 +702,8 @@ def run_consistency_checks(input_pre_dir: Optional[str], input_post_dir: Optiona
                 print(f"{module_name} [WARNING] {msg}")
             return
 
-        app.loadPrePost(input_dir)
-        output_dir = os.path.join(input_dir, f"ConsistencyChecks_{versioned_suffix}")
+        app.loadPrePost(input_dir_fs or input_dir)
+        output_dir = os.path.join(input_dir_fs or input_dir, f"ConsistencyChecks_{versioned_suffix}")
 
     results = None
 
@@ -697,45 +717,52 @@ def run_consistency_checks(input_pre_dir: Optional[str], input_post_dir: Optiona
 
     app.save_outputs_excel(output_dir, results, versioned_suffix=versioned_suffix)
 
-    print(f"\n{module_name} Outputs saved to: '{output_dir}'")
+    print(f"\n{module_name} Outputs saved to: '{pretty_path(output_dir)}'")
     if results:
         print(f"{module_name} Wrote CellRelation.xlsx and CellRelationDiscrepancies.xlsx (with Summary and details).")
     else:
         print(f"{module_name} Wrote CellRelation.xlsx (all tables). No comparison Excel because frequencies were not provided.")
 
 
+
 def run_initial_cleanup(input_dir: str, *_args) -> None:
     module_name = "[Initial Clean-Up]"
+    input_dir_fs = to_long_path(input_dir) if input_dir else input_dir
+
     print(f"{module_name} Running…")
-    print(f"{module_name} Input folder: '{input_dir}'")
+    print(f"{module_name} Input folder: '{pretty_path(input_dir_fs)}'")
 
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     versioned_suffix = f"{timestamp}_v{TOOL_VERSION}"
 
     app = InitialCleanUp()
-    out = app.run(input_dir, module_name=module_name, versioned_suffix=versioned_suffix)
+    out = app.run(input_dir_fs, module_name=module_name, versioned_suffix=versioned_suffix)
 
     if out:
-        print(f"{module_name} Done → '{out}'")
+        print(f"{module_name} Done → '{pretty_path(out)}'")
     else:
         print(f"{module_name} Module logic not yet implemented (under development). Exiting...")
 
 
+
 def run_final_cleanup(input_dir: str, *_args) -> None:
     module_name = "[Final Clean-Up]"
+    input_dir_fs = to_long_path(input_dir) if input_dir else input_dir
+
     print(f"{module_name} Running…")
-    print(f"{module_name} Input folder: '{input_dir}'")
+    print(f"{module_name} Input folder: '{pretty_path(input_dir_fs)}'")
 
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     versioned_suffix = f"{timestamp}_v{TOOL_VERSION}"
 
     app = FinalCleanUp()
-    out = app.run(input_dir, module_name=module_name, versioned_suffix=versioned_suffix)
+    out = app.run(input_dir_fs, module_name=module_name, versioned_suffix=versioned_suffix)
 
     if out:
-        print(f"{module_name} Done → '{out}'")
+        print(f"{module_name} Done → '{pretty_path(out)}'")
     else:
         print(f"{module_name} Module logic not yet implemented (under development). Exiting...")
+
 
 
 def resolve_module_callable(name: str):
