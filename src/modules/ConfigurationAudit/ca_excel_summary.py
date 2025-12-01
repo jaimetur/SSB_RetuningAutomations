@@ -149,6 +149,206 @@ def build_summary_audit(
             }
         )
 
+    # ----------------------------- NRCellDU (N77 detection + allowed SSB + LowMidBand/mmWave) -----------------------------
+    def process_nr_cell_du():
+        try:
+            if df_nr_cell_du is not None and not df_nr_cell_du.empty:
+                node_col = resolve_column_case_insensitive(df_nr_cell_du, ["NodeId"])
+                ssb_col = resolve_column_case_insensitive(df_nr_cell_du, ["ssbFrequency"])
+
+                if node_col and ssb_col:
+                    work = df_nr_cell_du[[node_col, ssb_col]].copy()
+
+                    # Ensure NodeId is treated consistently
+                    work[node_col] = work[node_col].astype(str).str.strip()
+
+                    # ------------------------------------------------------------------
+                    # LowMidBand / mmWave node classification
+                    #   - Cells with SSB in [2_000_000, 2_100_000] -> mmWave cells
+                    #   - Cells with any other SSB (valid int)     -> LowMidBand cells
+                    #   - A node "should" be only one type; if both appear, it is mixed.
+                    # ------------------------------------------------------------------
+                    work["_ssb_int_"] = work[ssb_col].map(parse_int_frequency)
+                    valid_rows = work.loc[work["_ssb_int_"].notna()].copy()
+
+                    if not valid_rows.empty:
+                        # Flag mmWave cells
+                        valid_rows["_is_mmwave_"] = valid_rows["_ssb_int_"].between(2_000_000, 2_100_000, inclusive="both")
+
+                        nodes_with_nr_cells = sorted(valid_rows[node_col].astype(str).unique())
+                        mmwave_nodes: list[str] = []
+                        lowmid_nodes: list[str] = []
+                        mixed_nodes: list[str] = []
+
+                        for node, series in valid_rows.groupby(node_col)["_is_mmwave_"]:
+                            has_mmwave = bool(series.any())
+                            has_lowmid = bool((~series).any())
+                            node_str = str(node)
+
+                            if has_mmwave and not has_lowmid:
+                                mmwave_nodes.append(node_str)
+                            elif has_lowmid and not has_mmwave:
+                                lowmid_nodes.append(node_str)
+                            elif has_mmwave and has_lowmid:
+                                mixed_nodes.append(node_str)
+
+                        # Summary rows for NRCellDU LowMidBand / mmWave node types
+                        add_row(
+                            "NRCellDU",
+                            "NR Frequency Audit",
+                            "NR Nodes with ssbFrequency (from NRCellDU table)",
+                            len(nodes_with_nr_cells),
+                            ", ".join(nodes_with_nr_cells),
+                        )
+                        add_row(
+                            "NRCellDU",
+                            "NR Frequency Audit",
+                            "NR LowMidBand Nodes (from NRCellDU table)",
+                            len(lowmid_nodes),
+                            ", ".join(sorted(lowmid_nodes)),
+                        )
+                        add_row(
+                            "NRCellDU",
+                            "NR Frequency Audit",
+                            "NR mmWave Nodes (from NRCellDU table)",
+                            len(mmwave_nodes),
+                            ", ".join(sorted(mmwave_nodes)),
+                        )
+
+                        # Optional inconsistency: nodes having both LowMidBand and mmWave cells
+                        if mixed_nodes:
+                            add_row(
+                                "NRCellDU",
+                                "NR Frequency Inconsistencies",
+                                "Nodes with both LowMidBand and mmWave NR cells (from NRCellDU table)",
+                                len(mixed_nodes),
+                                ", ".join(sorted(mixed_nodes)),
+                            )
+
+                    # ------------------------------------------------------------------
+                    # Existing N77 logic (kept as it was)
+                    # ------------------------------------------------------------------
+                    # N77 cells = those having at least one SSB in N77 band (646600-660000)
+                    mask_n77 = work[ssb_col].map(is_n77_from_string)
+                    n77_rows = work.loc[mask_n77].copy()
+
+                    if not n77_rows.empty:
+                        # NR Frequency Audit: NR nodes with SSB in N77 band (646600-660000) (from NRCellDU table)
+                        n77_nodes = sorted(n77_rows[node_col].astype(str).unique())
+
+                        add_row(
+                            "NRCellDU",
+                            "NR Frequency Audit",
+                            "NR nodes with SSB in N77 band (646600-660000) (from NRCellDU table)",
+                            len(n77_nodes),
+                            ", ".join(n77_nodes),
+                        )
+
+                        # NR nodes whose ALL N77 SSBs are in Pre-Retune allowed list (from NRCellDU table)
+                        if allowed_n77_ssb_pre_set:
+                            grouped_n77 = n77_rows.groupby(node_col)[ssb_col]
+
+                            def all_n77_ssb_in_pre(series: pd.Series) -> bool:
+                                freqs = series.map(parse_int_frequency)
+                                freqs_valid = {f for f in freqs if f is not None}
+                                # Node must have at least one valid N77 SSB and ALL of them in allowed_n77_ssb_pre_set
+                                return bool(freqs_valid) and freqs_valid.issubset(allowed_n77_ssb_pre_set)
+
+                            pre_nodes = sorted(str(node) for node, series in grouped_n77 if all_n77_ssb_in_pre(series))
+                            allowed_pre_str = ", ".join(str(v) for v in sorted(allowed_n77_ssb_pre_set))
+
+                            add_row(
+                                "NRCellDU",
+                                "NR Frequency Audit",
+                                f"NR nodes with N77 SSB in Pre-Retune allowed list ({allowed_pre_str}) (from NRCellDU table)",
+                                len(pre_nodes),
+                                ", ".join(pre_nodes),
+                            )
+
+                        # NR nodes whose ALL N77 SSBs are in Post-Retune allowed list (from NRCellDU table)
+                        if allowed_n77_ssb_post_set:
+                            grouped_n77 = n77_rows.groupby(node_col)[ssb_col]
+
+                            def all_n77_ssb_in_post(series: pd.Series) -> bool:
+                                freqs = series.map(parse_int_frequency)
+                                freqs_valid = {f for f in freqs if f is not None}
+                                # Node must have at least one valid N77 SSB and ALL of them in allowed_n77_ssb_post_set
+                                return bool(freqs_valid) and freqs_valid.issubset(allowed_n77_ssb_post_set)
+
+                            post_nodes = sorted(str(node) for node, series in grouped_n77 if all_n77_ssb_in_post(series))
+                            allowed_post_str = ", ".join(str(v) for v in sorted(allowed_n77_ssb_post_set))
+
+                            add_row(
+                                "NRCellDU",
+                                "NR Frequency Audit",
+                                f"NR nodes with N77 SSB in Post-Retune allowed list ({allowed_post_str}) (from NRCellDU table)",
+                                len(post_nodes),
+                                ", ".join(post_nodes),
+                            )
+
+                        # NR Frequency Inconsistencies: NR SSB not in pre nor post allowed lists
+                        if allowed_n77_ssb_pre_set or allowed_n77_ssb_post_set:
+                            allowed_union = set(allowed_n77_ssb_pre_set) | set(allowed_n77_ssb_post_set)
+
+                            def _is_not_in_union_ssb(v: object) -> bool:
+                                freq = parse_int_frequency(v)
+                                return freq is not None and freq not in allowed_union
+
+                            bad_rows = n77_rows.loc[n77_rows[ssb_col].map(_is_not_in_union_ssb)]
+
+                            # Unique nodes with at least one SSB not in pre/post allowed lists
+                            bad_nodes = sorted(bad_rows[node_col].astype(str).unique())
+
+                            # Build a unique (NodeId, SSB) list to avoid duplicated lines in ExtraInfo
+                            unique_pairs = sorted(
+                                {(str(r[node_col]).strip(), str(r[ssb_col]).strip()) for _, r in bad_rows.iterrows()}
+                            )
+
+                            extra = "; ".join(f"{node}: {ssb}" for node, ssb in unique_pairs)
+
+                            add_row(
+                                "NRCellDU",
+                                "NR Frequency Inconsistencies",
+                                "NR nodes with N77 SSB not in Pre/Post Retune allowed lists (from NRCellDU table)",
+                                len(bad_nodes),
+                                extra,
+                            )
+                        else:
+                            add_row(
+                                "NRCellDU",
+                                "NR Frequency Inconsistencies",
+                                "NR nodes with N77 SSB not in Pre/Post Retune allowed lists (no pre/post allowed lists configured) (from NRCellDU table)",
+                                "N/A",
+                            )
+                    else:
+                        add_row(
+                            "NRCellDU",
+                            "NR Frequency Audit",
+                            "NRCellDU table has no N77 rows",
+                            0,
+                        )
+                else:
+                    add_row(
+                        "NRCellDU",
+                        "NR Frequency Audit",
+                        "NRCellDU table present but required columns missing",
+                        "N/A",
+                    )
+            else:
+                add_row(
+                    "NRCellDU",
+                    "NR Frequency Audit",
+                    "NRCellDU table",
+                    "Table not found or empty",
+                )
+        except Exception as ex:
+            add_row(
+                "NRCellDU",
+                "NR Frequency Audit",
+                "Error while checking NRCellDU",
+                f"ERROR: {ex}",
+            )
+
     # ----------------------------- NRFrequency (OLD/NEW ARFCN on N77 rows) -----------------------------
     def process_nr_freq():
         try:
@@ -715,143 +915,6 @@ def build_summary_audit(
                 f"ERROR: {ex}",
             )
 
-    # ----------------------------- NRCellDU (N77 detection + allowed SSB) -----------------------------
-    def process_nr_cell_du():
-        try:
-            if df_nr_cell_du is not None and not df_nr_cell_du.empty:
-                node_col = resolve_column_case_insensitive(df_nr_cell_du, ["NodeId"])
-                ssb_col = resolve_column_case_insensitive(df_nr_cell_du, ["ssbFrequency"])
-
-                if node_col and ssb_col:
-                    work = df_nr_cell_du[[node_col, ssb_col]].copy()
-
-                    # Ensure NodeId is treated consistently
-                    work[node_col] = work[node_col].astype(str).str.strip()
-
-                    # N77 cells = those having at least one SSB in N77 band (646600-660000)
-                    mask_n77 = work[ssb_col].map(is_n77_from_string)
-                    n77_rows = work.loc[mask_n77].copy()
-
-                    if not n77_rows.empty:
-                        # NR Frequency Audit: NR nodes with SSB in N77 band (646600-660000) (from NRCellDU table)
-                        n77_nodes = sorted(n77_rows[node_col].astype(str).unique())
-
-                        add_row(
-                            "NRCellDU",
-                            "NR Frequency Audit",
-                            "NR nodes with SSB in N77 band (646600-660000) (from NRCellDU table)",
-                            len(n77_nodes),
-                            ", ".join(n77_nodes),
-                        )
-
-                        # NR nodes whose ALL N77 SSBs are in Pre-Retune allowed list (from NRCellDU table)
-                        if allowed_n77_ssb_pre_set:
-                            grouped_n77 = n77_rows.groupby(node_col)[ssb_col]
-
-                            def all_n77_ssb_in_pre(series: pd.Series) -> bool:
-                                freqs = series.map(parse_int_frequency)
-                                freqs_valid = {f for f in freqs if f is not None}
-                                # Node must have at least one valid N77 SSB and ALL of them in allowed_n77_ssb_pre_set
-                                return bool(freqs_valid) and freqs_valid.issubset(allowed_n77_ssb_pre_set)
-
-                            pre_nodes = sorted(
-                                str(node) for node, series in grouped_n77 if all_n77_ssb_in_pre(series)
-                            )
-                            allowed_pre_str = ", ".join(str(v) for v in sorted(allowed_n77_ssb_pre_set))
-
-                            add_row(
-                                "NRCellDU",
-                                "NR Frequency Audit",
-                                f"NR nodes with N77 SSB in Pre-Retune allowed list ({allowed_pre_str}) (from NRCellDU table)",
-                                len(pre_nodes),
-                                ", ".join(pre_nodes),
-                            )
-
-                        # NR nodes whose ALL N77 SSBs are in Post-Retune allowed list (from NRCellDU table)
-                        if allowed_n77_ssb_post_set:
-                            grouped_n77 = n77_rows.groupby(node_col)[ssb_col]
-
-                            def all_n77_ssb_in_post(series: pd.Series) -> bool:
-                                freqs = series.map(parse_int_frequency)
-                                freqs_valid = {f for f in freqs if f is not None}
-                                # Node must have at least one valid N77 SSB and ALL of them in allowed_n77_ssb_post_set
-                                return bool(freqs_valid) and freqs_valid.issubset(allowed_n77_ssb_post_set)
-
-                            post_nodes = sorted(
-                                str(node) for node, series in grouped_n77 if all_n77_ssb_in_post(series)
-                            )
-                            allowed_post_str = ", ".join(str(v) for v in sorted(allowed_n77_ssb_post_set))
-
-                            add_row(
-                                "NRCellDU",
-                                "NR Frequency Audit",
-                                f"NR nodes with N77 SSB in Post-Retune allowed list ({allowed_post_str}) (from NRCellDU table)",
-                                len(post_nodes),
-                                ", ".join(post_nodes),
-                            )
-
-                        # NR Frequency Inconsistencies: NR SSB not in pre nor post allowed lists
-                        if allowed_n77_ssb_pre_set or allowed_n77_ssb_post_set:
-                            allowed_union = set(allowed_n77_ssb_pre_set) | set(allowed_n77_ssb_post_set)
-
-                            def _is_not_in_union_ssb(v: object) -> bool:
-                                freq = parse_int_frequency(v)
-                                return freq is not None and freq not in allowed_union
-
-                            bad_rows = n77_rows.loc[n77_rows[ssb_col].map(_is_not_in_union_ssb)]
-
-                            # Unique nodes with at least one SSB not in pre/post allowed lists
-                            bad_nodes = sorted(bad_rows[node_col].astype(str).unique())
-
-                            # Build a unique (NodeId, SSB) list to avoid duplicated lines in ExtraInfo
-                            unique_pairs = sorted(
-                                {(str(r[node_col]).strip(), str(r[ssb_col]).strip()) for _, r in bad_rows.iterrows()}
-                            )
-
-                            extra = "; ".join(f"{node}: {ssb}" for node, ssb in unique_pairs)
-
-                            add_row(
-                                "NRCellDU",
-                                "NR Frequency Inconsistencies",
-                                "NR nodes with N77 SSB not in Pre/Post Retune allowed lists (from NRCellDU table)",
-                                len(bad_nodes),
-                                extra,
-                            )
-                        else:
-                            add_row(
-                                "NRCellDU",
-                                "NR Frequency Inconsistencies",
-                                "NR nodes with N77 SSB not in Pre/Post Retune allowed lists (no pre/post allowed lists configured) (from NRCellDU table)",
-                                "N/A",
-                            )
-                    else:
-                        add_row(
-                            "NRCellDU",
-                            "NR Frequency Audit",
-                            "NRCellDU table has no N77 rows",
-                            0,
-                        )
-                else:
-                    add_row(
-                        "NRCellDU",
-                        "NR Frequency Audit",
-                        "NRCellDU table present but required columns missing",
-                        "N/A",
-                    )
-            else:
-                add_row(
-                    "NRCellDU",
-                    "NR Frequency Audit",
-                    "NRCellDU table",
-                    "Table not found or empty",
-                )
-        except Exception as ex:
-            add_row(
-                "NRCellDU",
-                "NR Frequency Audit",
-                "Error while checking NRCellDU",
-                f"ERROR: {ex}",
-            )
 
     # ------------------------------------- NRCellRelations --------------------------------------------
     def process_nr_cell_relation():
@@ -930,7 +993,7 @@ def build_summary_audit(
                 f"ERROR: {ex}",
             )
 
-    # ----------------------------- LTE GUtranSyncSignalFrequency (OLD/NEW ARFCN) -----------------------------
+    # ----------------------------- LTE GUtranSyncSignalFrequency (OLD/NEW ARFCN + LowMidBand/mmWave) -----------------------------
     def process_gu_sync_signal_freq():
         try:
             if df_gu_sync_signal_freq is not None and not df_gu_sync_signal_freq.empty:
@@ -939,10 +1002,79 @@ def build_summary_audit(
 
                 if node_col and arfcn_col:
                     work = df_gu_sync_signal_freq[[node_col, arfcn_col]].copy()
-                    work[node_col] = work[node_col].astype(str)
+                    work[node_col] = work[node_col].astype(str).str.strip()
 
-                    # LTE nodes with any GUtranSyncSignalFrequency defined (from GUtranSyncSignalFrequency table)
-                    all_nodes_with_freq = sorted(work.loc[work[arfcn_col].map(has_value), node_col].astype(str).unique())
+                    # ------------------------------------------------------------------
+                    # LowMidBand / mmWave node classification on LTE side
+                    #   - Rows with ARFCN in [2_000_000, 2_100_000] -> mmWave
+                    #   - Rows with any other valid ARFCN          -> LowMidBand
+                    #   - A node "should" be only one type; if both appear, it is mixed.
+                    # ------------------------------------------------------------------
+                    work["_arfcn_int_"] = work[arfcn_col].map(parse_int_frequency)
+                    valid_rows = work.loc[work["_arfcn_int_"].notna()].copy()
+
+                    if not valid_rows.empty:
+                        valid_rows["_is_mmwave_"] = valid_rows["_arfcn_int_"].between(2_000_000, 2_100_000, inclusive="both")
+
+                        nodes_with_lte_sync = sorted(valid_rows[node_col].astype(str).unique())
+                        mmwave_nodes: list[str] = []
+                        lowmid_nodes: list[str] = []
+                        mixed_nodes: list[str] = []
+
+                        for node, series in valid_rows.groupby(node_col)["_is_mmwave_"]:
+                            has_mmwave = bool(series.any())
+                            has_lowmid = bool((~series).any())
+                            node_str = str(node)
+
+                            if has_mmwave and not has_lowmid:
+                                mmwave_nodes.append(node_str)
+                            elif has_lowmid and not has_mmwave:
+                                lowmid_nodes.append(node_str)
+                            elif has_mmwave and has_lowmid:
+                                mixed_nodes.append(node_str)
+
+                        # Summary rows for LTE LowMidBand / mmWave node types
+                        add_row(
+                            "GUtranSyncSignalFrequency",
+                            "LTE Frequency Audit",
+                            "LTE Nodes with GUtranSyncSignalFrequency (from GUtranSyncSignalFrequency table)",
+                            len(nodes_with_lte_sync),
+                            ", ".join(nodes_with_lte_sync),
+                        )
+                        add_row(
+                            "GUtranSyncSignalFrequency",
+                            "LTE Frequency Audit",
+                            "LTE LowMidBand Nodes (from GUtranSyncSignalFrequency table)",
+                            len(lowmid_nodes),
+                            ", ".join(sorted(lowmid_nodes)),
+                        )
+                        add_row(
+                            "GUtranSyncSignalFrequency",
+                            "LTE Frequency Audit",
+                            "LTE mmWave Nodes (from GUtranSyncSignalFrequency table)",
+                            len(mmwave_nodes),
+                            ", ".join(sorted(mmwave_nodes)),
+                        )
+
+                        # Optional inconsistency: nodes having both LowMidBand and mmWave ARFCNs
+                        if mixed_nodes:
+                            add_row(
+                                "GUtranSyncSignalFrequency",
+                                "LTE Frequency Inconsistencies",
+                                "Nodes with both LowMidBand and mmWave GUtranSyncSignalFrequency ARFCNs (from GUtranSyncSignalFrequency table)",
+                                len(mixed_nodes),
+                                ", ".join(sorted(mixed_nodes)),
+                            )
+
+                    # ------------------------------------------------------------------
+                    # Existing logic: old/new SSB checks on LTE side
+                    # ------------------------------------------------------------------
+                    grouped = work.groupby(node_col)[arfcn_col]
+
+                    # LTE nodes with GUtranSyncSignalFrequency defined (from GUtranSyncSignalFrequency table)
+                    all_nodes_with_freq = sorted(
+                        work.loc[work[arfcn_col].map(has_value), node_col].astype(str).unique()
+                    )
                     add_row(
                         "GUtranSyncSignalFrequency",
                         "LTE Frequency Audit",
@@ -950,8 +1082,6 @@ def build_summary_audit(
                         len(all_nodes_with_freq),
                         ", ".join(all_nodes_with_freq),
                     )
-
-                    grouped = work.groupby(node_col)[arfcn_col]
 
                     # LTE Frequency Audit: LTE nodes with the old SSB (from GUtranSyncSignalFrequency table)
                     old_nodes = sorted(str(node) for node, series in grouped if any(is_old(v) for v in series))
@@ -1858,6 +1988,10 @@ def build_summary_audit(
             # We now order only by (Category, SubCategory).
             # Inside each group, rows keep the insertion order.
             desired_order = [
+                # NR Frequency NRCellDU
+                ("NRCellDU", "NR Frequency Audit"),
+                ("NRCellDU", "NR Frequency Inconsistencies"),
+
                 # NR Frequency NRFrequency
                 ("NRFrequency", "NR Frequency Audit"),
                 ("NRFrequency", "NR Frequency Inconsistencies"),
@@ -1873,10 +2007,6 @@ def build_summary_audit(
                 # NR Frequency NRSectorCarrier
                 ("NRSectorCarrier", "NR Frequency Audit"),
                 ("NRSectorCarrier", "NR Frequency Inconsistencies"),
-
-                # NR Frequency NRCellDU
-                ("NRCellDU", "NR Frequency Audit"),
-                ("NRCellDU", "NR Frequency Inconsistencies"),
 
                 # LTE Frequency GUtranSyncSignalFrequency
                 ("GUtranSyncSignalFrequency", "LTE Frequency Audit"),

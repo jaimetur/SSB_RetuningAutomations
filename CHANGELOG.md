@@ -13,6 +13,7 @@
   
   - #### 🌟 New Features:
     - Added Correction Commands on GU_Disc and NR_Disc tables.
+    - NR Nodes classification MACRO/mmWave (#35)
 
   - #### 🚀 Enhancements:
     - Created separated subfolders for each type of Correction Commands.

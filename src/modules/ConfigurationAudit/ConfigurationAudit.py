@@ -262,6 +262,58 @@ class ConfigurationAudit:
         # =====================================================================
         #        PHASE 4.1: Prepare pivot tables for extra summary sheets
         # =====================================================================
+        # Local Helper to add columns LowMidBand/mmWave to Summary NR_CellDU
+        def add_lowmid_mmwave_to_nr_celldu(pivot_df: pd.DataFrame) -> pd.DataFrame:
+            """
+            Add LowMidBand and mmWave columns to Summary NR_CellDU pivot.
+
+            Logic:
+              - Columns whose header (int) is in [2_000_000, 2_100_000] are mmWave SSBs.
+              - Other numeric SSB columns are LowMidBand SSBs.
+              - For each NodeId we count how many cells it has for each band.
+              - Columns are inserted just before 'Total'.
+            """
+            if pivot_df is None or pivot_df.empty:
+                return pivot_df
+
+            cols = list(pivot_df.columns)
+            base_cols = {"NodeId", "Total", "LowMidBand", "mmWave"}
+
+            ssb_cols: list[str] = [c for c in cols if c not in base_cols]
+
+            mmwave_cols: list[str] = []
+            lowmid_cols: list[str] = []
+            for col in ssb_cols:
+                try:
+                    ssb_val = int(str(col))
+                except ValueError:
+                    # Non-numeric headers are ignored
+                    continue
+                if 2_000_000 <= ssb_val <= 2_100_000:
+                    mmwave_cols.append(col)
+                else:
+                    lowmid_cols.append(col)
+
+            if lowmid_cols:
+                lowmid_series = pivot_df[lowmid_cols].sum(axis=1).astype(int)
+            else:
+                lowmid_series = pd.Series(0, index=pivot_df.index, dtype=int)
+
+            if mmwave_cols:
+                mmwave_series = pivot_df[mmwave_cols].sum(axis=1).astype(int)
+            else:
+                mmwave_series = pd.Series(0, index=pivot_df.index, dtype=int)
+
+            if "Total" in pivot_df.columns:
+                total_idx = pivot_df.columns.get_loc("Total")
+            else:
+                total_idx = len(pivot_df.columns)
+
+            pivot_df.insert(total_idx, "LowMidBand", lowmid_series)
+            pivot_df.insert(total_idx + 1, "mmWave", mmwave_series)
+
+            return pivot_df
+
         # Collect dataframes for the specific MOs we need
         mo_collectors: Dict[str, List[pd.DataFrame]] = {
             "NRFrequency": [],
@@ -294,6 +346,7 @@ class ConfigurationAudit:
             margins_name="Total",
         )
         pivot_nr_cells_du = apply_frequency_column_filter(pivot_nr_cells_du, freq_filters)
+        pivot_nr_cells_du = add_lowmid_mmwave_to_nr_celldu(pivot_nr_cells_du)
 
         # Pivot NRSectorCarrier
         df_nr_sector_carrier = concat_or_empty(mo_collectors["NRSectorCarrier"])
@@ -341,6 +394,7 @@ class ConfigurationAudit:
             margins_name="Total",
         )
         pivot_gu_sync_signal_freq = apply_frequency_column_filter(pivot_gu_sync_signal_freq, freq_filters)
+        pivot_gu_sync_signal_freq = add_lowmid_mmwave_to_nr_celldu(pivot_gu_sync_signal_freq)
 
         # Pivot GUtranFreqRelation
         df_gu_freq_rel = concat_or_empty(mo_collectors["GUtranFreqRelation"])
