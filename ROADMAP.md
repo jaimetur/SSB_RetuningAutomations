@@ -8,7 +8,8 @@
 
 - ### TODO:
   - #### 🌟 New Features:
-    - Create logic for Module '3. Clean-Up'
+    - Create logic for Module '3. Initial Clean-Up'
+    - Create logic for Module '4. Final Clean-Up'
     - Generate output commands to run clean-up
 
   - #### 🚀 Enhancements:
