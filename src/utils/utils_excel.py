@@ -48,12 +48,13 @@ def apply_alternating_category_row_fills(
 
     Additionally:
     - Any row whose SubCategory contains the string "inconsist" (case-insensitive)
-      will have its font colored red.
+      will have its font colored red if Value > 0, or dark gray otherwise.
     """
 
     # Find the Category column index based on the header name
     category_col_idx: int | None = None
     subcategory_col_idx: int | None = None
+    value_col_idx: int | None = None
 
     for cell in ws[header_row]:
         header_value = str(cell.value).strip() if cell.value is not None else ""
@@ -63,6 +64,8 @@ def apply_alternating_category_row_fills(
             category_col_idx = cell.column
         elif header_lower == "subcategory":
             subcategory_col_idx = cell.column
+        elif header_lower == "value":
+            value_col_idx = cell.column
 
     if category_col_idx is None:
         # Category column not found, nothing to do
@@ -76,8 +79,9 @@ def apply_alternating_category_row_fills(
     fill1 = PatternFill(fill_type="solid", fgColor=fill_color_1)
     fill2 = PatternFill(fill_type="solid", fgColor=fill_color_2)
 
-    # Red font for inconsistency rows
-    red_font = Font(color="FF0000")
+    # Fonts for inconsistency rows
+    red_font = Font(color="FF0000")      # Value > 0
+    gray_font = Font(color="A6A6A6")     # Value <= 0 or non-numeric
 
     last_category = None
     use_first = True
@@ -101,16 +105,32 @@ def apply_alternating_category_row_fills(
         is_inconsistency_row = False
         if subcategory_col_idx is not None:
             sub_val = ws.cell(row=row_idx, column=subcategory_col_idx).value
-            if sub_val is not None:
-                if "inconsist" in str(sub_val).strip().lower():
-                    is_inconsistency_row = True
+            if sub_val is not None and "inconsist" in str(sub_val).strip().lower():
+                is_inconsistency_row = True
 
-        # Apply background color and (optionally) red font to the entire row
+        # Determine if the inconsistency has Value > 0
+        is_positive_inconsistency = False
+        if is_inconsistency_row and value_col_idx is not None:
+            value_cell = ws.cell(row=row_idx, column=value_col_idx).value
+            num_val = None
+            if isinstance(value_cell, (int, float)):
+                num_val = float(value_cell)
+            else:
+                try:
+                    if value_cell is not None:
+                        num_val = float(str(value_cell).strip())
+                except Exception:
+                    num_val = None
+            if num_val is not None and num_val > 0:
+                is_positive_inconsistency = True
+
+        # Apply background color and (optionally) red/gray font to the entire row
         for col_idx in range(1, ws.max_column + 1):
             cell = ws.cell(row=row_idx, column=col_idx)
             cell.fill = current_fill
             if is_inconsistency_row:
-                cell.font = red_font
+                cell.font = red_font if is_positive_inconsistency else gray_font
+
 
 def color_summary_tabs(writer, prefix: str = "Summary", rgb_hex: str = "00B050") -> None:
     """

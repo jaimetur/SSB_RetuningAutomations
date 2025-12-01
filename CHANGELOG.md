@@ -17,6 +17,7 @@
 
   - #### 🚀 Enhancements:
     - Created separated subfolders for each type of Correction Commands.
+    - Apply red color font only to Inconsistency rows whose value is higher than zero.
   
   - #### 🐛 Bug fixes:
     - Fixed abnormal prefix for long paths in Windows.
