@@ -417,8 +417,14 @@ class ConsistencyChecks:
                     row[c] = pre_common.loc[k, c] if c in pre_common.columns else ""
                 row["Date_Pre"] = pre_slim.loc[k, "Date"] if "Date" in pre_slim.columns else ""
                 row["Date_Post"] = post_slim.loc[k, "Date"] if "Date" in post_slim.columns else ""
-                row["Freq_Pre"] = pre_slim.get(freq_col, pd.Series("", index=pre_slim.index)).loc[k] if k in pre_slim.index else ""
-                row["Freq_Post"] = post_slim.get(freq_col, pd.Series("", index=post_slim.index)).loc[k] if k in post_slim.index else ""
+
+                # For NR, store only the base frequency (e.g. 648672) instead of the full ref string
+                if table_name == "NRCellRelation":
+                    row["Freq_Pre"] = pre_freq_base.get(k, "")
+                    row["Freq_Post"] = post_freq_base.get(k, "")
+                else:
+                    row["Freq_Pre"] = pre_slim.get(freq_col, pd.Series("", index=pre_slim.index)).loc[k] if k in pre_slim.index else ""
+                    row["Freq_Post"] = post_slim.get(freq_col, pd.Series("", index=post_slim.index)).loc[k] if k in post_slim.index else ""
 
                 required_cols = (
                     ["NodeId", "EUtranCellFDDId", "GUtranFreqRelationId", "GUtranCellRelationId"]
