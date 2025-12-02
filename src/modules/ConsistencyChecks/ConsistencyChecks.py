@@ -580,7 +580,7 @@ class ConsistencyChecks:
             print(f"{module_name} - New Relations in Post: {len(new_in_post_clean)}")
             print(f"{module_name} - Missing Relations in Post: {len(missing_in_post_clean)}")
 
-            # DEBUG: print the relation names that match the pattern and will be excluded
+            # Print the relation names that match the pattern and will be excluded
             if rel_series is not None and not rel_series.empty and pattern_nodes:
                 to_skip_relations = rel_series[rel_series.str.contains(pattern_nodes, regex=True, na=False)]
                 if not to_skip_relations.empty:
