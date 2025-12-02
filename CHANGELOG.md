@@ -12,8 +12,10 @@
   - #### 🚨 Breaking Changes:
   
   - #### 🌟 New Features:
+    - Excluded Relations Discrepancies on those relations towards nodes that have not been retuned (buffer) on `ConsistencyCheck` module.
 
   - #### 🚀 Enhancements:
+    - Fixed `Freq_Pre/Freq_Post` values in `NR_Disc` table on `ConsistencyCheck` module.
   
   - #### 🐛 Bug fixes:
     - Removed Duplicated check in `GUtranSyncSignalFrequency` Table.
