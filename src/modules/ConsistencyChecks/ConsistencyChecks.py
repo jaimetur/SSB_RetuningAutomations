@@ -263,7 +263,7 @@ class ConsistencyChecks:
                     full_node_names.add(token.strip())
 
         if full_node_names:
-            print(f"{module_name} [INFO] Nodes without retuning and belonging to buffer) (destination of relations to be skipped from Discrepancies): {sorted(full_node_names)}")
+            print(f"{module_name} [INFO] Nodes without retuning and belonging to buffer (destination of relations to be skipped from Discrepancies): {sorted(full_node_names)}")
         if nodes:
             print(f"{module_name} [INFO] Nodes without retuning (numeric identifiers): {sorted(nodes)}")
 
@@ -373,21 +373,28 @@ class ConsistencyChecks:
                 for k in pre_common.index[diffs]:
                     diff_cols_per_row[k].append(c)
 
-            # NEW: optionally exclude discrepancies for nodes that have not completed the retuning
+            # NEW: optionally exclude discrepancies for relations whose destination nodes did not complete the retuning
+            rel_series = None
+            pattern_nodes = None
             if nodes_without_retune_ids and table_name in ("GUtranCellRelation", "NRCellRelation"):
                 relation_col = "GUtranCellRelationId" if table_name == "GUtranCellRelation" else "NRCellRelationId"
+
+                # Ensure the relation column exists either in PRE or POST
                 if relation_col in post_common.columns or relation_col in pre_common.columns:
+                    # Choose POST table if available (latest data), otherwise PRE
                     src_rel_df = post_common if relation_col in post_common.columns else pre_common
-                    rel_series = src_rel_df[relation_col].reindex(pre_common.index)
-                    rel_series = rel_series.astype(str).fillna("")
+                    # Convert the relation column to a clean string series
+                    rel_series = src_rel_df[relation_col].reindex(pre_common.index).astype(str).fillna("")
                     try:
-                        pattern_nodes = "(" + "|".join(re.escape(x) for x in sorted(nodes_without_retune_ids)) + ")"
+                        # Build a substring-matching pattern for all numeric node identifiers
+                        pattern_nodes = "|".join(re.escape(x) for x in sorted(nodes_without_retune_ids))
+                        # Build the skip mask: all rows whose relation contains a non-retuned node id
                         skip_mask = rel_series.str.contains(pattern_nodes, regex=True, na=False)
-                        # Set masks to False for rows belonging to nodes without retuning
+                        # Remove those rows from discrepancy masks (parameter and frequency differences)
                         any_diff_mask = any_diff_mask & ~skip_mask
                         freq_rule_mask = freq_rule_mask & ~skip_mask
                     except re.error:
-                        # In case of an invalid regex, keep original masks untouched
+                        # If regex construction fails (rare), do not modify any masks
                         pass
 
             combined_mask = (freq_rule_mask | any_diff_mask).reindex(pre_common.index, fill_value=False)
@@ -572,6 +579,13 @@ class ConsistencyChecks:
             print(f"{module_name} - Discrepancies: {len(discrepancies)}")
             print(f"{module_name} - New Relations in Post: {len(new_in_post_clean)}")
             print(f"{module_name} - Missing Relations in Post: {len(missing_in_post_clean)}")
+
+            # DEBUG: print the relation names that match the pattern and will be excluded
+            if rel_series is not None and not rel_series.empty and pattern_nodes:
+                to_skip_relations = rel_series[rel_series.str.contains(pattern_nodes, regex=True, na=False)]
+                if not to_skip_relations.empty:
+                    skipped_count = len(to_skip_relations)
+                    print(f"{module_name} - Relations skipped due to destination node being in the no-retuning buffer ({table_name}): {skipped_count} -> {sorted(to_skip_relations.unique())}")
 
         return results
 
