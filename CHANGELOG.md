@@ -16,7 +16,7 @@
   - #### 🚀 Enhancements:
   
   - #### 🐛 Bug fixes:
-    - Removed Duplicated check in `GUtranSyncSignalFrequency` Table
+    - Removed Duplicated check in `GUtranSyncSignalFrequency` Table.
     - Minor bug fixing.
     
   - #### 📚 Documentation: 
