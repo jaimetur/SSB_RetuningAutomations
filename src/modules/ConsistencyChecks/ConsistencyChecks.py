@@ -197,12 +197,87 @@ class ConsistencyChecks:
 
             return self.tables
 
+    # ----------------------------- LOAD NODES WITHOut RETUNNING ----------------------------- #
+    def load_nodes_without_retune(self, audit_post_excel: Optional[str], module_name: Optional[str] = "") -> set[str]:
+        """
+        Read SummaryAudit sheet from POST Configuration Audit and extract node numeric identifiers
+        for nodes that have not completed the retuning.
+
+        It looks for rows with:
+          - SubCategory == 'NRCellDU'
+          - Metric containing 'NR nodes with N77 SSB in Pre-Retune allowed list'
+        and then parses the ExtraInfo field assuming it contains a comma-separated list of node names.
+
+        From each node name it extracts the leading numeric identifier (digits at the beginning).
+        Additionally, it prints the full node names that are being considered as "no retuning" nodes.
+        """
+        nodes: set[str] = set()
+        if not audit_post_excel:
+            return nodes
+
+        try:
+            audit_path = to_long_path(audit_post_excel)
+        except Exception:
+            audit_path = audit_post_excel
+
+        if not os.path.isfile(audit_path):
+            print(f"{module_name} [WARNING] POST audit Excel not found: '{audit_post_excel}'. Skipping node exclusion based on SummaryAudit.")
+            return nodes
+
+        try:
+            df = pd.read_excel(audit_path, sheet_name="SummaryAudit")
+        except Exception as e:
+            print(f"{module_name} [WARNING] Could not read 'SummaryAudit' sheet from POST audit Excel: {e}. Skipping node exclusion based on SummaryAudit.")
+            return nodes
+
+        required_cols = {"Category", "SubCategory", "Metric", "ExtraInfo"}
+        if not required_cols.issubset(df.columns):
+            print(f"{module_name} [WARNING] 'SummaryAudit' sheet does not contain required columns {required_cols}. Skipping node exclusion based on SummaryAudit.")
+            return nodes
+
+        sub = df.copy()
+        sub["Category"] = sub["Category"].astype(str).str.strip()
+        sub["Metric"] = sub["Metric"].astype(str)
+        sub["ExtraInfo"] = sub["ExtraInfo"].astype(str)
+
+        mask = (sub["Category"] == "NRCellDU") & sub["Metric"].str.contains(
+            "NR nodes with N77 SSB in Pre-Retune allowed list", case=False, na=False
+        )
+        rows = sub.loc[mask]
+        if rows.empty:
+            return nodes
+
+        pattern_id = re.compile(r"^\s*(\d+)")
+        full_node_names: set[str] = set()  # NEW: keep full node names (as they appear in ExtraInfo)
+
+        for extra in rows["ExtraInfo"]:
+            if not extra:
+                continue
+            parts = [p.strip() for p in str(extra).split(",") if p.strip()]
+            for token in parts:
+                m = pattern_id.match(token)
+                if m:
+                    # Store numeric identifier
+                    nodes.add(m.group(1))
+                    # Store full node name as destination of the relation being discarded
+                    full_node_names.add(token.strip())
+
+        if full_node_names:
+            print(f"{module_name} [INFO] Nodes without retuning and belonging to buffer) (destination of relations to be skipped from Discrepancies): {sorted(full_node_names)}")
+        if nodes:
+            print(f"{module_name} [INFO] Nodes without retuning (numeric identifiers): {sorted(nodes)}")
+
+        return nodes
+
     # ----------------------------- COMPARISON ----------------------------- #
-    def comparePrePost(self, freq_before: str, freq_after: str, module_name: Optional[str] = "") -> Dict[str, Dict[str, pd.DataFrame]]:
+    def comparePrePost(self, freq_before: str, freq_after: str, module_name: Optional[str] = "", audit_post_excel: Optional[str] = None) -> Dict[str, Dict[str, pd.DataFrame]]:
         if not self.tables:
             # Soft fail: do not raise, just inform and return empty results
             print(f"{module_name} [WARNING] No tables loaded. Skipping comparison (likely missing Pre/Post folders).")
             return {}
+
+        # NEW: load node numeric identifiers from POST Configuration Audit (SummaryAudit sheet)
+        nodes_without_retune_ids = self.load_nodes_without_retune(audit_post_excel, module_name)
 
         results: Dict[str, Dict[str, pd.DataFrame]] = {}
 
@@ -297,6 +372,23 @@ class ConsistencyChecks:
                 any_diff_mask = any_diff_mask | diffs
                 for k in pre_common.index[diffs]:
                     diff_cols_per_row[k].append(c)
+
+            # NEW: optionally exclude discrepancies for nodes that have not completed the retuning
+            if nodes_without_retune_ids and table_name in ("GUtranCellRelation", "NRCellRelation"):
+                relation_col = "GUtranCellRelationId" if table_name == "GUtranCellRelation" else "NRCellRelationId"
+                if relation_col in post_common.columns or relation_col in pre_common.columns:
+                    src_rel_df = post_common if relation_col in post_common.columns else pre_common
+                    rel_series = src_rel_df[relation_col].reindex(pre_common.index)
+                    rel_series = rel_series.astype(str).fillna("")
+                    try:
+                        pattern_nodes = "(" + "|".join(re.escape(x) for x in sorted(nodes_without_retune_ids)) + ")"
+                        skip_mask = rel_series.str.contains(pattern_nodes, regex=True, na=False)
+                        # Set masks to False for rows belonging to nodes without retuning
+                        any_diff_mask = any_diff_mask & ~skip_mask
+                        freq_rule_mask = freq_rule_mask & ~skip_mask
+                    except re.error:
+                        # In case of an invalid regex, keep original masks untouched
+                        pass
 
             combined_mask = (freq_rule_mask | any_diff_mask).reindex(pre_common.index, fill_value=False)
             discrepancy_keys = [k for k, m in zip(pre_common.index, combined_mask) if m and k in set(common_idx)]

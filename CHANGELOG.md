@@ -12,6 +12,7 @@
   - #### 🚨 Breaking Changes:
   
   - #### 🌟 New Features:
+    - Excluded Relations Discrepancies on those relations towards nodes that have not been retuned (buffer) on `ConsistencyCheck` module.
 
   - #### 🚀 Enhancements:
   

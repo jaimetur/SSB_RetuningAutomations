@@ -482,7 +482,7 @@ def run_configuration_audit(
     allowed_n77_arfcn_pre_csv: Optional[str] = None,
     allowed_n77_ssb_post_csv: Optional[str] = None,
     allowed_n77_arfcn_post_csv: Optional[str] = None,
-) -> None:
+) -> Optional[str]:
 
     module_name = "[Configuration Audit]"
     print(f"{module_name} Running…")
@@ -623,19 +623,37 @@ def run_configuration_audit(
     else:
         print(f"{module_name}  No logs found or nothing written.")
 
+    # <<< NEW: return main Excel path so it can be used by ConsistencyChecks >>>
+    return out
 
 
-
-def run_consistency_checks(input_pre_dir: Optional[str], input_post_dir: Optional[str],
-                           n77_ssb_pre: Optional[str], n77_ssb_post: Optional[str]) -> None:
+def run_consistency_checks(
+    input_pre_dir: Optional[str],
+    input_post_dir: Optional[str],
+    n77_ssb_pre: Optional[str],
+    n77_ssb_post: Optional[str],
+    n77b_ssb: Optional[str] = None,
+    freq_filters_csv: str = "",
+    allowed_n77_ssb_pre_csv: Optional[str] = None,
+    allowed_n77_arfcn_pre_csv: Optional[str] = None,
+    allowed_n77_ssb_post_csv: Optional[str] = None,
+    allowed_n77_arfcn_post_csv: Optional[str] = None,
+) -> None:
     """
     Runner for ConsistencyChecks supporting dual-input mode.
+    Before running the Consistency Checks, this function will:
+      1) Run Configuration Audit on the PRE folder.
+      2) Run Configuration Audit on the POST folder.
+    Then it runs the Pre/Post comparison, passing the POST audit Excel
+    as an extra argument (when supported by ConsistencyChecks.comparePrePost).
     """
     module_name = "[Consistency Checks (Pre/Post Comparison)]"
     print(f"{module_name} Running…")
 
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     versioned_suffix = f"{timestamp}_v{TOOL_VERSION}"
+
+    post_audit_excel: Optional[str] = None
 
     # Pass N77 frequencies to constructor
     app = ConsistencyChecks(n77_ssb_pre=n77_ssb_pre, n77_ssb_post=n77_ssb_post)
@@ -645,9 +663,46 @@ def run_consistency_checks(input_pre_dir: Optional[str], input_post_dir: Optiona
         input_pre_dir_fs = to_long_path(input_pre_dir)
         input_post_dir_fs = to_long_path(input_post_dir)
 
-        # Logs “bonitos” sin el prefijo \\?\
+        # Logs “bonitos” sin el prefijo \\?\\
         print(f"{module_name} PRE folder:  '{pretty_path(input_pre_dir_fs)}'")
         print(f"{module_name} POST folder: '{pretty_path(input_post_dir_fs)}'")
+
+        # --- NEW: run Configuration Audit for PRE and POST before consistency checks ---
+        print(f"{module_name} Running Configuration Audit for PRE folder before consistency checks...")
+        audit_pre_excel = run_configuration_audit(
+            input_dir=input_pre_dir_fs,
+            freq_filters_csv=freq_filters_csv,
+            n77_ssb_pre=n77_ssb_pre,
+            n77_ssb_post=n77_ssb_post,
+            n77b_ssb=n77b_ssb,
+            allowed_n77_ssb_pre_csv=allowed_n77_ssb_pre_csv,
+            allowed_n77_arfcn_pre_csv=allowed_n77_arfcn_pre_csv,
+            allowed_n77_ssb_post_csv=allowed_n77_ssb_post_csv,
+            allowed_n77_arfcn_post_csv=allowed_n77_arfcn_post_csv,
+        )
+        if audit_pre_excel:
+            print(f"{module_name} PRE Configuration Audit output: '{pretty_path(audit_pre_excel)}'")
+        else:
+            print(f"{module_name} PRE Configuration Audit did not generate an output Excel file.")
+
+        print(f"{module_name} Running Configuration Audit for POST folder before consistency checks...")
+        audit_post_excel = run_configuration_audit(
+            input_dir=input_post_dir_fs,
+            freq_filters_csv=freq_filters_csv,
+            n77_ssb_pre=n77_ssb_pre,
+            n77_ssb_post=n77_ssb_post,
+            n77b_ssb=n77b_ssb,
+            allowed_n77_ssb_pre_csv=allowed_n77_ssb_pre_csv,
+            allowed_n77_arfcn_pre_csv=allowed_n77_arfcn_pre_csv,
+            allowed_n77_ssb_post_csv=allowed_n77_ssb_post_csv,
+            allowed_n77_arfcn_post_csv=allowed_n77_arfcn_post_csv,
+        )
+        if audit_post_excel:
+            print(f"{module_name} POST Configuration Audit output: '{pretty_path(audit_post_excel)}'")
+        else:
+            print(f"{module_name} POST Configuration Audit did not generate an output Excel file.")
+
+        post_audit_excel = audit_post_excel
 
         loaded = False
         try:
@@ -673,6 +728,7 @@ def run_consistency_checks(input_pre_dir: Optional[str], input_post_dir: Optiona
         print(f"{module_name} Input folder: '{pretty_path(input_dir_fs)}'")
 
         pre_found, post_found = False, False
+        pre_dir_path, post_dir_path = None, None
         try:
             for entry in os.scandir(input_dir_fs or input_dir):
                 if not entry.is_dir():
@@ -680,8 +736,10 @@ def run_consistency_checks(input_pre_dir: Optional[str], input_post_dir: Optiona
                 tag = ConsistencyChecks._detect_prepost(entry.name)
                 if tag == "Pre":
                     pre_found = True
+                    pre_dir_path = entry.path
                 elif tag == "Post":
                     post_found = True
+                    post_dir_path = entry.path
         except FileNotFoundError:
             pass
 
@@ -702,16 +760,58 @@ def run_consistency_checks(input_pre_dir: Optional[str], input_post_dir: Optiona
                 print(f"{module_name} [WARNING] {msg}")
             return
 
+        # --- NEW: run Configuration Audit for the detected PRE and POST subfolders ---
+        if pre_dir_path:
+            print(f"{module_name} Running Configuration Audit for PRE folder '{pretty_path(pre_dir_path)}' before consistency checks...")
+            audit_pre_excel = run_configuration_audit(
+                input_dir=pre_dir_path,
+                freq_filters_csv=freq_filters_csv,
+                n77_ssb_pre=n77_ssb_pre,
+                n77_ssb_post=n77_ssb_post,
+                n77b_ssb=n77b_ssb,
+                allowed_n77_ssb_pre_csv=allowed_n77_ssb_pre_csv,
+                allowed_n77_arfcn_pre_csv=allowed_n77_arfcn_pre_csv,
+                allowed_n77_ssb_post_csv=allowed_n77_ssb_post_csv,
+                allowed_n77_arfcn_post_csv=allowed_n77_arfcn_post_csv,
+            )
+            if audit_pre_excel:
+                print(f"{module_name} PRE Configuration Audit output: '{pretty_path(audit_pre_excel)}'")
+            else:
+                print(f"{module_name} PRE Configuration Audit did not generate an output Excel file.")
+
+        if post_dir_path:
+            print(f"{module_name} Running Configuration Audit for POST folder '{pretty_path(post_dir_path)}' before consistency checks...")
+            audit_post_excel = run_configuration_audit(
+                input_dir=post_dir_path,
+                freq_filters_csv=freq_filters_csv,
+                n77_ssb_pre=n77_ssb_pre,
+                n77_ssb_post=n77_ssb_post,
+                n77b_ssb=n77b_ssb,
+                allowed_n77_ssb_pre_csv=allowed_n77_ssb_pre_csv,
+                allowed_n77_arfcn_pre_csv=allowed_n77_arfcn_pre_csv,
+                allowed_n77_ssb_post_csv=allowed_n77_ssb_post_csv,
+                allowed_n77_arfcn_post_csv=allowed_n77_arfcn_post_csv,
+            )
+            if audit_post_excel:
+                print(f"{module_name} POST Configuration Audit output: '{pretty_path(audit_post_excel)}'")
+            else:
+                print(f"{module_name} POST Configuration Audit did not generate an output Excel file.")
+            post_audit_excel = audit_post_excel
+
         app.loadPrePost(input_dir_fs or input_dir)
         output_dir = os.path.join(input_dir_fs or input_dir, f"ConsistencyChecks_{versioned_suffix}")
 
     results = None
 
     if n77_ssb_pre and n77_ssb_post:
+        # NEW: try with extra argument (post_audit_excel) first, then fall back for older versions
         try:
-            results = app.comparePrePost(n77_ssb_pre, n77_ssb_post, module_name)
+            results = app.comparePrePost(n77_ssb_pre, n77_ssb_post, module_name, post_audit_excel)
         except TypeError:
-            results = app.comparePrePost(n77_ssb_pre, n77_ssb_post)
+            try:
+                results = app.comparePrePost(n77_ssb_pre, n77_ssb_post, module_name)
+            except TypeError:
+                results = app.comparePrePost(n77_ssb_pre, n77_ssb_post)
     else:
         print(f"{module_name} [INFO] Frequencies not provided. Comparison will be skipped; only tables will be saved.")
 
@@ -722,6 +822,7 @@ def run_consistency_checks(input_pre_dir: Optional[str], input_post_dir: Optiona
         print(f"{module_name} Wrote CellRelation.xlsx and CellRelationDiscrepancies.xlsx (with Summary and details).")
     else:
         print(f"{module_name} Wrote CellRelation.xlsx (all tables). No comparison Excel because frequencies were not provided.")
+
 
 
 
@@ -801,11 +902,33 @@ def execute_module(
 
     try:
         if module_fn is run_consistency_checks:
-            # dual-input preferido
+            # dual-input preferido; pass audit-related parameters so we can run Configuration Audit on Pre/Post
             if input_pre_dir and input_post_dir:
-                module_fn(input_pre_dir, input_post_dir, n77_ssb_pre, n77_ssb_post)
+                module_fn(
+                    input_pre_dir,
+                    input_post_dir,
+                    n77_ssb_pre,
+                    n77_ssb_post,
+                    n77b_ssb,
+                    freq_filters_csv,
+                    allowed_n77_ssb_pre_csv,
+                    allowed_n77_arfcn_pre_csv,
+                    allowed_n77_ssb_post_csv,
+                    allowed_n77_arfcn_post_csv,
+                )
             else:
-                module_fn(input_dir, None, n77_ssb_pre, n77_ssb_post)
+                module_fn(
+                    input_dir,
+                    None,
+                    n77_ssb_pre,
+                    n77_ssb_post,
+                    n77b_ssb,
+                    freq_filters_csv,
+                    allowed_n77_ssb_pre_csv,
+                    allowed_n77_arfcn_pre_csv,
+                    allowed_n77_ssb_post_csv,
+                    allowed_n77_arfcn_post_csv,
+                )
         elif module_fn is run_configuration_audit:
             module_fn(
                 input_dir,
@@ -828,6 +951,7 @@ def execute_module(
     finally:
         elapsed = time.perf_counter() - start_ts
         print(f"[Timer] {label} finished in {format_duration_hms(elapsed)}")
+
 
 
 def ask_reopen_launcher() -> bool:
