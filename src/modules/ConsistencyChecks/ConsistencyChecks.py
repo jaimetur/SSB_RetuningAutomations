@@ -8,7 +8,7 @@ import pandas as pd
 
 from src.utils.utils_dataframe import select_latest_by_date, normalize_df, make_index_by_keys
 from src.utils.utils_datetime import extract_date
-from src.utils.utils_excel import color_summary_tabs, style_headers_autofilter_and_autofit
+from src.utils.utils_excel import color_summary_tabs, style_headers_autofilter_and_autofit, apply_alternating_category_row_fills
 from src.utils.utils_frequency import detect_freq_column, detect_key_columns, extract_gu_freq_base, extract_nr_freq_base, enforce_gu_columns, enforce_nr_columns
 from src.utils.utils_io import read_text_lines, to_long_path, pretty_path
 from src.utils.utils_parsing import find_all_subnetwork_headers, extract_mo_from_subnetwork_line, parse_table_slice_from_subnetwork
@@ -1133,6 +1133,7 @@ class ConsistencyChecks:
         - Drops the 'ExtraInfo' column if present.
         - Renames 'Value' to 'Value_Pre' in PRE and to 'Value_Post' in POST.
         - Merges both on all common columns except the value columns.
+        - Row order is driven by the PRE sheet; POST-only rows are appended after PRE rows.
         """
         pre_path = self.audit_pre_excel
         post_path = self.audit_post_excel
@@ -1171,47 +1172,54 @@ class ConsistencyChecks:
 
         if pre_df is None and post_df is None:
             return None
-
-        # Logs “positivos” para saber qué se está usando
-        if pre_df is not None and post_df is not None:
-            print("[Consistency Checks] Using PRE/POST ConfigurationAudit SummaryAudit sheets to build 'SummaryAuditComparisson'.")
-            print(f"[Consistency Checks] PRE SummaryAudit:  '{pretty_path(pre_path)}'")
-            print(f"[Consistency Checks] POST SummaryAudit: '{pretty_path(post_path)}'")
-        elif pre_df is not None:
-            print("[Consistency Checks] Only PRE ConfigurationAudit SummaryAudit available for 'SummaryAuditComparisson'.")
-            print(f"[Consistency Checks] PRE SummaryAudit:  '{pretty_path(pre_path)}'")
-        elif post_df is not None:
-            print("[Consistency Checks] Only POST ConfigurationAudit SummaryAudit available for 'SummaryAuditComparisson'.")
-            print(f"[Consistency Checks] POST SummaryAudit: '{pretty_path(post_path)}'")
-
-        if pre_df is None and post_df is not None:
+        if pre_df is None:
             # Only POST available: just rename its Value as Value_Post
             post_df = post_df.copy()
             post_df = post_df.rename(columns={"Value": "Value_Post"})
+            print("[Consistency Checks] Using only POST ConfigurationAudit SummaryAudit for SummaryAuditComparisson.")
             return post_df
-
-        if post_df is None and pre_df is not None:
+        if post_df is None:
             # Only PRE available: just rename its Value as Value_Pre
             pre_df = pre_df.copy()
             pre_df = pre_df.rename(columns={"Value": "Value_Pre"})
+            print("[Consistency Checks] Using only PRE ConfigurationAudit SummaryAudit for SummaryAuditComparisson.")
             return pre_df
 
+        # NEW: keep original row order for PRE and POST
         pre_df = pre_df.copy()
         post_df = post_df.copy()
+        pre_df["_Order_Pre"] = range(len(pre_df))  # preserve PRE row order
+        post_df["_Order_Post"] = range(len(post_df))  # preserve POST row order
 
         pre_df = pre_df.rename(columns={"Value": "Value_Pre"})
         post_df = post_df.rename(columns={"Value": "Value_Post"})
 
-        # Common columns to merge on (all shared columns except the value columns)
-        common_cols = [c for c in pre_df.columns if c in post_df.columns and c not in ("Value_Pre", "Value_Post")]
+        # Common columns to merge on (all shared columns except the value/order columns)
+        common_cols = [
+            c for c in pre_df.columns
+            if c in post_df.columns and c not in ("Value_Pre", "Value_Post", "_Order_Pre", "_Order_Post")
+        ]
 
         if not common_cols:
             # If there are no common columns, just concatenate with an extra column indicating source
             pre_df["Source"] = "PRE"
             post_df["Source"] = "POST"
-            return pd.concat([pre_df, post_df], ignore_index=True)
+            merged = pd.concat([pre_df, post_df], ignore_index=True)
+        else:
+            merged = pd.merge(pre_df, post_df, on=common_cols, how="outer")
 
-        merged = pd.merge(pre_df, post_df, on=common_cols, how="outer")
+        # NEW: sort to mimic PRE row order (PRE as reference, POST-only rows after)
+        if "_Order_Pre" in merged.columns or "_Order_Post" in merged.columns:
+            # Use large number for missing order so that side-only rows go to the bottom
+            merged["_Order_Pre"] = merged.get("_Order_Pre", pd.Series(pd.NA, index=merged.index))
+            merged["_Order_Post"] = merged.get("_Order_Post", pd.Series(pd.NA, index=merged.index))
+            merged["_Order_Pre"] = merged["_Order_Pre"].fillna(10 ** 12)
+            merged["_Order_Post"] = merged["_Order_Post"].fillna(10 ** 12)
+
+            merged = merged.sort_values(by=["*_Order_Pre", "_Order_Post"], kind="stable")  # keep stable ordering within PRE
+            merged = merged.drop(columns=["_Order_Pre", "_Order_Post"], errors="ignore")
+
+        print("[Consistency Checks] Using PRE and POST ConfigurationAudit SummaryAudit sheets for SummaryAuditComparisson.")
         return merged
 
     # ----------------------------- OUTPUT TO EXCEL ----------------------------- #
@@ -1339,13 +1347,17 @@ class ConsistencyChecks:
                             "Missing_Relations": int(miss_by_pair.get((fpre, fpost), 0)),
                         })
 
-            detailed_df = pd.DataFrame(detailed_rows) if detailed_rows else pd.DataFrame(
-                columns=[
-                    "Table", "KeyColumns", "FreqColumn", "Freq_Pre", "Freq_Post",
-                    "Relations_Pre", "Relations_Post", "Parameters_Discrepancies", "Freq_Discrepancies",
-                    "New_Relations", "Missing_Relations"
-                ]
-            )
+            # Classic construction of detailed_df (no walrus operator)
+            if detailed_rows:
+                detailed_df = pd.DataFrame(detailed_rows)
+            else:
+                detailed_df = pd.DataFrame(
+                    columns=[
+                        "Table", "KeyColumns", "FreqColumn", "Freq_Pre", "Freq_Post",
+                        "Relations_Pre", "Relations_Post", "Parameters_Discrepancies", "Freq_Discrepancies",
+                        "New_Relations", "Missing_Relations"
+                    ]
+                )
 
             detailed_df.to_excel(writer, sheet_name="Summary_Detailed", index=False)
 
@@ -1429,3 +1441,9 @@ class ConsistencyChecks:
 
             # New: apply header style + autofit columns (replaces the manual loop)
             style_headers_autofilter_and_autofit(writer, freeze_header=True, align="left")
+
+            # NEW: apply alternating Category fills (and inconsistency font colors) on SummaryAuditComparisson sheet
+            ws_comp = writer.sheets.get("SummaryAuditComparisson")
+            if ws_comp is not None:
+                # Use default parameters: Category header name and default colors
+                apply_alternating_category_row_fills(ws_comp)
