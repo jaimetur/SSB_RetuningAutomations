@@ -19,8 +19,8 @@ class ConsistencyChecks:
     Loads and compares GU/NR relation tables before (Pre) and after (Post) a refarming process.
     (Se mantiene la funcionalidad exacta.)
     """
-    PRE_TOKENS = ("pre", "step0")
-    POST_TOKENS = ("post", "step3")
+    PRE_TOKENS = ("pre")
+    POST_TOKENS = ("post")
     DATE_RE = re.compile(r"(?P<date>(19|20)\d{6})")  # yyyymmdd
     SUMMARY_RE = re.compile(r"^\s*\d+\s+instance\(s\)\s*$", re.IGNORECASE)
 
@@ -697,6 +697,15 @@ class ConsistencyChecks:
         if df is None or df.empty:
             df = df.copy()
             df["Correction_Cmd"] = ""
+            # Ensure GNBCUCPFunctionId column exists and is placed before Correction_Cmd
+            if "GNBCUCPFunctionId" not in df.columns:
+                df["GNBCUCPFunctionId"] = ""
+            cols = list(df.columns)
+            if "GNBCUCPFunctionId" in cols and "Correction_Cmd" in cols:
+                cols.remove("GNBCUCPFunctionId")
+                insert_pos = cols.index("Correction_Cmd")
+                cols.insert(insert_pos, "GNBCUCPFunctionId")
+                df = df[cols]
             return df
 
         df = df.copy()
@@ -717,6 +726,10 @@ class ConsistencyChecks:
         for col in ("NodeId", "NRCellCUId", "NRCellRelationId"):
             if col not in df.columns:
                 df[col] = ""
+
+        # Ensure GNBCUCPFunctionId column exists (NR_new will usually have it empty)
+        if "GNBCUCPFunctionId" not in df.columns:
+            df["GNBCUCPFunctionId"] = ""
 
         df["NodeId"] = df["NodeId"].astype(str).str.strip()
         df["NRCellCUId"] = df["NRCellCUId"].astype(str).str.strip()
@@ -739,6 +752,15 @@ class ConsistencyChecks:
             return f"del NRCellCU={nr_cell_cu},NRCellRelation={nr_cell_rel}"
 
         df["Correction_Cmd"] = df.apply(build_command, axis=1)
+
+        # Ensure GNBCUCPFunctionId column is placed just before Correction_Cmd
+        if "GNBCUCPFunctionId" in df.columns and "Correction_Cmd" in df.columns:
+            cols = list(df.columns)
+            cols.remove("GNBCUCPFunctionId")
+            insert_pos = cols.index("Correction_Cmd")
+            cols.insert(insert_pos, "GNBCUCPFunctionId")
+            df = df[cols]
+
         return df
 
     def add_correction_command_gu_missing(self, df: pd.DataFrame, relations_df: Optional[pd.DataFrame] = None) -> pd.DataFrame:
@@ -869,6 +891,15 @@ class ConsistencyChecks:
         if df is None or df.empty:
             df = df.copy()
             df["Correction_Cmd"] = ""
+            # Ensure GNBCUCPFunctionId column exists and is placed before Correction_Cmd
+            if "GNBCUCPFunctionId" not in df.columns:
+                df["GNBCUCPFunctionId"] = ""
+            cols = list(df.columns)
+            if "GNBCUCPFunctionId" in cols and "Correction_Cmd" in cols:
+                cols.remove("GNBCUCPFunctionId")
+                insert_pos = cols.index("Correction_Cmd")
+                cols.insert(insert_pos, "GNBCUCPFunctionId")
+                df = df[cols]
             return df
 
         df = df.copy()
@@ -889,6 +920,10 @@ class ConsistencyChecks:
         for col in ("NodeId", "NRCellCUId", "NRCellRelationId", "coverageIndicator", "isHoAllowed", "isRemoveAllowed", "sCellCandidate", "nRCellRef", "nRFreqRelationRef"):
             if col not in df.columns:
                 df[col] = ""
+
+        # Ensure GNBCUCPFunctionId column exists
+        if "GNBCUCPFunctionId" not in df.columns:
+            df["GNBCUCPFunctionId"] = ""
 
         df["NodeId"] = df["NodeId"].astype(str).str.strip()
         df["NRCellCUId"] = df["NRCellCUId"].astype(str).str.strip()
@@ -917,6 +952,21 @@ class ConsistencyChecks:
                     continue
                 return s
             return ""
+
+        def extract_gnbcucp_segment(nrcell_ref: str) -> str:
+            """
+            Extract GNBCUCPFunction segment from a full nRCellRef string.
+
+            Example:
+              '...,GNBCUCPFunction=1,NRNetwork=1,ExternalGNBCUCPFunction=auto311_480_3_2509535,ExternalNRCellCU=auto41116222186'
+              -> 'GNBCUCPFunction=1,NRNetwork=1,ExternalGNBCUCPFunction=auto311_480_3_2509535,ExternalNRCellCU=auto41116222186'
+            """
+            if not isinstance(nrcell_ref, str):
+                return ""
+            pos = nrcell_ref.find("GNBCUCPFunction=")
+            if pos == -1:
+                return ""
+            return nrcell_ref[pos:].strip()
 
         def build_command(row: pd.Series) -> str:
             key = (row.get("NodeId", ""), row.get("NRCellCUId", ""), row.get("NRCellRelationId", ""))
@@ -977,6 +1027,19 @@ class ConsistencyChecks:
             return "\n".join(lines)
 
         df["Correction_Cmd"] = df.apply(build_command, axis=1)
+
+        # Fill GNBCUCPFunctionId with the segment extracted from nRCellRef
+        if "nRCellRef" in df.columns:
+            df["GNBCUCPFunctionId"] = df["nRCellRef"].astype(str).apply(extract_gnbcucp_segment)
+
+        # Ensure GNBCUCPFunctionId column is placed just before Correction_Cmd
+        if "GNBCUCPFunctionId" in df.columns and "Correction_Cmd" in df.columns:
+            cols = list(df.columns)
+            cols.remove("GNBCUCPFunctionId")
+            insert_pos = cols.index("Correction_Cmd")
+            cols.insert(insert_pos, "GNBCUCPFunctionId")
+            df = df[cols]
+
         return df
 
     def add_correction_command_gu_disc(self, disc_df: pd.DataFrame, relations_df: Optional[pd.DataFrame]) -> pd.DataFrame:
@@ -1030,12 +1093,40 @@ class ConsistencyChecks:
         if disc_df is None or disc_df.empty:
             work = disc_df.copy() if disc_df is not None else pd.DataFrame()
             work["Correction_Cmd"] = ""
+            # Ensure GNBCUCPFunctionId column exists and is placed before Correction_Cmd
+            if "GNBCUCPFunctionId" not in work.columns:
+                work["GNBCUCPFunctionId"] = ""
+            cols = list(work.columns)
+            if "GNBCUCPFunctionId" in cols and "Correction_Cmd" in cols:
+                cols.remove("GNBCUCPFunctionId")
+                insert_pos = cols.index("Correction_Cmd")
+                cols.insert(insert_pos, "GNBCUCPFunctionId")
+                work = work[cols]
             return work
 
         # Ensure NodeId column exists for later grouping/export
         work = disc_df.copy()
         if "NodeId" not in work.columns:
             work["NodeId"] = ""
+
+        # Ensure GNBCUCPFunctionId column exists
+        if "GNBCUCPFunctionId" not in work.columns:
+            work["GNBCUCPFunctionId"] = ""
+
+        def extract_gnbcucp_segment(nrcell_ref: str) -> str:
+            """
+            Extract GNBCUCPFunction segment from a full nRCellRef string.
+            """
+            if not isinstance(nrcell_ref, str):
+                return ""
+            pos = nrcell_ref.find("GNBCUCPFunction=")
+            if pos == -1:
+                return ""
+            return nrcell_ref[pos:].strip()
+
+        # Populate GNBCUCPFunctionId from nRCellRef if available
+        if "nRCellRef" in work.columns:
+            work["GNBCUCPFunctionId"] = work["nRCellRef"].astype(str).apply(extract_gnbcucp_segment)
 
         # Build delete commands in bulk (as NR_new) using the same disc_df
         del_df = self.add_correction_command_nr_new(disc_df.copy(), relations_df)
@@ -1056,6 +1147,14 @@ class ConsistencyChecks:
         work["Correction_Cmd"] = [
             combine_cmds(d, c) for d, c in zip(del_cmds, create_cmds)
         ]
+
+        # Ensure GNBCUCPFunctionId column is placed just before Correction_Cmd
+        if "GNBCUCPFunctionId" in work.columns and "Correction_Cmd" in work.columns:
+            cols = list(work.columns)
+            cols.remove("GNBCUCPFunctionId")
+            insert_pos = cols.index("Correction_Cmd")
+            cols.insert(insert_pos, "GNBCUCPFunctionId")
+            work = work[cols]
 
         return work
 

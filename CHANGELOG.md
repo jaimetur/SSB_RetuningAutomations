@@ -4,6 +4,37 @@
 
 ---
 
+## Release: v0.3.10
+- ### Release Date: 2025-12-03
+
+- ### Main Changes:
+  
+  - #### 🚨 Breaking Changes:
+  
+  - #### 🌟 New Features:
+    - New feature to recursively run Audit on all subfolders of Input Folder where any valid log is found. To run this feature you just need to provide an Input folder with no logs inside but with subfolders with valid logs inside.
+    - New feature to auto-detect Pre/Post folders given only one Input folder with a predefined folder structure.
+      - For this feature to work, the given input folder should contain subfolders with this naming convention: `yyyymmdd_hhmm_step0` (Optionally they may be a Market Subfolder inside it). 
+        - Example 1:
+          - 20251203_0530_step0 --> This is selected as Pre folder since is the oldest folder for the latest day
+          - 20251203_0730_step0 --> This is selected as Post folder since is the latest folder for the latest day
+        - Example 2:
+          - 20251202_0530_step0
+          - 20251202_0730_step0 --> This is selected as Pre folder since is the latest folder for the latest day previous to the Post folder day 
+          - 20251203_0530_step0
+          - 20251203_0730_step0 --> This is selected as Post folder since is the latest folder for the latest day
+
+  - #### 🚀 Enhancements:
+    - Added column `GNBCUCPFunction` to NR tables in `ConcistencyCheck` module to be able to filter those relations of interest.
+  
+  - #### 🐛 Bug fixes:
+    - Minor bug fixing.
+    
+  - #### 📚 Documentation: 
+    - Updated documentation with latest changes.
+
+---
+
 ## Release: v0.3.9
 - ### Release Date: 2025-12-02
 
