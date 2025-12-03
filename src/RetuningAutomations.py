@@ -86,7 +86,6 @@ TABLES_ORDER: List[str] = []
 MODULE_NAMES = [
     "1. Configuration Audit & Logs Parser",
     "2. Consistency Check (Pre/Post Comparison)",
-    "2. Consistency Check (Bulk mode Pre/Post auto-detection)",
     "3. Initial Clean-Up (During Maintenance Window)",
     "4. Final Clean-Up (After Retune is completed)",
 ]
