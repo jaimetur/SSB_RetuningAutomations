@@ -147,13 +147,14 @@ RetuningAutomations.exe/bin --module <module-name> [options]
 --n77-ssb-post               N77 SSB frequency after refarming (Post), e.g. 653952
 --n77b-ssb                   N77B SSB frequency (ARFCN), e.g. 650334
 
---freq-filters               Comma-separated list of frequency substrings to filter pivot columns in Configuration Audit
-
 --allowed-n77-ssb-pre        Comma-separated allowed N77 SSB (Pre) values for Configuration Audit
 --allowed-n77-arfcn-pre      Comma-separated allowed N77 ARFCN (Pre) values for Configuration Audit
 
 --allowed-n77-ssb-post       Comma-separated allowed N77 SSB (Post) values for Configuration Audit
 --allowed-n77-arfcn-post     Comma-separated allowed N77 ARFCN (Post) values for Configuration Audit
+
+--ca-freq-filters            Comma-separated list of frequency substrings to filter pivot columns in Configuration Audit module
+--cc-freq-filters            Comma-separated list of frequency substrings to filter relations in Consistency Check module
 
 --no-gui                     Disable GUI usage (force CLI mode even with missing arguments)
 ```
@@ -164,18 +165,19 @@ If `--module` is omitted and **no other arguments** are provided, the GUI will l
 
 ### 🔧 Available Modules
 
-| Module                | Description                                                         |
-|-----------------------|---------------------------------------------------------------------|
-| `configuration-audit` | Runs the Configuration Audit module (single input folder).          |
-| `consistency-check`   | Runs the Pre/Post Relations Consistency Check (dual input folders). |
-| `initial-cleanup`     | Runs the Initial Clean-Up module (single input folder).             |
-| `final-cleanup`       | Runs the Final Clean-Up module (single input folder).               |
+| Module                   | Description                                                         |
+|--------------------------|---------------------------------------------------------------------|
+| `configuration-audit`    | Runs the Configuration Audit module (single input folder).          |
+| `consistency-check`      | Runs the Pre/Post Relations Consistency Check (dual input folders). |
+| `consistency-check-bulk` | Runs the Pre/Post Relations Consistency Check (bulk mode).          |
+| `initial-cleanup`        | Runs the Initial Clean-Up module (single input folder).             |
+| `final-cleanup`          | Runs the Final Clean-Up module (single input folder).               |
 
 ---
 
 ### 📂 Input Options
 
-#### Single-Input Modules (`configuration-audit`, `initial-cleanup`, `final-cleanup`)
+#### Single-Input Modules (`configuration-audit`, 'consistency-check-bulk', `initial-cleanup`, `final-cleanup`)
 
 ```
 --input <folder>
@@ -205,12 +207,21 @@ If `--module` is omitted and **no other arguments** are provided, the GUI will l
 --n77b-ssb <arfcn>
 ```
 
-#### Configuration Audit pivot filtering
+#### Configuration Audit pivot frequency filtering
 
 ```
---freq-filters <comma-separated-list>
+--ca-freq-filters <comma-separated-list>
 ```
-Filters pivot columns by substring match.
+Filters Configuration Audit pivot tables by frequency match.
+
+---
+
+#### Consistency Checks frequency filtering
+
+```
+--cc-freq-filters <comma-separated-list>
+```
+Filters Consistency Checks relations by frequency match.
 
 ---
 

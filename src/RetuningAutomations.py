@@ -60,7 +60,7 @@ INPUT_FOLDER_PRE = ""    # default Pre folder for dual-input GUI
 INPUT_FOLDER_POST = ""   # default Post folder for dual-input GUI
 
 # List of words to find in a folder name to be discarted from Bulk Configuration Audit module or from Bulk Consistency Check module.
-BLACKLIST = ("ignore", "old", "discard", "bad", "partial")  # case-insensitive blacklist for folder names
+BLACKLIST = ("ignore", "old", "bad", "partial", "incomplete", "discard", "discarted")  # case-insensitive blacklist for folder names
 
 # Global selectable list for filtering summary columns in ConfigurationAudit
 NETWORK_FREQUENCIES: List[str] = [
@@ -565,8 +565,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--n77-ssb-pre", help="Frequency before refarming (Pre)")
     parser.add_argument("--n77-ssb-post", help="Frequency after refarming (Post)")
     parser.add_argument("--n77b-ssb", help="N77B SSB frequency (ARFCN).")
-    parser.add_argument("--ca-freq-filters", help="Comma-separated list of frequencies to filter Configuration Audit results (pivot tables).")
-    parser.add_argument("--cc-freq-filters", help="Comma-separated list of frequencies to filter Consistency Checks results.")
 
     # ARFCN list options for ConfigurationAudit (PRE)
     parser.add_argument("--allowed-n77-ssb-pre", help="Comma-separated SSB (Pre) list for N77 SSB allowed values (Configuration Audit).")
@@ -575,6 +573,10 @@ def parse_args() -> argparse.Namespace:
     # ARFCN list options for ConfigurationAudit (POST)
     parser.add_argument("--allowed-n77-ssb-post", help="Comma-separated SSB (Post) list for N77 SSB allowed values (Configuration Audit).")
     parser.add_argument("--allowed-n77-arfcn-post", help="Comma-separated ARFCN (Post) list for N77 ARFCN allowed values (Configuration Audit).")
+
+    # Frequency Filters
+    parser.add_argument("--ca-freq-filters", help="Comma-separated list of frequencies to filter Configuration Audit results (pivot tables).")
+    parser.add_argument("--cc-freq-filters", help="Comma-separated list of frequencies to filter Consistency Checks results.")
 
     parser.add_argument("--no-gui", action="store_true", help="Disable GUI usage (only CLI).")
 
