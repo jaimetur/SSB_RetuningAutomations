@@ -28,20 +28,33 @@ class ConsistencyChecks:
     # ------------------------------------------------------------------
     #  CONSTRUCTOR
     # ------------------------------------------------------------------
-    def __init__(self, n77_ssb_pre: Optional[str] = None, n77_ssb_post: Optional[str] = None) -> None:
+    def __init__(
+        self,
+        n77_ssb_pre: Optional[str] = None,
+        n77_ssb_post: Optional[str] = None,
+        freq_filter_list: Optional[List[str]] = None,
+    ) -> None:
         # NEW: store N77 SSB frequencies for Pre and Post
         self.n77_ssb_pre: Optional[str] = n77_ssb_pre
         self.n77_ssb_post: Optional[str] = n77_ssb_post
 
+        # NEW: optional frequency filter list (strings)
+        self.freq_filter_list: List[str] = [
+            str(f).strip() for f in (freq_filter_list or []) if str(f).strip()
+        ]
+
         self.tables: Dict[str, pd.DataFrame] = {}
+
         # NEW: flags to signal whether at least one Pre/Post folder was found
         self.pre_folder_found: bool = False
         self.post_folder_found: bool = False
+
         # NEW: keep only per-table/per-side source file paths to be used exclusively in Summary (do not store them in DataFrames)
         self._source_paths: Dict[str, Dict[str, List[tuple]]] = {
             "GUtranCellRelation": {"Pre": [], "Post": []},
             "NRCellRelation": {"Pre": [], "Post": []},
         }
+
         # NEW: keep paths to PRE/POST ConfigurationAudit Excel files
         self.audit_pre_excel: Optional[str] = None
         self.audit_post_excel: Optional[str] = None
@@ -69,6 +82,32 @@ class ConsistencyChecks:
     @staticmethod
     def _table_key_name(table_base: str) -> str:
         return table_base.strip()
+
+    def _filter_rows_by_freq_list(self, df: Optional[pd.DataFrame]) -> Optional[pd.DataFrame]:
+        """
+        Filter rows keeping only those where Freq_Pre or Freq_Post contains
+        any of the frequencies in self.freq_filter_list.
+
+        If the filter list is empty, the input DataFrame is returned unchanged.
+        """
+        if df is None or df.empty:
+            return df
+        if not self.freq_filter_list:
+            return df
+
+        df = df.copy()
+        if "Freq_Pre" not in df.columns:
+            df["Freq_Pre"] = ""
+        if "Freq_Post" not in df.columns:
+            df["Freq_Post"] = ""
+
+        pattern = "|".join(re.escape(f) for f in self.freq_filter_list if f)
+        if not pattern:
+            return df
+
+        combined = df["Freq_Pre"].astype(str) + " " + df["Freq_Post"].astype(str)
+        mask = combined.str.contains(pattern, regex=True, na=False)
+        return df[mask]
 
     # ----------------------------- LOADING ----------------------------- #
     def collect_from_dir(self, dir_path: str, prepost: str, collected: Dict[str, List[pd.DataFrame]]) -> None:
@@ -372,6 +411,10 @@ class ConsistencyChecks:
             exclude_cols = {"Pre/Post", "Date", freq_col} | set(key_cols)
             shared_cols = [c for c in pre_common.columns if c in post_common.columns and c not in exclude_cols]
 
+            # NEW: ignore timeOfCreation differences for GU discrepancies
+            if table_name == "GUtranCellRelation":
+                shared_cols = [c for c in shared_cols if c != "timeOfCreation"]
+
             any_diff_mask = pd.Series(False, index=pre_common.index)
             diff_cols_per_row = {k: [] for k in pre_common.index}
             for c in shared_cols:
@@ -537,6 +580,12 @@ class ConsistencyChecks:
 
             new_in_post_clean = with_freq_pair(new_in_post, table_name, kind="new")
             missing_in_post_clean = with_freq_pair(missing_in_post, table_name, kind="missing")
+
+            # NEW: optional frequency-based filter for _disc / _new / _missing tables
+            discrepancies = self._filter_rows_by_freq_list(discrepancies)
+            new_in_post_clean = self._filter_rows_by_freq_list(new_in_post_clean)
+            missing_in_post_clean = self._filter_rows_by_freq_list(missing_in_post_clean)
+
 
             # Pair stats
             pair_stats = pd.DataFrame(

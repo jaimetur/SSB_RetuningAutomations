@@ -12,10 +12,13 @@
   - #### 🚨 Breaking Changes:
   
   - #### 🌟 New Features:
+    - New feature to allow Frequency Filtering for `ConsistencyCheck` module.
+    - GUI lanuncher adapted to include the list of frequencies to filter on `ConsistencyCheck` module.
 
   - #### 🚀 Enhancements:
     - Some code refactoring to clean-up duplicates functions and group them by logic.
     - Output folder for `ConfigurationAudits` now has the market suffix if they have been executed from `ConsistencyCheck` module and any market have been detected.
+    - Removed `timeOfCreation` from list of parameters to find discrepancies on `ConsistencyCheck` moodule.
   
   - #### 🐛 Bug fixes:
     - Minor bug fixing.
