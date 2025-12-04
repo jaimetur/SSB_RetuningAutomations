@@ -16,109 +16,9 @@ from typing import Dict, Optional
 
 import pandas as pd
 
-from src.utils.utils_dataframe import ensure_column_after
+from src.utils.utils_dataframe import ensure_column_after, build_row_lookup, pick_non_empty_value
 from src.utils.utils_io import to_long_path, pretty_path
-
-
-# ----------------------------------------------------------------------
-#  GENERIC SMALL HELPERS (shared between GU/NR + new/missing/disc)
-# ----------------------------------------------------------------------
-def _build_lookup(
-    relations_df: Optional[pd.DataFrame],
-    key_cols,
-    extra_strip_cols=None,
-) -> Dict[tuple, pd.Series]:
-    """
-    Build a dict[(keys...)] -> row from relations_df, stripping spaces.
-
-    This avoids repeating the same boilerplate in each builder.
-    """
-    lookup: Dict[tuple, pd.Series] = {}
-    if relations_df is None or relations_df.empty:
-        return lookup
-
-    rel = relations_df.copy()
-    cols_to_norm = list(key_cols) + list(extra_strip_cols or [])
-    for col in cols_to_norm:
-        if col not in rel.columns:
-            rel[col] = ""
-        rel[col] = rel[col].astype(str).str.strip()
-
-    for _, r in rel.iterrows():
-        key = tuple(str(r.get(k, "")).strip() for k in key_cols)
-        lookup[key] = r
-    return lookup
-
-
-def _pick_value(rel_row: Optional[pd.Series], row: pd.Series, field: str) -> str:
-    """
-    Prefer value from relations_df; if empty/NaN, fallback to value in df row.
-    Avoid returning literal 'nan'.
-    """
-    candidates = []
-    if rel_row is not None:
-        candidates.append(rel_row.get(field))
-    candidates.append(row.get(field))
-
-    for v in candidates:
-        if v is None:
-            continue
-        try:
-            if pd.isna(v):
-                continue
-        except TypeError:
-            pass
-        s = str(v).strip()
-        if not s or s.lower() == "nan":
-            continue
-        return s
-    return ""
-
-
-def _extract_gnbcucp_segment(nrcell_ref: str) -> str:
-    """
-    Extract GNBCUCPFunction segment from a full nRCellRef string.
-
-    Example:
-      '...,GNBCUCPFunction=1,NRNetwork=1,ExternalGNBCUCPFunction=auto311_480_3_2509535,ExternalNRCellCU=auto41116222186'
-      -> 'GNBCUCPFunction=1,NRNetwork=1,ExternalGNBCUCPFunction=auto311_480_3_2509535,ExternalNRCellCU=auto41116222186'
-    """
-    if not isinstance(nrcell_ref, str):
-        return ""
-    pos = nrcell_ref.find("GNBCUCPFunction=")
-    if pos == -1:
-        return ""
-    return nrcell_ref[pos:].strip()
-
-
-def _resolve_nrcell_ref(row: pd.Series, relations_lookup: Dict[tuple, pd.Series]) -> str:
-    """
-    Prefer nRCellRef from relations_df; if empty, fallback to value in disc row.
-    """
-    key = (
-        str(row.get("NodeId", "")).strip(),
-        str(row.get("NRCellCUId", "")).strip(),
-        str(row.get("NRCellRelationId", "")).strip(),
-    )
-    rel_row = relations_lookup.get(key)
-    candidates = []
-    if rel_row is not None:
-        candidates.append(rel_row.get("nRCellRef"))
-    candidates.append(row.get("nRCellRef"))
-
-    for v in candidates:
-        if v is None:
-            continue
-        try:
-            if pd.isna(v):
-                continue
-        except TypeError:
-            pass
-        s = str(v).strip()
-        if not s or s.lower() == "nan":
-            continue
-        return s
-    return ""
+from src.utils.utils_parsing import extract_gnbcucp_segment, resolve_nrcell_ref
 
 
 # ----------------------------------------------------------------------
@@ -175,7 +75,7 @@ def build_gu_new(df: pd.DataFrame, relations_df: Optional[pd.DataFrame]) -> pd.D
         df["EUtranCellFDDId"] = df["EUtranCellFDDId"].astype(str).str.strip()
         df["GUtranCellRelationId"] = df["GUtranCellRelationId"].astype(str).str.strip()
 
-        relations_lookup = _build_lookup(relations_df, ["EUtranCellFDDId", "GUtranCellRelationId"])
+        relations_lookup = build_row_lookup(relations_df, ["EUtranCellFDDId", "GUtranCellRelationId"])
 
         def _from_rel(row: pd.Series, field: str) -> str:
             key = (
@@ -183,7 +83,7 @@ def build_gu_new(df: pd.DataFrame, relations_df: Optional[pd.DataFrame]) -> pd.D
                 str(row.get("GUtranCellRelationId", "")).strip(),
             )
             rel_row = relations_lookup.get(key)
-            return _pick_value(rel_row, row, field)
+            return pick_non_empty_value(rel_row, row, field)
 
         # Make sure GUtranFreqRelationId, createdBy and timeOfCreation are taken from relations_df
         df["GUtranFreqRelationId"] = df.apply(lambda r: _from_rel(r, "GUtranFreqRelationId"), axis=1)
@@ -282,7 +182,7 @@ def build_gu_missing(
     df["EUtranCellFDDId"] = df["EUtranCellFDDId"].astype(str).str.strip()
     df["GUtranCellRelationId"] = df["GUtranCellRelationId"].astype(str).str.strip()
 
-    relations_lookup = _build_lookup(relations_df, ["NodeId", "EUtranCellFDDId", "GUtranCellRelationId"])
+    relations_lookup = build_row_lookup(relations_df, ["NodeId", "EUtranCellFDDId", "GUtranCellRelationId"])
 
     def from_rel(row: pd.Series, field: str) -> str:
         key = (
@@ -291,7 +191,7 @@ def build_gu_missing(
             str(row.get("GUtranCellRelationId", "")).strip(),
         )
         rel_row = relations_lookup.get(key)
-        return _pick_value(rel_row, row, field)
+        return pick_non_empty_value(rel_row, row, field)
 
     # Make sure GUtranFreqRelationId is taken from relations_df
     df["GUtranFreqRelationId"] = df.apply(lambda r: from_rel(r, "GUtranFreqRelationId"), axis=1)
@@ -304,17 +204,17 @@ def build_gu_missing(
         )
         rel_row = relations_lookup.get(key)
 
-        enb_func = _pick_value(rel_row, row, "ENodeBFunctionId")
-        eu_cell = _pick_value(rel_row, row, "EUtranCellFDDId")
-        freq_rel = _pick_value(rel_row, row, "GUtranFreqRelationId")
-        cell_rel = _pick_value(rel_row, row, "GUtranCellRelationId")
-        neighbor_ref = _pick_value(rel_row, row, "neighborCellRef")
-        is_endc = _pick_value(rel_row, row, "isEndcAllowed")
-        is_ho = _pick_value(rel_row, row, "isHoAllowed")
-        is_remove = _pick_value(rel_row, row, "isRemoveAllowed")
-        is_voice_ho = _pick_value(rel_row, row, "isVoiceHoAllowed")
-        user_label = _pick_value(rel_row, row, "userLabel")
-        coverage = _pick_value(rel_row, row, "coverageIndicator")
+        enb_func = pick_non_empty_value(rel_row, row, "ENodeBFunctionId")
+        eu_cell = pick_non_empty_value(rel_row, row, "EUtranCellFDDId")
+        freq_rel = pick_non_empty_value(rel_row, row, "GUtranFreqRelationId")
+        cell_rel = pick_non_empty_value(rel_row, row, "GUtranCellRelationId")
+        neighbor_ref = pick_non_empty_value(rel_row, row, "neighborCellRef")
+        is_endc = pick_non_empty_value(rel_row, row, "isEndcAllowed")
+        is_ho = pick_non_empty_value(rel_row, row, "isHoAllowed")
+        is_remove = pick_non_empty_value(rel_row, row, "isRemoveAllowed")
+        is_voice_ho = pick_non_empty_value(rel_row, row, "isVoiceHoAllowed")
+        user_label = pick_non_empty_value(rel_row, row, "userLabel")
+        coverage = pick_non_empty_value(rel_row, row, "coverageIndicator")
 
         # Overwrite GUtranFreqRelationId to a hardcoded value (new SSB) only when old SSB is found
         if n77_ssb_pre and freq_rel.startswith(str(n77_ssb_pre)):
@@ -464,7 +364,7 @@ def build_nr_new(df: pd.DataFrame, relations_df: Optional[pd.DataFrame]) -> pd.D
         df["NRCellRelationId"] = df["NRCellRelationId"].astype(str).str.strip()
 
         # Lookup that also carries nRCellRef to be able to extract GNBCUCPFunction segment
-        relations_lookup = _build_lookup(
+        relations_lookup = build_row_lookup(
             relations_df,
             ["NodeId", "NRCellCUId", "NRCellRelationId"],
             extra_strip_cols=["nRCellRef"],
@@ -495,7 +395,7 @@ def build_nr_new(df: pd.DataFrame, relations_df: Optional[pd.DataFrame]) -> pd.D
         # Fill GNBCUCPFunctionId from nRCellRef (same logic style as missing/disc)
         # -----------------------------
         df["GNBCUCPFunctionId"] = df.apply(
-            lambda r: _extract_gnbcucp_segment(_resolve_nrcell_ref(r, relations_lookup)),
+            lambda r: extract_gnbcucp_segment(resolve_nrcell_ref(r, relations_lookup)),
             axis=1,
         )
 
@@ -579,7 +479,7 @@ def build_nr_missing(
     df["NRCellCUId"] = df["NRCellCUId"].astype(str).str.strip()
     df["NRCellRelationId"] = df["NRCellRelationId"].astype(str).str.strip()
 
-    relations_lookup = _build_lookup(
+    relations_lookup = build_row_lookup(
         relations_df, ["NodeId", "NRCellCUId", "NRCellRelationId"], extra_strip_cols=["nRCellRef"]
     )
 
@@ -591,14 +491,14 @@ def build_nr_missing(
         )
         rel_row = relations_lookup.get(key)
 
-        nr_cell_cu = _pick_value(rel_row, row, "NRCellCUId")
-        nr_cell_rel = _pick_value(rel_row, row, "NRCellRelationId")
-        coverage = _pick_value(rel_row, row, "coverageIndicator")
-        is_ho = _pick_value(rel_row, row, "isHoAllowed")
-        is_remove = _pick_value(rel_row, row, "isRemoveAllowed")
-        s_cell_candidate = _pick_value(rel_row, row, "sCellCandidate")
-        nrcell_ref = _pick_value(rel_row, row, "nRCellRef")
-        nrfreq_ref = _pick_value(rel_row, row, "nRFreqRelationRef")
+        nr_cell_cu = pick_non_empty_value(rel_row, row, "NRCellCUId")
+        nr_cell_rel = pick_non_empty_value(rel_row, row, "NRCellRelationId")
+        coverage = pick_non_empty_value(rel_row, row, "coverageIndicator")
+        is_ho = pick_non_empty_value(rel_row, row, "isHoAllowed")
+        is_remove = pick_non_empty_value(rel_row, row, "isRemoveAllowed")
+        s_cell_candidate = pick_non_empty_value(rel_row, row, "sCellCandidate")
+        nrcell_ref = pick_non_empty_value(rel_row, row, "nRCellRef")
+        nrfreq_ref = pick_non_empty_value(rel_row, row, "nRFreqRelationRef")
 
         if not (nr_cell_cu and nr_cell_rel):
             return ""
@@ -652,7 +552,7 @@ def build_nr_missing(
 
     # GNBCUCPFunctionId se rellena desde nRCellRef usando la tabla de relaciones
     df["GNBCUCPFunctionId"] = df.apply(
-        lambda r: _extract_gnbcucp_segment(_resolve_nrcell_ref(r, relations_lookup)),
+        lambda r: extract_gnbcucp_segment(resolve_nrcell_ref(r, relations_lookup)),
         axis=1,
     )
 
@@ -708,12 +608,12 @@ def build_nr_disc(
             work[col] = ""
         work[col] = work[col].astype(str).str.strip()
 
-    relations_lookup = _build_lookup(
+    relations_lookup = build_row_lookup(
         relations_df, ["NodeId", "NRCellCUId", "NRCellRelationId"], extra_strip_cols=["nRCellRef"]
     )
 
     work["GNBCUCPFunctionId"] = work.apply(
-        lambda r: _extract_gnbcucp_segment(_resolve_nrcell_ref(r, relations_lookup)), axis=1
+        lambda r: extract_gnbcucp_segment(resolve_nrcell_ref(r, relations_lookup)), axis=1
     )
 
     del_df = build_nr_new(disc_df.copy(), relations_df)

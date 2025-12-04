@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+from __future__ import annotations
 
 import re
 from typing import List, Optional, Tuple, Dict, Iterable
@@ -250,3 +251,49 @@ def cap_rows(
 
 def normalize_ref(s: str) -> str:
     return str(s).replace(" ", "").strip()
+
+
+def extract_gnbcucp_segment(nrcell_ref: str) -> str:
+    """
+    Extract GNBCUCPFunction segment from a full nRCellRef string.
+
+    Example:
+      '...,GNBCUCPFunction=1,NRNetwork=1,ExternalGNBCUCPFunction=auto311_480_3_2509535,ExternalNRCellCU=auto41116222186'
+      -> 'GNBCUCPFunction=1,NRNetwork=1,ExternalGNBCUCPFunction=auto311_480_3_2509535,ExternalNRCellCU=auto41116222186'
+    """
+    if not isinstance(nrcell_ref, str):
+        return ""
+    pos = nrcell_ref.find("GNBCUCPFunction=")
+    if pos == -1:
+        return ""
+    return nrcell_ref[pos:].strip()
+
+
+def resolve_nrcell_ref(row: pd.Series, relations_lookup: Dict[tuple, pd.Series]) -> str:
+    """
+    Prefer nRCellRef from relations_df; if empty, fallback to value in disc row.
+    """
+    key = (
+        str(row.get("NodeId", "")).strip(),
+        str(row.get("NRCellCUId", "")).strip(),
+        str(row.get("NRCellRelationId", "")).strip(),
+    )
+    rel_row = relations_lookup.get(key)
+    candidates = []
+    if rel_row is not None:
+        candidates.append(rel_row.get("nRCellRef"))
+    candidates.append(row.get("nRCellRef"))
+
+    for v in candidates:
+        if v is None:
+            continue
+        try:
+            if pd.isna(v):
+                continue
+        except TypeError:
+            pass
+        s = str(v).strip()
+        if not s or s.lower() == "nan":
+            continue
+        return s
+    return ""
