@@ -193,7 +193,19 @@ class ConsistencyChecks:
         """
         Small helper used in both legacy and dual-input modes to avoid duplication.
         """
-        date_str = extract_date(os.path.basename(dir_path))
+        # Try to extract date from the last 3 folder levels (current, parent, grandparent) safely
+        dir_basename = os.path.basename(dir_path)
+        parent = os.path.dirname(dir_path)
+        grandparent = os.path.dirname(parent) if parent else ""
+        parent_basename = os.path.basename(parent) if parent else ""
+        grandparent_basename = os.path.basename(grandparent) if grandparent else ""
+        date_str = (
+                extract_date(dir_basename)
+                or extract_date(parent_basename)
+                or extract_date(grandparent_basename)
+                or extract_date(dir_path)
+        )
+
         for fname in os.listdir(dir_path):
             lower = fname.lower()
             if not (lower.endswith(".log") or lower.endswith(".txt")):
