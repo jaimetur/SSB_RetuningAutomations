@@ -30,7 +30,8 @@ from pathlib import Path
 from src.utils.utils_datetime import format_duration_hms
 from src.utils.utils_dialog import tk, ttk, filedialog, messagebox, ask_reopen_launcher, ask_yes_no_dialog, ask_yes_no_dialog_custom
 from src.utils.utils_infrastructure import LoggerDual
-from src.utils.utils_io import normalize_csv_list, parse_arfcn_csv_to_set, load_cfg_values, save_cfg_values, log_module_exception, to_long_path, pretty_path, folder_has_valid_logs, detect_pre_post_subfolders
+from src.utils.utils_io import load_cfg_values, save_cfg_values, log_module_exception, to_long_path, pretty_path, folder_has_valid_logs, detect_pre_post_subfolders
+from src.utils.utils_parsing import normalize_csv_list, parse_arfcn_csv_to_set
 
 from src.modules.ConsistencyChecks.ConsistencyChecks import ConsistencyChecks
 from src.modules.ConfigurationAudit import ConfigurationAudit

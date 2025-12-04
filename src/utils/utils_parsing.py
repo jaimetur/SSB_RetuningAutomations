@@ -297,3 +297,53 @@ def resolve_nrcell_ref(row: pd.Series, relations_lookup: Dict[tuple, pd.Series])
             continue
         return s
     return ""
+
+
+def normalize_market_name(name: str) -> str:
+    """
+    Normalize a market folder name so that, for example,
+    '231_Indiana', '231-Indiana' and 'Indiana' match.
+
+    Used only for matching PRE/POST markets.
+    """
+    s = name.strip().lower()
+    # Strip leading digits + separators (underscore, hyphen, space)
+    s = re.sub(r"^\d+[_\-\s]*", "", s)
+    return s
+
+
+def normalize_csv_list(text: str) -> str:
+    """Normalize a comma-separated text into 'a,b,c' without extra spaces/empties."""
+    if not text:
+        return ""
+    items = [t.strip() for t in text.split(",")]
+    items = [t for t in items if t]
+    return ",".join(items)
+
+
+def parse_arfcn_csv_to_set(
+    csv_text: Optional[str],
+    default_values: List[int],
+    label: str,
+) -> set:
+    """
+    Helper to parse a CSV string into a set of integers.
+
+    - If csv_text is empty or all values are invalid, fall back to default_values.
+    - Logs warnings for invalid tokens.
+    """
+    values: List[int] = []
+    if csv_text:
+        for token in csv_text.split(","):
+            tok = token.strip()
+            if not tok:
+                continue
+            try:
+                values.append(int(tok))
+            except ValueError:
+                print(f"[Configuration Audit] [WARN] Ignoring invalid ARFCN '{tok}' in {label} list.")
+
+    if not values:
+        return set(default_values)
+
+    return set(values)

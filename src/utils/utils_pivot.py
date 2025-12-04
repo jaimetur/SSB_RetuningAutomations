@@ -7,23 +7,6 @@ from typing import List, Optional
 import pandas as pd
 
 
-def concat_or_empty(dfs: List[pd.DataFrame]) -> pd.DataFrame:
-    """
-    Return a single concatenated DataFrame or an empty one if none;
-    align on common columns when required.
-    """
-    if not dfs:
-        return pd.DataFrame()
-    try:
-        return pd.concat(dfs, ignore_index=True)
-    except Exception:
-        common_cols = set.intersection(*(set(d.columns) for d in dfs)) if dfs else set()
-        if not common_cols:
-            return pd.DataFrame()
-        dfs_aligned = [d[list(common_cols)].copy() for d in dfs]
-        return pd.concat(dfs_aligned, ignore_index=True)
-
-
 def safe_pivot_count(
     df: pd.DataFrame,
     index_field: str,

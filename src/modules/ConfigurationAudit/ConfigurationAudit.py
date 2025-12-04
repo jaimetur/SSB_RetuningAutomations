@@ -8,7 +8,8 @@ from src.utils.utils_io import find_log_files, read_text_file, to_long_path, pre
 from src.utils.utils_parsing import SUMMARY_RE, find_all_subnetwork_headers, extract_mo_from_subnetwork_line, parse_table_slice_from_subnetwork, parse_log_lines, find_subnetwork_header_index, extract_mo_name_from_previous_line, cap_rows
 from src.utils.utils_excel import sanitize_sheet_name, unique_sheet_name, color_summary_tabs, apply_alternating_category_row_fills, style_headers_autofilter_and_autofit
 from src.utils.utils_sorting import natural_logfile_key
-from src.utils.utils_pivot import concat_or_empty, safe_pivot_count, safe_crosstab_count, apply_frequency_column_filter
+from src.utils.utils_pivot import safe_pivot_count, safe_crosstab_count, apply_frequency_column_filter
+from src.utils.utils_dataframe import concat_or_empty
 from .ca_excel_summary import build_summary_audit
 from .ca_ppt_summary import generate_ppt_summary
 

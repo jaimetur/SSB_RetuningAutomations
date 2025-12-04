@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import List, Optional, Tuple, Dict
 
+from src.utils.utils_parsing import normalize_csv_list
+
 # ============================ OPTIONAL TKINTER UI =========================== #
 try:
     import tkinter as tk
@@ -30,7 +32,7 @@ class Step0RunInfo:
     datetime_key: datetime  # yyyymmddhhmm for sorting
 
 
-def parse_step0_run(entry_name: str, base_folder: str) -> Optional[Step0RunInfo]:
+def detect_step0_folders(entry_name: str, base_folder: str) -> Optional[Step0RunInfo]:
     """
     Parse a folder name as a Step0 run.
 
@@ -233,7 +235,7 @@ def detect_pre_post_subfolders(base_folder: str, BLACKLIST: tuple) -> Tuple[Opti
     -------------------
     - Direct subfolders of base_folder are scanned.
     - A subfolder is considered a "Step0 run" if:
-        * parse_step0_run() returns a Step0RunInfo, i.e.:
+        * detect_step0_folders() returns a Step0RunInfo, i.e.:
             - name contains 'Step0' (anywhere, case-insensitive), AND
             - name starts with 'yyyymmdd_<time>', with <time> in HHMM or H[H](am|pm).
 
@@ -299,9 +301,9 @@ def detect_pre_post_subfolders(base_folder: str, BLACKLIST: tuple) -> Tuple[Opti
         name_low = entry.name.lower()
         if any(tok in name_low for tok in BLACKLIST):
             continue
-        parsed = parse_step0_run(entry.name, base_folder)
-        if parsed:
-            runs.append(parsed)
+        step0_folder_parsed = detect_step0_folders(entry.name, base_folder)
+        if step0_folder_parsed:
+            runs.append(step0_folder_parsed)
 
     if len(runs) < 2:
         return None, None, {}
@@ -369,56 +371,6 @@ def read_text_file(path: str) -> Tuple[List[str], Optional[str]]:
     Returns (lines, encoding_used).
     """
     return read_text_with_encoding(path)
-
-
-def _normalize_market_name(name: str) -> str:
-    """
-    Normalize a market folder name so that, for example,
-    '231_Indiana', '231-Indiana' and 'Indiana' match.
-
-    Used only for matching PRE/POST markets.
-    """
-    s = name.strip().lower()
-    # Strip leading digits + separators (underscore, hyphen, space)
-    s = re.sub(r"^\d+[_\-\s]*", "", s)
-    return s
-
-
-def normalize_csv_list(text: str) -> str:
-    """Normalize a comma-separated text into 'a,b,c' without extra spaces/empties."""
-    if not text:
-        return ""
-    items = [t.strip() for t in text.split(",")]
-    items = [t for t in items if t]
-    return ",".join(items)
-
-
-def parse_arfcn_csv_to_set(
-    csv_text: Optional[str],
-    default_values: List[int],
-    label: str,
-) -> set:
-    """
-    Helper to parse a CSV string into a set of integers.
-
-    - If csv_text is empty or all values are invalid, fall back to default_values.
-    - Logs warnings for invalid tokens.
-    """
-    values: List[int] = []
-    if csv_text:
-        for token in csv_text.split(","):
-            tok = token.strip()
-            if not tok:
-                continue
-            try:
-                values.append(int(tok))
-            except ValueError:
-                print(f"[Configuration Audit] [WARN] Ignoring invalid ARFCN '{tok}' in {label} list.")
-
-    if not values:
-        return set(default_values)
-
-    return set(values)
 
 
 def ensure_cfg_section(config_section, parser: configparser.ConfigParser) -> None:
