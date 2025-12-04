@@ -52,6 +52,9 @@ Multi-Platform/Multi-Arch tool designed to Automate some process during SSB Retu
 """)
 
 # ================================ DEFAULTS ================================= #
+# List of words to find in a folder name to be discarted from Bulk Configuration Audit module or from Bulk Consistency Check module.
+BLACKLIST = ("ignore", "old", "discard", "bad")  # case-insensitive blacklist for folder names
+
 # Input Folder(s)
 INPUT_FOLDER = ""        # single-input default if not defined
 INPUT_FOLDER_PRE = ""    # default Pre folder for dual-input GUI
@@ -631,7 +634,7 @@ def run_configuration_audit(
 
     # Print ConfigurationAudit Settings:
     print(f"{module_name} Configuration Audit Settings:")
-    print(f"{module_name} Using old N77 SSB = {local_n77_ssb_pre} --> new N77 SSB = {local_n77_ssb_post}")
+    print(f"{module_name} Old N77 SSB = {local_n77_ssb_pre} --> New N77 SSB = {local_n77_ssb_post}")
     if local_n77b_ssb is not None:
         print(f"{module_name} N77B SSB = {local_n77b_ssb}")
     else:
@@ -758,6 +761,9 @@ def run_configuration_audit(
     for dirpath, dirnames, filenames in os.walk(base_dir_fs):
         if dirpath == base_dir_fs:
             continue
+        folder_name_low = os.path.basename(dirpath).lower()
+        if any(tok in folder_name_low for tok in BLACKLIST):
+            continue
         try:
             if folder_has_valid_logs(dirpath):
                 candidate_dirs.append(dirpath)
@@ -822,6 +828,7 @@ def run_consistency_checks_for_market_pairs(
 
         # --- Run Configuration Audit for PRE and POST ---
         print(f"{module_name} {market_tag} Running Configuration Audit for PRE folder before consistency checks...")
+        print("-" * 80)
         pre_audit_excel = run_configuration_audit(
             input_dir=pre_dir_fs,
             freq_filters_csv=freq_filters_csv,
@@ -833,12 +840,14 @@ def run_consistency_checks_for_market_pairs(
             allowed_n77_ssb_post_csv=allowed_n77_ssb_post_csv,
             allowed_n77_arfcn_post_csv=allowed_n77_arfcn_post_csv,
         )
+        print("-" * 80)
         if pre_audit_excel:
             print(f"{module_name} {market_tag} PRE Configuration Audit output: '{pretty_path(pre_audit_excel)}'")
         else:
             print(f"{module_name} {market_tag} PRE Configuration Audit did not generate an output Excel file.")
 
         print(f"{module_name} {market_tag} Running Configuration Audit for POST folder before consistency checks...")
+        print("-" * 80)
         post_audit_excel = run_configuration_audit(
             input_dir=post_dir_fs,
             freq_filters_csv=freq_filters_csv,
@@ -850,6 +859,7 @@ def run_consistency_checks_for_market_pairs(
             allowed_n77_ssb_post_csv=allowed_n77_ssb_post_csv,
             allowed_n77_arfcn_post_csv=allowed_n77_arfcn_post_csv,
         )
+        print("-" * 80)
         if post_audit_excel:
             print(f"{module_name} {market_tag} POST Configuration Audit output: '{pretty_path(post_audit_excel)}'")
         else:
@@ -870,7 +880,10 @@ def run_consistency_checks_for_market_pairs(
             print(f"{module_name} {market_tag}         Please update ConsistencyChecks.loadPrePost(pre_dir, post_dir) to enable dual-input mode.")
             continue
 
-        output_dir = os.path.join(post_dir_fs, f"ConsistencyChecks_{versioned_suffix}_{market_label}")
+        if market_label != "GLOBAL":
+            output_dir = os.path.join(post_dir_fs, f"ConsistencyChecks_{versioned_suffix}_{market_label}")
+        else:
+            output_dir = os.path.join(post_dir_fs, f"ConsistencyChecks_{versioned_suffix}")
 
         results = None
         if n77_ssb_pre and n77_ssb_post:
@@ -1058,7 +1071,7 @@ def run_consistency_checks_bulk(
         return
 
     # Auto-detect PRE/POST base runs and markets
-    base_pre, base_post, detected_market_pairs = detect_pre_post_subfolders(base_dir_fs)
+    base_pre, base_post, detected_market_pairs = detect_pre_post_subfolders(base_dir_fs, BLACKLIST=BLACKLIST)
     market_pairs: Dict[str, Tuple[str, str]] = detected_market_pairs or {}
 
     if not base_pre or not base_post:
