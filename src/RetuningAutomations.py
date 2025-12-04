@@ -26,12 +26,13 @@ import textwrap
 import importlib
 from pathlib import Path
 
+
 # Import our different Classes
 from src.utils.utils_datetime import format_duration_hms
 from src.utils.utils_dialog import tk, ttk, filedialog, messagebox, ask_reopen_launcher, ask_yes_no_dialog, ask_yes_no_dialog_custom
 from src.utils.utils_infrastructure import LoggerDual
 from src.utils.utils_io import load_cfg_values, save_cfg_values, log_module_exception, to_long_path, pretty_path, folder_has_valid_logs, detect_pre_post_subfolders
-from src.utils.utils_parsing import normalize_csv_list, parse_arfcn_csv_to_set
+from src.utils.utils_parsing import normalize_csv_list, parse_arfcn_csv_to_set, cap_rows
 
 from src.modules.ConsistencyChecks.ConsistencyChecks import ConsistencyChecks
 from src.modules.ConfigurationAudit import ConfigurationAudit
@@ -53,13 +54,20 @@ Multi-Platform/Multi-Arch tool designed to Automate some process during SSB Retu
 """)
 
 # ================================ DEFAULTS ================================= #
-# List of words to find in a folder name to be discarted from Bulk Configuration Audit module or from Bulk Consistency Check module.
-BLACKLIST = ("ignore", "old", "discard", "bad")  # case-insensitive blacklist for folder names
-
 # Input Folder(s)
 INPUT_FOLDER = ""        # single-input default if not defined
 INPUT_FOLDER_PRE = ""    # default Pre folder for dual-input GUI
 INPUT_FOLDER_POST = ""   # default Post folder for dual-input GUI
+
+# List of words to find in a folder name to be discarted from Bulk Configuration Audit module or from Bulk Consistency Check module.
+BLACKLIST = ("ignore", "old", "discard", "bad", "partial")  # case-insensitive blacklist for folder names
+
+# Global selectable list for filtering summary columns in ConfigurationAudit
+NETWORK_FREQUENCIES: List[str] = [
+    "174970","176410","176430","176910","177150","392410","393410","394500","394590","432970",
+    "647328","648672","650004","650006","653952",
+    "2071667","2071739","2073333","2074999","2076665","2078331","2079997","2081663","2083329"
+]
 
 # Frequencies (single Pre/Post used by ConsistencyChecks)
 DEFAULT_N77_SSB_PRE = "648672"
@@ -76,12 +84,8 @@ DEFAULT_ALLOWED_N77_ARFCN_PRE_CSV = "650006,654652,655324,655984,656656"
 DEFAULT_ALLOWED_N77_SSB_POST_CSV = "647328,648672,653952"
 DEFAULT_ALLOWED_N77_ARFCN_POST_CSV = "650006,654652,655324,655984,656656"
 
-# Global selectable list for filtering summary columns in ConfigurationAudit
-NETWORK_FREQUENCIES: List[str] = [
-    "174970","176410","176430","176910","177150","392410","393410","394500","394590","432970",
-    "647328","648672","650004","650006","653952",
-    "2071667","2071739","2073333","2074999","2076665","2078331","2079997","2081663","2083329"
-]
+# Default ARFCN list (CSV) for Consistency Checks filtering.
+DEFAULT_CC_FREQ_FILTERS = "648672,647328"
 
 # TABLES_ORDER defines the desired priority of table sheet ordering.
 TABLES_ORDER: List[str] = []
@@ -110,7 +114,8 @@ CONFIG_KEY_LAST_INPUT_FINAL_CLEANUP     = "last_input_dir_final_cleanup"
 CONFIG_KEY_N77_SSB_PRE                  = "n77_ssb_pre"
 CONFIG_KEY_N77_SSB_POST                 = "n77_ssb_post"
 CONFIG_KEY_N77B_SSB                     = "n77b_ssb"
-CONFIG_KEY_FREQ_FILTERS                 = "summary_freq_filters"
+CONFIG_KEY_CA_FREQ_FILTERS              = "ca_freq_filters"
+CONFIG_KEY_CC_FREQ_FILTERS              = "cc_freq_filters"
 CONFIG_KEY_ALLOWED_N77_SSB_PRE          = "allowed_n77_ssb_pre_csv"
 CONFIG_KEY_ALLOWED_N77_ARFCN_PRE        = "allowed_n77_arfcn_pre_csv"
 CONFIG_KEY_ALLOWED_N77_SSB_POST         = "allowed_n77_ssb_post_csv"
@@ -128,7 +133,8 @@ CFG_FIELD_MAP = {
     "n77_ssb_pre":                CONFIG_KEY_N77_SSB_PRE,
     "n77_ssb_post":               CONFIG_KEY_N77_SSB_POST,
     "n77b_ssb":                   CONFIG_KEY_N77B_SSB,
-    "freq_filters":               CONFIG_KEY_FREQ_FILTERS,
+    "ca_freq_filters":            CONFIG_KEY_CA_FREQ_FILTERS,
+    "cc_freq_filters":            CONFIG_KEY_CC_FREQ_FILTERS,
     "allowed_n77_ssb_pre":        CONFIG_KEY_ALLOWED_N77_SSB_PRE,
     "allowed_n77_arfcn_pre":      CONFIG_KEY_ALLOWED_N77_ARFCN_PRE,
     "allowed_n77_ssb_post":       CONFIG_KEY_ALLOWED_N77_SSB_POST,
@@ -149,8 +155,10 @@ class GuiResult:
     n77_ssb_post: str
     # N77B SSB frequency
     n77b_ssb: str
-    # Summary filters for ConfigurationAudit
-    freq_filters_csv: str
+    # Configuration Audit filters
+    ca_freq_filters_csv: str
+    # Consistency Checks filters
+    cc_freq_filters_csv: str
     # SSB/ARFCN lists for ConfigurationAudit (PRE)
     allowed_n77_ssb_pre_csv: str
     allowed_n77_arfcn_pre_csv: str
@@ -181,7 +189,8 @@ def gui_config_dialog(
     default_n77_ssb_pre: str = DEFAULT_N77_SSB_PRE,
     default_n77_ssb_post: str = DEFAULT_N77_SSBQ_POST,
     default_n77b_ssb: str = DEFAULT_N77B_SSB,
-    default_filters_csv: str = "",
+    default_ca_filters_csv: str = "",
+    default_cc_filters_csv: str = "",
     default_allowed_n77_ssb_csv: str = DEFAULT_ALLOWED_N77_SSB_PRE_CSV,
     default_allowed_n77_arfcn_csv: str = DEFAULT_ALLOWED_N77_ARFCN_PRE_CSV,
     default_allowed_n77_ssb_post_csv: str = DEFAULT_ALLOWED_N77_SSB_POST_CSV,
@@ -218,7 +227,7 @@ def gui_config_dialog(
     # --- Center window ONCE with fixed size ---
     try:
         root.update_idletasks()
-        w, h = 760, 720  # tamaño objetivo del launcher
+        w, h = 880, 800  # tamaño objetivo del launcher
         sw = root.winfo_screenwidth()
         sh = root.winfo_screenheight()
         x = (sw - w) // 2
@@ -235,7 +244,8 @@ def gui_config_dialog(
     n77_ssb_pre_var = tk.StringVar(value=default_n77_ssb_pre or "")
     n77_ssb_post_var = tk.StringVar(value=default_n77_ssb_post or "")
     n77b_ssb_var = tk.StringVar(value=default_n77b_ssb or "")
-    selected_csv_var = tk.StringVar(value=normalize_csv_list(default_filters_csv))
+    ca_filters_csv_var = tk.StringVar(value=normalize_csv_list(default_ca_filters_csv))
+    cc_filters_csv_var = tk.StringVar(value=normalize_csv_list(default_cc_filters_csv))
     allowed_n77_ssb_pre_var = tk.StringVar(value=normalize_csv_list(default_allowed_n77_ssb_csv))
     allowed_n77_arfcn_pre_var = tk.StringVar(value=normalize_csv_list(default_allowed_n77_arfcn_csv))
     allowed_n77_ssb_post_var = tk.StringVar(value=normalize_csv_list(default_allowed_n77_ssb_post_csv))
@@ -264,7 +274,7 @@ def gui_config_dialog(
     ttk.Label(single_frame, text="").grid(row=0, column=0, columnspan=3, sticky="w")
 
     ttk.Label(single_frame, text="Input folder:").grid(row=1, column=0, sticky="w", **pad)
-    ttk.Entry(single_frame, textvariable=input_var, width=80).grid(row=1, column=1, sticky="ew", **pad)
+    ttk.Entry(single_frame, textvariable=input_var, width=100).grid(row=1, column=1, sticky="ew", **pad)
     ttk.Button(single_frame, text="Browse…", command=browse_single).grid(row=1, column=2, sticky="ew", **pad)
 
     # Spacer row so single_frame has similar height to dual_frame
@@ -273,7 +283,7 @@ def gui_config_dialog(
     # Dual-input frame (only for module 2)
     dual_frame = ttk.Frame(frm)
     ttk.Label(dual_frame, text="Pre input folder:").grid(row=0, column=0, sticky="w", **pad)
-    ttk.Entry(dual_frame, textvariable=input_pre_var, width=80).grid(row=0, column=1, sticky="ew", **pad)
+    ttk.Entry(dual_frame, textvariable=input_pre_var, width=100).grid(row=0, column=1, sticky="ew", **pad)
 
     def browse_pre():
         path = filedialog.askdirectory(title="Select PRE input folder", initialdir=input_pre_var.get() or os.getcwd())
@@ -342,7 +352,7 @@ def gui_config_dialog(
 
     # Summary filters
     ttk.Separator(frm).grid(row=13, column=0, columnspan=3, sticky="ew", **pad)
-    ttk.Label(frm, text="Summary Filters (for pivot columns in Configuration Audit):").grid(row=14, column=0, columnspan=3, sticky="w", **pad)
+    ttk.Label(frm, text="Frequecy Filters:").grid(row=14, column=0, columnspan=3, sticky="w", **pad)
 
     list_frame = ttk.Frame(frm)
     list_frame.grid(row=15, column=0, columnspan=1, sticky="nsw", **pad_tight)
@@ -367,40 +377,75 @@ def gui_config_dialog(
     lb.pack(side="left", fill="both", expand=True)
     scrollbar.config(command=lb.yview)
 
+    right_frame = ttk.Frame(frm)
+    right_frame.grid(row=15, column=2, sticky="nsew", **pad_tight)
+
+    # Configuration Audit Filters (for Summary Pivots)
+    ttk.Label(right_frame, text="Configuration Audit Filters (for Summary Pivots) (Empty = No Filter):").grid(row=0, column=0, sticky="w")
+    ttk.Entry(right_frame, textvariable=ca_filters_csv_var, width=40).grid(row=1, column=0, sticky="ew", pady=(0, 8))
+
+    # Consistency Checks Filters
+    ttk.Label(right_frame, text="Consistency Checks Filters (Empty = No Filter):").grid(row=3, column=0, sticky="w")
+    ttk.Entry(right_frame, textvariable=cc_filters_csv_var, width=40).grid(row=4, column=0, sticky="ew")
+
+    def current_selected_set_summary() -> List[str]:
+        return [s.strip() for s in normalize_csv_list(ca_filters_csv_var.get()).split(",") if s.strip()]
+
+    def current_selected_set_cc() -> List[str]:
+        return [s.strip() for s in normalize_csv_list(cc_filters_csv_var.get()).split(",") if s.strip()]
+
+    def add_selected_to_summary():
+        chosen = [lb.get(i) for i in lb.curselection()]
+        pool = set(current_selected_set_summary())
+        pool.update(chosen)
+        ca_filters_csv_var.set(",".join(sorted(pool)))
+
+    def remove_selected_from_summary():
+        chosen = set(lb.get(i) for i in lb.curselection())
+        pool = [x for x in current_selected_set_summary() if x not in chosen]
+        ca_filters_csv_var.set(",".join(pool))
+
+    def clear_summary_filters():
+        ca_filters_csv_var.set("")
+
+    def add_selected_to_cc():
+        chosen = [lb.get(i) for i in lb.curselection()]
+        pool = set(current_selected_set_cc())
+        pool.update(chosen)
+        cc_filters_csv_var.set(",".join(sorted(pool)))
+
+    def remove_selected_from_cc():
+        chosen = set(lb.get(i) for i in lb.curselection())
+        pool = [x for x in current_selected_set_cc() if x not in chosen]
+        cc_filters_csv_var.set(",".join(pool))
+
+    def clear_cc_filters():
+        cc_filters_csv_var.set("")
+
+    def select_all_listbox():
+        lb.select_set(0, "end")
+
     btns_frame = ttk.Frame(frm)
     btns_frame.grid(row=15, column=1, sticky="n", **pad_tight)
 
-    right_frame = ttk.Frame(frm)
-    right_frame.grid(row=15, column=2, sticky="nsew", **pad_tight)
-    ttk.Label(right_frame, text="Frequencies Filter (Empty = No Filter):").grid(row=0, column=0, sticky="w")
-    ttk.Entry(right_frame, textvariable=selected_csv_var, width=40).grid(row=1, column=0, sticky="ew")
+    # Botones para Summary
+    ttk.Label(btns_frame, text="Coonfiguration Audit").pack(anchor="w")
+    ttk.Button(btns_frame, text="Add →", command=add_selected_to_summary).pack(pady=2, fill="x")
+    ttk.Button(btns_frame, text="← Remove", command=remove_selected_from_summary).pack(pady=2, fill="x")
+    ttk.Button(btns_frame, text="Clear", command=clear_summary_filters).pack(pady=2, fill="x")
 
-    def current_selected_set() -> List[str]:
-        return [s.strip() for s in normalize_csv_list(selected_csv_var.get()).split(",") if s.strip()]
+    ttk.Separator(btns_frame, orient="horizontal").pack(fill="x", pady=4)
 
-    def add_selected():
-        chosen = [lb.get(i) for i in lb.curselection()]
-        pool = set(current_selected_set())
-        pool.update(chosen)
-        selected_csv_var.set(",".join(sorted(pool)))
+    # Botones para Consistency
+    ttk.Label(btns_frame, text="Consistency Checks").pack(anchor="w")
+    ttk.Button(btns_frame, text="Add →", command=add_selected_to_cc).pack(pady=2, fill="x")
+    ttk.Button(btns_frame, text="← Remove", command=remove_selected_from_cc).pack(pady=2, fill="x")
+    ttk.Button(btns_frame, text="Clear", command=clear_cc_filters).pack(pady=2, fill="x")
 
-    def remove_selected():
-        chosen = set(lb.get(i) for i in lb.curselection())
-        pool = [x for x in current_selected_set() if x not in chosen]
-        selected_csv_var.set(",".join(pool))
+    ttk.Separator(btns_frame, orient="horizontal").pack(fill="x", pady=4)
 
-    def select_all():
-        lb.select_set(0, "end")
-        add_selected()
-
-    def clear_filters():
-        lb.selection_clear(0, "end")
-        selected_csv_var.set("")
-
-    ttk.Button(btns_frame, text="Add →", command=add_selected).pack(pady=4, fill="x")
-    ttk.Button(btns_frame, text="← Remove", command=remove_selected).pack(pady=4, fill="x")
-    ttk.Button(btns_frame, text="Select all", command=select_all).pack(pady=4, fill="x")
-    ttk.Button(btns_frame, text="Clear Filter", command=clear_filters).pack(pady=4, fill="x")
+    # Botón común para seleccionar todo en la lista
+    ttk.Button(btns_frame, text="Select all in list", command=select_all_listbox).pack(pady=2, fill="x")
 
     btns = ttk.Frame(frm)
     btns.grid(row=999, column=0, columnspan=3, sticky="e", **pad)
@@ -440,7 +485,8 @@ def gui_config_dialog(
                 n77_ssb_pre=n77_ssb_pre_var.get().strip(),
                 n77_ssb_post=n77_ssb_post_var.get().strip(),
                 n77b_ssb=n77b_ssb_var.get().strip(),
-                freq_filters_csv=normalize_csv_list(selected_csv_var.get()),
+                ca_freq_filters_csv=normalize_csv_list(ca_filters_csv_var.get()),
+                cc_freq_filters_csv=normalize_csv_list(cc_filters_csv_var.get()),
                 allowed_n77_ssb_pre_csv=normalized_allowed_n77_ssb_pre,
                 allowed_n77_arfcn_pre_csv=normalized_allowed_n77_arfcn_pre,
                 allowed_n77_ssb_post_csv=normalized_allowed_n77_ssb_post,
@@ -463,7 +509,8 @@ def gui_config_dialog(
                 n77_ssb_pre=n77_ssb_pre_var.get().strip(),
                 n77_ssb_post=n77_ssb_post_var.get().strip(),
                 n77b_ssb=n77b_ssb_var.get().strip(),
-                freq_filters_csv=normalize_csv_list(selected_csv_var.get()),
+                ca_freq_filters_csv=normalize_csv_list(ca_filters_csv_var.get()),
+                cc_freq_filters_csv=normalize_csv_list(cc_filters_csv_var.get()),
                 allowed_n77_ssb_pre_csv=normalized_allowed_n77_ssb_pre,
                 allowed_n77_arfcn_pre_csv=normalized_allowed_n77_arfcn_pre,
                 allowed_n77_ssb_post_csv=normalized_allowed_n77_ssb_post,
@@ -518,7 +565,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--n77-ssb-pre", help="Frequency before refarming (Pre)")
     parser.add_argument("--n77-ssb-post", help="Frequency after refarming (Post)")
     parser.add_argument("--n77b-ssb", help="N77B SSB frequency (ARFCN).")
-    parser.add_argument("--freq-filters", help="Comma-separated list of frequencies to filter pivot columns in Configuration Audit (substring match per column header).")
+    parser.add_argument("--ca-freq-filters", help="Comma-separated list of frequencies to filter Configuration Audit results (pivot tables).")
+    parser.add_argument("--cc-freq-filters", help="Comma-separated list of frequencies to filter Consistency Checks results.")
 
     # ARFCN list options for ConfigurationAudit (PRE)
     parser.add_argument("--allowed-n77-ssb-pre", help="Comma-separated SSB (Pre) list for N77 SSB allowed values (Configuration Audit).")
@@ -538,7 +586,7 @@ def parse_args() -> argparse.Namespace:
 # ============================== RUNNERS (TASKS) ============================= #
 def run_configuration_audit(
     input_dir: str,
-    freq_filters_csv: str = "",
+    ca_freq_filters_csv: str = "",
     n77_ssb_pre: Optional[str] = None,
     n77_ssb_post: Optional[str] = None,
     n77b_ssb: Optional[str] = None,
@@ -579,7 +627,7 @@ def run_configuration_audit(
         return None
 
     # Normalize CSV arguments (so recursion uses cleaned values)
-    freq_filters_csv = normalize_csv_list(freq_filters_csv or "")
+    ca_freq_filters_csv = normalize_csv_list(ca_freq_filters_csv or "")
     allowed_n77_ssb_pre_csv = normalize_csv_list(allowed_n77_ssb_pre_csv or "")
     allowed_n77_arfcn_pre_csv = normalize_csv_list(allowed_n77_arfcn_pre_csv or "")
     allowed_n77_ssb_post_csv = normalize_csv_list(allowed_n77_ssb_post_csv or "")
@@ -659,8 +707,8 @@ def run_configuration_audit(
         """
         print(f"{module_name} Running Audit…")
         print(f"{module_name} Input folder: '{pretty_path(folder)}'")
-        if freq_filters_csv:
-            print(f"{module_name} Summary column filters: {freq_filters_csv}")
+        if ca_freq_filters_csv:
+            print(f"{module_name} Summary column filters: {ca_freq_filters_csv}")
 
         # Use long-path version for filesystem operations
         folder_fs = to_long_path(folder) if folder else folder
@@ -722,8 +770,8 @@ def run_configuration_audit(
             tables_order=TABLES_ORDER,
             output_dir=output_dir,
         )
-        if freq_filters_csv:
-            kwargs["filter_frequencies"] = [x.strip() for x in freq_filters_csv.split(",") if x.strip()]
+        if ca_freq_filters_csv:
+            kwargs["filter_frequencies"] = [x.strip() for x in ca_freq_filters_csv.split(",") if x.strip()]
 
         try:
             out = app.run(folder_fs, **kwargs)
@@ -807,7 +855,8 @@ def run_consistency_checks_for_market_pairs(
     n77_ssb_pre: Optional[str],
     n77_ssb_post: Optional[str],
     n77b_ssb: Optional[str],
-    freq_filters_csv: str,
+    ca_freq_filters_csv: str,
+    cc_freq_filters_csv: str,
     allowed_n77_ssb_pre_csv: Optional[str],
     allowed_n77_arfcn_pre_csv: Optional[str],
     allowed_n77_ssb_post_csv: Optional[str],
@@ -825,8 +874,11 @@ def run_consistency_checks_for_market_pairs(
     """
 
     # Normalize filters once here so they are reused for all markets
-    freq_filters_csv = normalize_csv_list(freq_filters_csv or "")
-    print(f"{module_name} Detected {len(market_pairs)} market pair(s) to process.")
+    ca_freq_filters_csv = normalize_csv_list(ca_freq_filters_csv or "")
+    cc_freq_filters_csv = normalize_csv_list(cc_freq_filters_csv or "648672,647328")
+
+    cc_filter_list = [x.strip() for x in cc_freq_filters_csv.split(",") if x.strip()]
+    print(f"{module_name} Consistency Checks Filters: {cc_filter_list}" if cc_filter_list else f"{module_name} Consistency Checks Filters: (no filter)")
 
     for market_label, (pre_dir, post_dir) in sorted(market_pairs.items()):
         market_tag = f"[Market: {market_label}]" if market_label != "GLOBAL" else ""
@@ -844,7 +896,7 @@ def run_consistency_checks_for_market_pairs(
         print("-" * 80)
         pre_audit_excel = run_configuration_audit(
             input_dir=pre_dir_fs,
-            freq_filters_csv=freq_filters_csv,
+            ca_freq_filters_csv=ca_freq_filters_csv,
             n77_ssb_pre=n77_ssb_pre,
             n77_ssb_post=n77_ssb_post,
             n77b_ssb=n77b_ssb,
@@ -865,7 +917,7 @@ def run_consistency_checks_for_market_pairs(
         print("-" * 80)
         post_audit_excel = run_configuration_audit(
             input_dir=post_dir_fs,
-            freq_filters_csv=freq_filters_csv,
+            ca_freq_filters_csv=ca_freq_filters_csv,
             n77_ssb_pre=n77_ssb_pre,
             n77_ssb_post=n77_ssb_post,
             n77b_ssb=n77b_ssb,
@@ -883,7 +935,10 @@ def run_consistency_checks_for_market_pairs(
             print(f"{module_name} {market_tag} POST Configuration Audit did not generate an output Excel file.")
 
         # --- Run ConsistencyChecks for this market ---
-        app = ConsistencyChecks(n77_ssb_pre=n77_ssb_pre, n77_ssb_post=n77_ssb_post)
+        try:
+            app = ConsistencyChecks(n77_ssb_pre=n77_ssb_pre, n77_ssb_post=n77_ssb_post, freq_filter_list=cc_filter_list)
+        except TypeError:
+            app = ConsistencyChecks(n77_ssb_pre=n77_ssb_pre, n77_ssb_post=n77_ssb_post)
 
         loaded = False
         try:
@@ -936,7 +991,8 @@ def run_consistency_checks_manual(
     n77_ssb_pre: Optional[str],
     n77_ssb_post: Optional[str],
     n77b_ssb: Optional[str] = None,
-    freq_filters_csv: str = "",
+    ca_freq_filters_csv: str = "",
+    cc_freq_filters_csv: str = "",
     allowed_n77_ssb_pre_csv: Optional[str] = None,
     allowed_n77_arfcn_pre_csv: Optional[str] = None,
     allowed_n77_ssb_post_csv: Optional[str] = None,
@@ -1020,7 +1076,8 @@ def run_consistency_checks_manual(
         n77_ssb_pre=n77_ssb_pre,
         n77_ssb_post=n77_ssb_post,
         n77b_ssb=n77b_ssb,
-        freq_filters_csv=freq_filters_csv,
+        ca_freq_filters_csv=ca_freq_filters_csv,
+        cc_freq_filters_csv=cc_freq_filters_csv,
         allowed_n77_ssb_pre_csv=allowed_n77_ssb_pre_csv,
         allowed_n77_arfcn_pre_csv=allowed_n77_arfcn_pre_csv,
         allowed_n77_ssb_post_csv=allowed_n77_ssb_post_csv,
@@ -1036,7 +1093,8 @@ def run_consistency_checks_bulk(
     n77_ssb_pre: Optional[str],
     n77_ssb_post: Optional[str],
     n77b_ssb: Optional[str] = None,
-    freq_filters_csv: str = "",
+    ca_freq_filters_csv: str = "",
+    cc_freq_filters_csv: str = "",
     allowed_n77_ssb_pre_csv: Optional[str] = None,
     allowed_n77_arfcn_pre_csv: Optional[str] = None,
     allowed_n77_ssb_post_csv: Optional[str] = None,
@@ -1137,7 +1195,8 @@ def run_consistency_checks_bulk(
         n77_ssb_pre=n77_ssb_pre,
         n77_ssb_post=n77_ssb_post,
         n77b_ssb=n77b_ssb,
-        freq_filters_csv=freq_filters_csv,
+        ca_freq_filters_csv=ca_freq_filters_csv,
+        cc_freq_filters_csv=cc_freq_filters_csv,
         allowed_n77_ssb_pre_csv=allowed_n77_ssb_pre_csv,
         allowed_n77_arfcn_pre_csv=allowed_n77_arfcn_pre_csv,
         allowed_n77_ssb_post_csv=allowed_n77_ssb_post_csv,
@@ -1209,7 +1268,8 @@ def execute_module(
     n77_ssb_pre: str = "",
     n77_ssb_post: str = "",
     n77b_ssb: str = "",
-    freq_filters_csv: str = "",
+    ca_freq_filters_csv: str = "",
+    cc_freq_filters_csv: str = "",
     allowed_n77_ssb_pre_csv: str = "",
     allowed_n77_arfcn_pre_csv: str = "",
     allowed_n77_ssb_post_csv: str = "",
@@ -1237,7 +1297,8 @@ def execute_module(
                     n77_ssb_pre,
                     n77_ssb_post,
                     n77b_ssb,
-                    freq_filters_csv,
+                    ca_freq_filters_csv,
+                    cc_freq_filters_csv,
                     allowed_n77_ssb_pre_csv,
                     allowed_n77_arfcn_pre_csv,
                     allowed_n77_ssb_post_csv,
@@ -1252,7 +1313,8 @@ def execute_module(
                     n77_ssb_pre,
                     n77_ssb_post,
                     n77b_ssb,
-                    freq_filters_csv,
+                    ca_freq_filters_csv,
+                    cc_freq_filters_csv,
                     allowed_n77_ssb_pre_csv,
                     allowed_n77_arfcn_pre_csv,
                     allowed_n77_ssb_post_csv,
@@ -1262,7 +1324,7 @@ def execute_module(
         elif module_fn is run_configuration_audit:
             module_fn(
                 input_dir,
-                freq_filters_csv=freq_filters_csv,
+                ca_freq_filters_csv=ca_freq_filters_csv,
                 n77_ssb_pre=n77_ssb_pre,
                 n77_ssb_post=n77_ssb_post,
                 allowed_n77_ssb_pre_csv=allowed_n77_ssb_pre_csv,
@@ -1353,7 +1415,8 @@ def main():
         "n77_ssb_pre",
         "n77_ssb_post",
         "n77b_ssb",
-        "freq_filters",
+        "ca_freq_filters",
+        "cc_freq_filters",
         "allowed_n77_ssb_pre",
         "allowed_n77_arfcn_pre",
         "allowed_n77_ssb_post",
@@ -1374,7 +1437,8 @@ def main():
     persisted_n77_ssb_pre              = cfg["n77_ssb_pre"]
     persisted_n77_ssb_post             = cfg["n77_ssb_post"]
     persisted_n77b_ssb                 = cfg["n77b_ssb"]
-    persisted_filters                  = cfg["freq_filters"]
+    persisted_ca_filters               = cfg["ca_freq_filters"]
+    persisted_cc_filters               = cfg["cc_freq_filters"]
     persisted_allowed_ssb_pre          = cfg["allowed_n77_ssb_pre"]
     persisted_allowed_arfcn_pre        = cfg["allowed_n77_arfcn_pre"]
     persisted_allowed_ssb_post         = cfg["allowed_n77_ssb_post"]
@@ -1396,7 +1460,8 @@ def main():
     default_n77_ssb_post = args.n77_ssb_post or persisted_n77_ssb_post or DEFAULT_N77_SSBQ_POST
     default_n77b_ssb = args.n77b_ssb or persisted_n77b_ssb or DEFAULT_N77B_SSB
 
-    default_filters_csv = normalize_csv_list(args.freq_filters or persisted_filters)
+    default_ca_filters_csv = normalize_csv_list(args.ca_freq_filters or persisted_ca_filters)
+    default_cc_filters_csv = normalize_csv_list(args.cc_freq_filters or persisted_cc_filters or "648672,647328")
 
     default_allowed_n77_ssb_pre_csv = normalize_csv_list(args.allowed_n77_ssb_pre or persisted_allowed_ssb_pre or DEFAULT_ALLOWED_N77_SSB_PRE_CSV)
     default_allowed_n77_arfcn_pre_csv = normalize_csv_list(args.allowed_n77_arfcn_pre or persisted_allowed_arfcn_pre or DEFAULT_ALLOWED_N77_ARFCN_PRE_CSV)
@@ -1423,7 +1488,8 @@ def main():
                 default_n77_ssb_pre=default_n77_ssb_pre,
                 default_n77_ssb_post=default_n77_ssb_post,
                 default_n77b_ssb=default_n77b_ssb,
-                default_filters_csv=default_filters_csv,
+                default_ca_filters_csv=default_ca_filters_csv,
+                default_cc_filters_csv=default_cc_filters_csv,
                 default_allowed_n77_ssb_csv=default_allowed_n77_ssb_pre_csv,
                 default_allowed_n77_arfcn_csv=default_allowed_n77_arfcn_pre_csv,
                 default_allowed_n77_ssb_post_csv=default_allowed_n77_ssb_post_csv,
@@ -1461,7 +1527,8 @@ def main():
                 n77_ssb_pre=sel.n77_ssb_pre,
                 n77_ssb_post=sel.n77_ssb_post,
                 n77b_ssb=sel.n77b_ssb,
-                freq_filters=sel.freq_filters_csv,
+                ca_freq_filters=sel.ca_freq_filters_csv,
+                cc_freq_filters=sel.cc_freq_filters_csv,
                 allowed_n77_ssb_pre=sel.allowed_n77_ssb_pre_csv,
                 allowed_n77_arfcn_pre=sel.allowed_n77_arfcn_pre_csv,
                 allowed_n77_ssb_post=sel.allowed_n77_ssb_post_csv,
@@ -1501,7 +1568,8 @@ def main():
             default_n77_ssb_pre = sel.n77_ssb_pre
             default_n77_ssb_post = sel.n77_ssb_post
             default_n77b_ssb = sel.n77b_ssb
-            default_filters_csv = sel.freq_filters_csv
+            default_ca_filters_csv = sel.ca_freq_filters_csv
+            default_cc_filters_csv = sel.cc_freq_filters_csv
             default_allowed_n77_ssb_pre_csv = sel.allowed_n77_ssb_pre_csv
             default_allowed_n77_arfcn_pre_csv = sel.allowed_n77_arfcn_pre_csv
             default_allowed_n77_ssb_post_csv = sel.allowed_n77_ssb_post_csv
@@ -1516,7 +1584,8 @@ def main():
                     n77_ssb_pre=sel.n77_ssb_pre,
                     n77_ssb_post=sel.n77_ssb_post,
                     n77b_ssb=sel.n77b_ssb,
-                    freq_filters_csv=sel.freq_filters_csv,
+                    ca_freq_filters_csv=sel.ca_freq_filters_csv,
+                    cc_freq_filters_csv=sel.cc_freq_filters_csv,
                     allowed_n77_ssb_pre_csv=sel.allowed_n77_ssb_pre_csv,
                     allowed_n77_arfcn_pre_csv=sel.allowed_n77_arfcn_pre_csv,
                     allowed_n77_ssb_post_csv=sel.allowed_n77_ssb_post_csv,
@@ -1544,7 +1613,8 @@ def main():
     n77_ssb_pre = default_n77_ssb_pre
     n77_ssb_post = default_n77_ssb_post
     n77b_ssb = default_n77b_ssb
-    freq_filters_csv = default_filters_csv
+    ca_freq_filters_csv = default_ca_filters_csv
+    cc_freq_filters_csv = default_cc_filters_csv
     allowed_n77_ssb_pre_csv = default_allowed_n77_ssb_pre_csv
     allowed_n77_arfcn_pre_csv = default_allowed_n77_arfcn_pre_csv
     allowed_n77_ssb_post_csv = default_allowed_n77_ssb_post_csv
@@ -1570,7 +1640,8 @@ def main():
             n77_ssb_pre=n77_ssb_pre,
             n77_ssb_post=n77_ssb_post,
             n77b_ssb=n77b_ssb,
-            freq_filters=freq_filters_csv,
+            ca_freq_filters=ca_freq_filters_csv,
+            cc_freq_filters=cc_freq_filters_csv,
             allowed_n77_ssb_pre=allowed_n77_ssb_pre_csv,
             allowed_n77_arfcn_pre=allowed_n77_arfcn_pre_csv,
             allowed_n77_ssb_post=allowed_n77_ssb_post_csv,
@@ -1584,7 +1655,8 @@ def main():
             n77_ssb_pre=n77_ssb_pre,
             n77_ssb_post=n77_ssb_post,
             n77b_ssb=n77b_ssb,
-            freq_filters_csv=freq_filters_csv,
+            ca_freq_filters_csv=ca_freq_filters_csv,
+            cc_freq_filters_csv=cc_freq_filters_csv,
             allowed_n77_ssb_pre_csv=allowed_n77_ssb_pre_csv,
             allowed_n77_arfcn_pre_csv=allowed_n77_arfcn_pre_csv,
             allowed_n77_ssb_post_csv=allowed_n77_ssb_post_csv,
@@ -1610,7 +1682,8 @@ def main():
             n77_ssb_pre=n77_ssb_pre,
             n77_ssb_post=n77_ssb_post,
             n77b_ssb=n77b_ssb,
-            freq_filters=freq_filters_csv,
+            ca_freq_filters=ca_freq_filters_csv,
+            cc_freq_filters=cc_freq_filters_csv,
             allowed_n77_ssb_pre=allowed_n77_ssb_pre_csv,
             allowed_n77_arfcn_pre=allowed_n77_arfcn_pre_csv,
             allowed_n77_ssb_post=allowed_n77_ssb_post_csv,
@@ -1623,7 +1696,8 @@ def main():
             n77_ssb_pre=n77_ssb_pre,
             n77_ssb_post=n77_ssb_post,
             n77b_ssb=n77b_ssb,
-            freq_filters_csv=freq_filters_csv,
+            ca_freq_filters_csv=ca_freq_filters_csv,
+            cc_freq_filters_csv=cc_freq_filters_csv,
             allowed_n77_ssb_pre_csv=allowed_n77_ssb_pre_csv,
             allowed_n77_arfcn_pre_csv=allowed_n77_arfcn_pre_csv,
             allowed_n77_ssb_post_csv=allowed_n77_ssb_post_csv,
@@ -1649,7 +1723,8 @@ def main():
             n77_ssb_pre=n77_ssb_pre,
             n77_ssb_post=n77_ssb_post,
             n77b_ssb=n77b_ssb,
-            freq_filters=freq_filters_csv,
+            ca_freq_filters=ca_freq_filters_csv,
+            cc_freq_filters=cc_freq_filters_csv,
             allowed_n77_ssb_pre=allowed_n77_ssb_pre_csv,
             allowed_n77_arfcn_pre=allowed_n77_arfcn_pre_csv,
             allowed_n77_ssb_post=allowed_n77_ssb_post_csv,
@@ -1662,7 +1737,8 @@ def main():
             n77_ssb_pre=n77_ssb_pre,
             n77_ssb_post=n77_ssb_post,
             n77b_ssb=n77b_ssb,
-            freq_filters_csv=freq_filters_csv,
+            ca_freq_filters_csv=ca_freq_filters_csv,
+            cc_freq_filters_csv=cc_freq_filters_csv,
             allowed_n77_ssb_pre_csv=allowed_n77_ssb_pre_csv,
             allowed_n77_arfcn_pre_csv=allowed_n77_arfcn_pre_csv,
             allowed_n77_ssb_post_csv=allowed_n77_ssb_post_csv,
@@ -1688,7 +1764,8 @@ def main():
             n77_ssb_pre=n77_ssb_pre,
             n77_ssb_post=n77_ssb_post,
             n77b_ssb=n77b_ssb,
-            freq_filters=freq_filters_csv,
+            ca_freq_filters=ca_freq_filters_csv,
+            cc_freq_filters=cc_freq_filters_csv,
             allowed_n77_ssb_pre=allowed_n77_ssb_pre_csv,
             allowed_n77_arfcn_pre=allowed_n77_arfcn_pre_csv,
             allowed_n77_ssb_post=allowed_n77_ssb_post_csv,
@@ -1705,7 +1782,8 @@ def main():
             n77_ssb_pre=n77_ssb_pre,
             n77_ssb_post=n77_ssb_post,
             n77b_ssb=n77b_ssb,
-            freq_filters=freq_filters_csv,
+            ca_freq_filters=ca_freq_filters_csv,
+            cc_freq_filters=cc_freq_filters_csv,
             allowed_n77_ssb_pre=allowed_n77_ssb_pre_csv,
             allowed_n77_arfcn_pre=allowed_n77_arfcn_pre_csv,
             allowed_n77_ssb_post=allowed_n77_ssb_post_csv,
@@ -1718,7 +1796,8 @@ def main():
         n77_ssb_pre=n77_ssb_pre,
         n77_ssb_post=n77_ssb_post,
         n77b_ssb=n77b_ssb,
-        freq_filters_csv=freq_filters_csv,
+        ca_freq_filters_csv=ca_freq_filters_csv,
+        cc_freq_filters_csv=cc_freq_filters_csv,
         allowed_n77_ssb_pre_csv=allowed_n77_ssb_pre_csv,
         allowed_n77_arfcn_pre_csv=allowed_n77_arfcn_pre_csv,
         allowed_n77_ssb_post_csv=allowed_n77_ssb_post_csv,
