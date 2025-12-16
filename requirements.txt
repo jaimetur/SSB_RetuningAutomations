@@ -4,9 +4,10 @@ numpy>=1.24.0
 openpyxl>=3.1.5
 pillow>=11.2.1
 colorama>=0.4.6
+python-pptx
+
 pyinstaller>=6.0.0
 nuitka>=2.7.3
-python-pptx
 
 # Optional (recommended for best performance and CLI experience)
 python-dateutil>=2.8.2

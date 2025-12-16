@@ -327,6 +327,11 @@ class ConfigurationAudit:
             "GUtranCellRelation": [],
             "FreqPrioNR": [],
             "EndcDistrProfile": [],
+            "ExternalNRCellCU": [],
+            "ExternalGUtranCell": [],
+            "TermPointToGNodeB": [],
+            "TermPointToGNB": [],
+            "TermPointToENodeB": [],
         }
         for entry in table_entries:
             mo_name = str(entry.get("sheet_candidate", "")).strip()
@@ -406,13 +411,18 @@ class ConfigurationAudit:
             add_margins=True,
             margins_name="Total",
         )
-        pivot_gu_sync_signal_freq = apply_frequency_column_filter(pivot_gu_sync_signal_freq, freq_filters)
+        pivot_gu_freq_rel = apply_frequency_column_filter(pivot_gu_sync_signal_freq, freq_filters)
 
         # Extra tables for audit logic
         df_nr_cell_rel = concat_or_empty(mo_collectors["NRCellRelation"])
         df_gu_cell_rel = concat_or_empty(mo_collectors["GUtranCellRelation"])
         df_freq_prio_nr = concat_or_empty(mo_collectors["FreqPrioNR"])
         df_endc_distr_profile = concat_or_empty(mo_collectors["EndcDistrProfile"])
+        df_external_nr_cell_cu = concat_or_empty(mo_collectors["ExternalNRCellCU"])
+        df_external_gutran_cell = concat_or_empty(mo_collectors["ExternalGUtranCell"])
+        df_term_point_to_gnodeb = concat_or_empty(mo_collectors["TermPointToGNodeB"])
+        df_term_point_to_gnb = concat_or_empty(mo_collectors["TermPointToGNB"])
+        df_term_point_to_enodeb = concat_or_empty(mo_collectors["TermPointToENodeB"])
 
         # =====================================================================
         #                PHASE 4.2: Build SummaryAudit
@@ -422,11 +432,11 @@ class ConfigurationAudit:
             df_nr_freq=df_nr_freq,
             df_nr_freq_rel=df_nr_freq_rel,
             df_nr_cell_rel=df_nr_cell_rel,
-            df_nr_sector_carrier=df_nr_sector_carrier,
             df_freq_prio_nr=df_freq_prio_nr,
             df_gu_sync_signal_freq=df_gu_sync_signal_freq,
             df_gu_freq_rel=df_gu_freq_rel,
             df_gu_cell_rel=df_gu_cell_rel,
+            df_nr_sector_carrier=df_nr_sector_carrier,
             df_endc_distr_profile=df_endc_distr_profile,
             n77_ssb_pre=self.N77_SSB_PRE,
             n77_ssb_post=self.N77_SSB_POST,
@@ -435,6 +445,11 @@ class ConfigurationAudit:
             allowed_n77_arfcn_pre=self.ALLOWED_N77_ARFCN_PRE,
             allowed_n77_ssb_post=self.ALLOWED_N77_SSB_POST,
             allowed_n77_arfcn_post=self.ALLOWED_N77_ARFCN_POST,
+            df_external_nr_cell_cu=df_external_nr_cell_cu,
+            df_external_gutran_cell=df_external_gutran_cell,
+            df_term_point_to_gnodeb=df_term_point_to_gnodeb,
+            df_term_point_to_gnb=df_term_point_to_gnb,
+            df_term_point_to_enodeb=df_term_point_to_enodeb,
         )
 
         # =====================================================================

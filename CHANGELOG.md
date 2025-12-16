@@ -4,6 +4,43 @@
 
 ---
 
+## Release: v0.4.0
+- ### Release Date: 2025-12-16
+
+- ### Main Changes:
+  
+  - #### 🚨 Breaking Changes:
+  
+  - #### 🌟 New Features:
+    - New metrics to `ConfigurationAudit` module to count:
+      - Table/Category: `ExternalNRCellCU`
+        - ExternalNRCellCU to old N77 SSB (from ExternalNRCellCU)
+        - ExternalNRCellCU to new N77 SSB (from ExternalNRCellCU)
+      - Table/Category: `TermPointToGNodeB`
+        - NR to NR TermPoint administrativeState LOCKED (from TermPointToGNodeB)
+        - NR to NR TermPoint operationalState DISABLED  (from TermPointToGNodeB)
+      - Table/Category: `ExternalGUtranCell`
+        - ExternalGUtranCell to old N77 SSB (xxxx) (from ExternalGUtranCell)
+        - ExternalGUtranCell to new N77 SSB (xxxx) (from ExternalGUtranCell)
+        - ExternalGUtranCell to old N77 SSB (xxx) serviceStatus OUT_OF_SERVICE (from ExternalGUtranCell)
+        - ExternalGUtranCell to new N77 SSB (xxx) serviceStatus OUT_OF_SERVICE (from ExternalGUtranCell)
+      - Table/Category: `TermPointToGNB`
+          - LTE to NR TermPoints with administrativeState=LOCKED (from TermPointToGNB)
+          - LTE to NR TermPoints with operationalState=DISABLED (from TermPointToGNB)
+          - LTE to NR TermPoints with usedIpAddress=0.0.0.0/:: (from TermPointToGNB)
+      - Table/Category: `TermPointToENodeB`
+        - NR to LTE TermPoints with administrativeState=LOCKED (from TermPointToENodeB)
+        - NR to LTE TermPoints with operationalState=DISABLED (from TermPointToENodeB)
+
+  - #### 🚀 Enhancements:
+  
+  - #### 🐛 Bug fixes:
+    - Minor bug fixing.
+    
+  - #### 📚 Documentation: 
+    - Updated documentation with latest changes.
+---
+
 ## Release: v0.3.11
 - ### Release Date: 2025-12-04
 

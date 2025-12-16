@@ -8,28 +8,34 @@ from pandas import DataFrame, Series
 
 from src.utils.utils_frequency import resolve_column_case_insensitive, parse_int_frequency, is_n77_from_string, extract_sync_frequencies
 
+
 # =====================================================================
 #                        SUMMARY AUDIT BUILDER
 # =====================================================================
 
 def build_summary_audit(
-    df_nr_cell_du: pd.DataFrame,
-    df_nr_freq: pd.DataFrame,
-    df_nr_freq_rel: pd.DataFrame,
-    df_nr_cell_rel: pd.DataFrame,
-    df_freq_prio_nr: pd.DataFrame,
-    df_gu_sync_signal_freq: pd.DataFrame,
-    df_gu_freq_rel: pd.DataFrame,
-    df_gu_cell_rel: pd.DataFrame,
-    df_nr_sector_carrier: pd.DataFrame,
-    df_endc_distr_profile: pd.DataFrame,
-    n77_ssb_pre: int,
-    n77_ssb_post: int,
-    n77b_ssb: int,
-    allowed_n77_ssb_pre,
-    allowed_n77_arfcn_pre,
-    allowed_n77_ssb_post,
-    allowed_n77_arfcn_post,
+        df_nr_cell_du: pd.DataFrame,
+        df_nr_freq: pd.DataFrame,
+        df_nr_freq_rel: pd.DataFrame,
+        df_nr_cell_rel: pd.DataFrame,
+        df_freq_prio_nr: pd.DataFrame,
+        df_gu_sync_signal_freq: pd.DataFrame,
+        df_gu_freq_rel: pd.DataFrame,
+        df_gu_cell_rel: pd.DataFrame,
+        df_nr_sector_carrier: pd.DataFrame,
+        df_endc_distr_profile: pd.DataFrame,
+        n77_ssb_pre: int,
+        n77_ssb_post: int,
+        n77b_ssb: int,
+        allowed_n77_ssb_pre,
+        allowed_n77_arfcn_pre,
+        allowed_n77_ssb_post,
+        allowed_n77_arfcn_post,
+        df_external_nr_cell_cu,
+        df_external_gutran_cell,
+        df_term_point_to_gnodeb,
+        df_term_point_to_gnb,
+        df_term_point_to_enodeb,
 ) -> tuple[DataFrame, DataFrame, DataFrame]:
     """
     Build a synthetic 'SummaryAudit' table with high-level checks:
@@ -99,7 +105,7 @@ def build_summary_audit(
     def is_old(v: object) -> bool:
         freq = parse_int_frequency(v)
         return freq == n77_ssb_pre
-    
+
     def has_value(v: object) -> bool:
         freq = parse_int_frequency(v)
         return freq is not None
@@ -148,6 +154,94 @@ def build_summary_audit(
                 "ExtraInfo": extra,
             }
         )
+
+    # ------------------------------------- NEW HELPERS (Embedded, minimal impact) -------------------------------------
+    def _extract_freq_from_nrfrequencyref(value: object) -> int | None:
+        """Extract NRFrequency integer from reference string like '...NRFrequency=648672'."""
+        if value is None:
+            return None
+        s = str(value)
+        key = "NRFrequency="
+        idx = s.rfind(key)
+        if idx == -1:
+            # fallback: try plain int in the string
+            return parse_int_frequency(s)
+        substr = s[idx + len(key):]
+        digits = []
+        for ch in substr:
+            if ch.isdigit():
+                digits.append(ch)
+            else:
+                break
+        if not digits:
+            return None
+        try:
+            return int("".join(digits))
+        except Exception:
+            return None
+
+    # Helper embedded inside the main function
+    def _extract_freq_from_nrfreqrelationref(value: object) -> int | None:
+        """Extract NRFreqRelation integer from NRCellRelation-like reference string."""
+        if value is None:
+            return None
+        s = str(value)
+        key = "NRFreqRelation="
+        idx = s.rfind(key)
+        if idx == -1:
+            return None
+        substr = s[idx + len(key):]
+        digits = []
+        for ch in substr:
+            if ch.isdigit():
+                digits.append(ch)
+            else:
+                break
+        if not digits:
+            return None
+        try:
+            return int("".join(digits))
+        except Exception:
+            return None
+
+    def _extract_ssb_from_gutran_sync_ref(value: object) -> int | None:
+        """
+        Extract SSB integer from references containing:
+          GUtranSyncSignalFrequency=647328-30
+        In that example, returned SSB is 647328.
+        """
+        if value is None:
+            return None
+        s = str(value)
+        key = "GUtranSyncSignalFrequency="
+        idx = s.rfind(key)
+        if idx == -1:
+            return None
+        substr = s[idx + len(key):]
+        digits = []
+        for ch in substr:
+            if ch.isdigit():
+                digits.append(ch)
+            else:
+                break
+        if not digits:
+            return None
+        try:
+            return int("".join(digits))
+        except Exception:
+            return None
+
+    def _normalize_state(value: object) -> str:
+        """Normalize state values for robust comparisons."""
+        if value is None or (isinstance(value, float) and pd.isna(value)):
+            return ""
+        return str(value).strip().upper()
+
+    def _normalize_ip(value: object) -> str:
+        """Normalize usedIpAddress values for robust comparisons."""
+        if value is None or (isinstance(value, float) and pd.isna(value)):
+            return ""
+        return str(value).strip()
 
     # ----------------------------- NRCellDU (N77 detection + allowed SSB + LowMidBand/mmWave) -----------------------------
     def process_nr_cell_du():
@@ -914,7 +1008,6 @@ def build_summary_audit(
                 f"ERROR: {ex}",
             )
 
-
     # ------------------------------------- NRCellRelations --------------------------------------------
     def process_nr_cell_relation():
         try:
@@ -922,29 +1015,10 @@ def build_summary_audit(
                 node_col = resolve_column_case_insensitive(df_nr_cell_rel, ["NodeId"])
                 freq_col = resolve_column_case_insensitive(df_nr_cell_rel, ["nRFreqRelationRef", "NRFreqRelationRef"])
 
-                # Helper embedded inside the main function
-                def _extract_freq_from_nrfreqrelationref(value: object) -> int | None:
-                    """Extract NRFreqRelation integer from NRCellRelation reference string."""
-                    if value is None:
-                        return None
-                    s = str(value)
-                    key = "NRFreqRelation="
-                    idx = s.rfind(key)
-                    if idx == -1:
-                        return None
-                    substr = s[idx + len(key):]
-                    digits = []
-                    for ch in substr:
-                        if ch.isdigit():
-                            digits.append(ch)
-                        else:
-                            break
-                    if not digits:
-                        return None
-                    try:
-                        return int("".join(digits))
-                    except Exception:
-                        return None
+                # # Helper embedded inside the main function
+                # def _extract_freq_from_nrfreqrelationref_local(value: object) -> int | None:
+                #     """Extract NRFreqRelation integer from NRCellRelation reference string."""
+                #     return _extract_freq_from_nrfreqrelationref(value)
 
                 if node_col and freq_col:
                     work = df_nr_cell_rel[[node_col, freq_col]].copy()
@@ -989,6 +1063,58 @@ def build_summary_audit(
                 "NRCellRelation",
                 "NR Frequency Audit",
                 "Error while checking NRCellRelation",
+                f"ERROR: {ex}",
+            )
+
+    # ----------------------------- NEW: ExternalNRCellCU (same value as NRCellRelation old/new counts) -----------------------------
+    def process_external_nr_cell_cu():
+        try:
+            if df_external_nr_cell_cu is not None and not df_external_nr_cell_cu.empty:
+                node_col = resolve_column_case_insensitive(df_external_nr_cell_cu, ["NodeId"])
+                freq_col = resolve_column_case_insensitive(df_external_nr_cell_cu, ["nRFrequencyRef", "NRFrequencyRef", "nRFreqRelationRef", "NRFreqRelationRef"])
+
+                if node_col and freq_col:
+                    work = df_external_nr_cell_cu[[node_col, freq_col]].copy()
+                    work[node_col] = work[node_col].astype(str).str.strip()
+                    work["_freq_int_"] = work[freq_col].map(_extract_freq_from_nrfrequencyref)
+
+                    old_ssb = n77_ssb_pre
+                    new_ssb = n77_ssb_post
+
+                    count_old = int((work["_freq_int_"] == old_ssb).sum())
+                    count_new = int((work["_freq_int_"] == new_ssb).sum())
+
+                    add_row(
+                        "ExternalNRCellCU",
+                        "NR Frequency Audit",
+                        f"ExternalNRCellCU to old N77 SSB ({old_ssb}) (from ExternalNRCellCU)",
+                        count_old,
+                    )
+                    add_row(
+                        "ExternalNRCellCU",
+                        "NR Frequency Audit",
+                        f"ExternalNRCellCU to new N77 SSB ({new_ssb}) (from ExternalNRCellCU)",
+                        count_new,
+                    )
+                else:
+                    add_row(
+                        "ExternalNRCellCU",
+                        "NR Frequency Audit",
+                        "ExternalNRCellCU table present but NodeId / nRFreqRelationRef column missing",
+                        "N/A",
+                    )
+            else:
+                add_row(
+                    "ExternalNRCellCU",
+                    "NR Frequency Audit",
+                    "ExternalNRCellCU table",
+                    "Table not found or empty",
+                )
+        except Exception as ex:
+            add_row(
+                "ExternalNRCellCU",
+                "NR Frequency Audit",
+                "Error while checking ExternalNRCellCU",
                 f"ERROR: {ex}",
             )
 
@@ -1427,6 +1553,305 @@ def build_summary_audit(
                 "GUtranCellRelation",
                 "LTE Frequency Audit",
                 "Error while checking GUtranCellRelation",
+                f"ERROR: {ex}",
+            )
+
+    # ----------------------------- NEW: ExternalGUtranCell (old/new counts + OUT_OF_SERVICE node counts) -----------------------------
+    def process_external_gutran_cell():
+        try:
+            if df_external_gutran_cell is not None and not df_external_gutran_cell.empty:
+                node_col = resolve_column_case_insensitive(df_external_gutran_cell, ["NodeId"])
+                ref_col = resolve_column_case_insensitive(df_external_gutran_cell, ["gUtranSyncSignalFrequencyRef", "GUtranSyncSignalFrequencyRef"])
+                status_col = resolve_column_case_insensitive(df_external_gutran_cell, ["serviceStatus", "ServiceStatus"])
+
+                if node_col and ref_col:
+                    work = df_external_gutran_cell[[node_col, ref_col] + ([status_col] if status_col else [])].copy()
+                    work[node_col] = work[node_col].astype(str).str.strip()
+                    work["_ssb_int_"] = work[ref_col].map(_extract_ssb_from_gutran_sync_ref)
+
+                    old_ssb = n77_ssb_pre
+                    new_ssb = n77_ssb_post
+
+                    # Same logic as GUtranCellRelation: counts of relations/rows pointing to old/new
+                    count_old = int((work["_ssb_int_"] == old_ssb).sum())
+                    count_new = int((work["_ssb_int_"] == new_ssb).sum())
+
+                    add_row(
+                        "ExternalGUtranCell",
+                        "LTE Frequency Audit",
+                        f"ExternalGUtranCell to old N77 SSB ({old_ssb}) (from ExternalGUtranCell)",
+                        count_old,
+                    )
+                    add_row(
+                        "ExternalGUtranCell",
+                        "LTE Frequency Audit",
+                        f"ExternalGUtranCell to new N77 SSB ({new_ssb}) (from ExternalGUtranCell)",
+                        count_new,
+                    )
+
+                    # OUT_OF_SERVICE node counts based on serviceStatus and parsed SSB from gUtranSyncSignalFrequencyRef
+                    if status_col:
+                        work["_status_norm_"] = work[status_col].map(_normalize_state)
+                        mask_oos = work["_status_norm_"] == "OUT_OF_SERVICE"
+
+                        # Number of nodes pointing to old/new SSB AND being OUT_OF_SERVICE
+                        nodes_old_oos = sorted(work.loc[(work["_ssb_int_"] == old_ssb) & mask_oos, node_col].astype(str).unique())
+                        nodes_new_oos = sorted(work.loc[(work["_ssb_int_"] == new_ssb) & mask_oos, node_col].astype(str).unique())
+
+                        add_row(
+                            "ExternalGUtranCell",
+                            "LTE Frequency Audit",
+                            f"ExternalGUtranCell to old N77 SSB ({old_ssb}) serviceStatus OUT_OF_SERVICE (from ExternalGUtranCell)",
+                            len(nodes_old_oos),
+                            ", ".join(nodes_old_oos),
+                        )
+                        add_row(
+                            "ExternalGUtranCell",
+                            "LTE Frequency Audit",
+                            f"ExternalGUtranCell to new N77 SSB ({new_ssb}) serviceStatus OUT_OF_SERVICE (from ExternalGUtranCell)",
+                            len(nodes_new_oos),
+                            ", ".join(nodes_new_oos),
+                        )
+                    else:
+                        add_row(
+                            "ExternalGUtranCell",
+                            "LTE Frequency Audit",
+                            "ExternalGUtranCell OUT_OF_SERVICE checks skipped (serviceStatus missing)",
+                            "N/A",
+                        )
+                else:
+                    add_row(
+                        "ExternalGUtranCell",
+                        "LTE Frequency Audit",
+                        "ExternalGUtranCell table present but NodeId / gUtranSyncSignalFrequencyRef column missing",
+                        "N/A",
+                    )
+            else:
+                add_row(
+                    "ExternalGUtranCell",
+                    "LTE Frequency Audit",
+                    "ExternalGUtranCell table",
+                    "Table not found or empty",
+                )
+        except Exception as ex:
+            add_row(
+                "ExternalGUtranCell",
+                "LTE Frequency Audit",
+                "Error while checking ExternalGUtranCell",
+                f"ERROR: {ex}",
+            )
+
+    # ----------------------------- NEW: TermPointToGNodeB (NR Termpoint Audit) -----------------------------
+    def process_term_point_to_gnodeb():
+        try:
+            if df_term_point_to_gnodeb is not None and not df_term_point_to_gnodeb.empty:
+                node_col = resolve_column_case_insensitive(df_term_point_to_gnodeb, ["NodeId"])
+                ext_gnb_col = resolve_column_case_insensitive(df_term_point_to_gnodeb, ["ExternalGNBCUCPFunctionId"])
+                admin_col = resolve_column_case_insensitive(df_term_point_to_gnodeb, ["administrativeState", "AdministrativeState"])
+                oper_col = resolve_column_case_insensitive(df_term_point_to_gnodeb, ["operationalState", "OperationalState"])
+
+                if node_col and ext_gnb_col and (admin_col or oper_col):
+                    cols = [node_col, ext_gnb_col] + ([admin_col] if admin_col else []) + ([oper_col] if oper_col else [])
+                    work = df_term_point_to_gnodeb[cols].copy()
+                    work[node_col] = work[node_col].astype(str).str.strip()
+                    work[ext_gnb_col] = work[ext_gnb_col].astype(str).str.strip()
+
+                    # Note: Unique TermPoint identifier is (NodeId + ExternalGNBCUCPFunctionId)
+                    work["_tp_key_"] = work[node_col] + "|" + work[ext_gnb_col]
+
+                    if admin_col:
+                        work["_admin_norm_"] = work[admin_col].map(_normalize_state)
+                        count_admin_locked = int(work.loc[work["_admin_norm_"] == "LOCKED", "_tp_key_"].nunique())
+                    else:
+                        count_admin_locked = 0
+
+                    if oper_col:
+                        work["_oper_norm_"] = work[oper_col].map(_normalize_state)
+                        count_oper_disabled = int(work.loc[work["_oper_norm_"] == "DISABLED", "_tp_key_"].nunique())
+                    else:
+                        count_oper_disabled = 0
+
+                    add_row(
+                        "TermPointToGNodeB",
+                        "NR Termpoint Audit",
+                        "NR to NR TermPoint administrativeState LOCKED (from TermPointToGNodeB)",
+                        count_admin_locked,
+                    )
+                    add_row(
+                        "TermPointToGNodeB",
+                        "NR Termpoint Audit",
+                        "NR to NR TermPoint operationalState DISABLED (from TermPointToGNodeB)",
+                        count_oper_disabled,
+                    )
+                else:
+                    add_row(
+                        "TermPointToGNodeB",
+                        "NR Termpoint Audit",
+                        "TermPointToGNodeB table present but required columns missing (NodeId/ExternalGNBCUCPFunctionId/admin/oper)",
+                        "N/A",
+                    )
+            else:
+                add_row(
+                    "TermPointToGNodeB",
+                    "NR Termpoint Audit",
+                    "TermPointToGNodeB table",
+                    "Table not found or empty",
+                )
+        except Exception as ex:
+            add_row(
+                "TermPointToGNodeB",
+                "NR Termpoint Audit",
+                "Error while checking TermPointToGNodeB",
+                f"ERROR: {ex}",
+            )
+
+    # ----------------------------- NEW: TermPointToGNB (X2 Termpoint Audit, LTE -> NR) -----------------------------
+    def process_term_point_to_gnb():
+        try:
+            if df_term_point_to_gnb is not None and not df_term_point_to_gnb.empty:
+                node_col = resolve_column_case_insensitive(df_term_point_to_gnb, ["NodeId"])
+                ext_gnb_col = resolve_column_case_insensitive(df_term_point_to_gnb,["ExternalGNodeBFunctionId", "ExternalGNBCUCPFunctionId", "ExternalGnbFunctionId"])
+
+                admin_col = resolve_column_case_insensitive(df_term_point_to_gnb, ["administrativeState", "AdministrativeState"])
+                oper_col = resolve_column_case_insensitive(df_term_point_to_gnb, ["operationalState", "OperationalState"])
+                ip_col = resolve_column_case_insensitive(df_term_point_to_gnb, ["usedIpAddress", "UsedIpAddress"])
+
+                if node_col and ext_gnb_col and (admin_col or oper_col or ip_col):
+                    cols = [node_col, ext_gnb_col] + ([admin_col] if admin_col else []) + ([oper_col] if oper_col else []) + ([ip_col] if ip_col else [])
+                    work = df_term_point_to_gnb[cols].copy()
+                    work[node_col] = work[node_col].astype(str).str.strip()
+                    work[ext_gnb_col] = work[ext_gnb_col].astype(str).str.strip()
+
+                    # Note: Unique TermPoint identifier is (NodeId + ExternalGNBCUCPFunctionId)
+                    work["_tp_key_"] = work[node_col] + "|" + work[ext_gnb_col]
+
+                    if admin_col:
+                        work["_admin_norm_"] = work[admin_col].map(_normalize_state)
+                        count_admin_locked = int(work.loc[work["_admin_norm_"] == "LOCKED", "_tp_key_"].nunique())
+                    else:
+                        count_admin_locked = 0
+
+                    if oper_col:
+                        work["_oper_norm_"] = work[oper_col].map(_normalize_state)
+                        count_oper_disabled = int(work.loc[work["_oper_norm_"] == "DISABLED", "_tp_key_"].nunique())
+                    else:
+                        count_oper_disabled = 0
+
+                    if ip_col:
+                        work["_ip_norm_"] = work[ip_col].map(_normalize_ip)
+
+                        # Match either the literal combined form "0.0.0.0/::" or any representation containing "0.0.0.0" or "::"
+                        def _is_zero_ip(v: object) -> bool:
+                            s = _normalize_ip(v)
+                            if not s:
+                                return False
+                            return s == "0.0.0.0/::" or s == "::" or ("0.0.0.0" in s)
+
+                        count_ip_zero = int(work.loc[work["_ip_norm_"].map(_is_zero_ip), "_tp_key_"].nunique())
+                    else:
+                        count_ip_zero = 0
+
+                    add_row(
+                        "TermPointToGNB",
+                        "X2 Termpoint Audit",
+                        "LTE to NR TermPoints with administrativeState=LOCKED (from TermPointToGNB)",
+                        count_admin_locked,
+                    )
+                    add_row(
+                        "TermPointToGNB",
+                        "X2 Termpoint Audit",
+                        "LTE to NR TermPoints with operationalState=DISABLED (from TermPointToGNB)",
+                        count_oper_disabled,
+                    )
+                    add_row(
+                        "TermPointToGNB",
+                        "X2 Termpoint Audit",
+                        "LTE to NR TermPoints with usedIpAddress=0.0.0.0/:: (from TermPointToGNB)",
+                        count_ip_zero,
+                    )
+                else:
+                    add_row(
+                        "TermPointToGNB",
+                        "X2 Termpoint Audit",
+                        "TermPointToGNB table present but required columns missing (NodeId/ExternalGNBCUCPFunctionId/admin/oper/ip)",
+                        "N/A",
+                    )
+            else:
+                add_row(
+                    "TermPointToGNB",
+                    "X2 Termpoint Audit",
+                    "TermPointToGNB table",
+                    "Table not found or empty",
+                )
+        except Exception as ex:
+            add_row(
+                "TermPointToGNB",
+                "X2 Termpoint Audit",
+                "Error while checking TermPointToGNB",
+                f"ERROR: {ex}",
+            )
+
+    # ----------------------------- NEW: TermPointToENodeB (X2 Termpoint Audit, NR -> LTE) -----------------------------
+    def process_term_point_to_enodeb():
+        try:
+            if df_term_point_to_enodeb is not None and not df_term_point_to_enodeb.empty:
+                node_col = resolve_column_case_insensitive(df_term_point_to_enodeb, ["NodeId"])
+                ext_enb_col = resolve_column_case_insensitive(df_term_point_to_enodeb, ["ExternalENodeBFunctionId"])
+                admin_col = resolve_column_case_insensitive(df_term_point_to_enodeb, ["administrativeState", "AdministrativeState"])
+                oper_col = resolve_column_case_insensitive(df_term_point_to_enodeb, ["operationalState", "OperationalState"])
+
+                if node_col and ext_enb_col and (admin_col or oper_col):
+                    cols = [node_col, ext_enb_col] + ([admin_col] if admin_col else []) + ([oper_col] if oper_col else [])
+                    work = df_term_point_to_enodeb[cols].copy()
+                    work[node_col] = work[node_col].astype(str).str.strip()
+                    work[ext_enb_col] = work[ext_enb_col].astype(str).str.strip()
+
+                    # Note: Unique TermPoint identifier is (NodeId + ExternalENodeBFunctionId)
+                    work["_tp_key_"] = work[node_col] + "|" + work[ext_enb_col]
+
+                    if admin_col:
+                        work["_admin_norm_"] = work[admin_col].map(_normalize_state)
+                        count_admin_locked = int(work.loc[work["_admin_norm_"] == "LOCKED", "_tp_key_"].nunique())
+                    else:
+                        count_admin_locked = 0
+
+                    if oper_col:
+                        work["_oper_norm_"] = work[oper_col].map(_normalize_state)
+                        count_oper_disabled = int(work.loc[work["_oper_norm_"] == "DISABLED", "_tp_key_"].nunique())
+                    else:
+                        count_oper_disabled = 0
+
+                    add_row(
+                        "TermPointToENodeB",
+                        "X2 Termpoint Audit",
+                        "NR to LTE TermPoints with administrativeState=LOCKED (from TermPointToENodeB)",
+                        count_admin_locked,
+                    )
+                    add_row(
+                        "TermPointToENodeB",
+                        "X2 Termpoint Audit",
+                        "NR to LTE TermPoints with operationalState=DISABLED (from TermPointToENodeB)",
+                        count_oper_disabled,
+                    )
+                else:
+                    add_row(
+                        "TermPointToENodeB",
+                        "X2 Termpoint Audit",
+                        "TermPointToENodeB table present but required columns missing (NodeId/ExternalENodeBFunctionId/admin/oper)",
+                        "N/A",
+                    )
+            else:
+                add_row(
+                    "TermPointToENodeB",
+                    "X2 Termpoint Audit",
+                    "TermPointToENodeB table",
+                    "Table not found or empty",
+                )
+        except Exception as ex:
+            add_row(
+                "TermPointToENodeB",
+                "X2 Termpoint Audit",
+                "Error while checking TermPointToENodeB",
                 f"ERROR: {ex}",
             )
 
@@ -1939,11 +2364,10 @@ def build_summary_audit(
                 f"ERROR: {ex}",
             )
 
-
     # =======================================================================
     # ============================ MAIN CODE ================================
     # =======================================================================
-    def main()-> tuple[DataFrame, DataFrame, DataFrame]:
+    def main() -> tuple[DataFrame, DataFrame, DataFrame]:
 
         process_nr_freq()
         process_nr_freq_rel()
@@ -1951,9 +2375,18 @@ def build_summary_audit(
         process_nr_cell_du()
         process_nr_cell_relation()
 
+        # NEW audits requested
+        process_external_nr_cell_cu()
+        process_term_point_to_gnodeb()
+
         process_gu_sync_signal_freq()
         process_gu_freq_rel()
         process_gu_cell_relation()
+
+        # NEW audits requested
+        process_external_gutran_cell()
+        process_term_point_to_gnb()
+        process_term_point_to_enodeb()
 
         process_endc_distr_profile()
         process_freq_prio_nr()
@@ -1994,6 +2427,13 @@ def build_summary_audit(
                 ("NRCellRelation", "NR Frequency Audit"),
                 ("NRCellRelation", "NR Frequency Inconsistencies"),
 
+                # NEW: ExternalNRCellCU
+                ("ExternalNRCellCU", "NR Frequency Audit"),
+                ("ExternalNRCellCU", "NR Frequency Inconsistencies"),
+
+                # NEW: TermPointToGNodeB
+                ("TermPointToGNodeB", "NR Termpoint Audit"),
+
                 # NR Frequency NRSectorCarrier
                 ("NRSectorCarrier", "NR Frequency Audit"),
                 ("NRSectorCarrier", "NR Frequency Inconsistencies"),
@@ -2009,6 +2449,14 @@ def build_summary_audit(
                 # LTE Frequency GUtranCellRelation
                 ("GUtranCellRelation", "LTE Frequency Audit"),
                 ("GUtranCellRelation", "LTE Frequency Inconsistencies"),
+
+                # NEW: ExternalGUtranCell
+                ("ExternalGUtranCell", "LTE Frequency Audit"),
+                ("ExternalGUtranCell", "LTE Frequency Inconsistencies"),
+
+                # NEW: TermPointToGNB / TermPointToENodeB
+                ("TermPointToGNB", "X2 Termpoint Audit"),
+                ("TermPointToENodeB", "X2 Termpoint Audit"),
 
                 # EndcDistrProfile
                 ("EndcDistrProfile", "ENDC Audit"),
@@ -2033,52 +2481,27 @@ def build_summary_audit(
                 # Cardinality GUtranFreqRelation
                 ("Cardinality GUtranFreqRelation", "Cardinality Audit"),
                 ("Cardinality GUtranFreqRelation", "Cardinality Inconsistencies"),
-
             ]
 
-            # Map (Category, SubCategory) to an integer order
-            order_map: Dict[tuple, int] = {key: idx for idx, key in enumerate(desired_order)}
+            order_map = {k: i for i, k in enumerate(desired_order)}
 
-            def order_row(r: pd.Series) -> int:
-                """Return the desired order index for each row (or a large value if not explicitly listed)."""
-                key = (
-                    str(r.get("Category", "")),
-                    str(r.get("SubCategory", "")),
-                )
-                return order_map.get(key, len(desired_order) + 100)
-
-            df["__order__"] = df.apply(order_row, axis=1)
-            df = (
-                df.sort_values("__order__", kind="mergesort")  # stable: keeps insertion order inside each group
-                .drop(columns=["__order__"])
-                .reset_index(drop=True)
+            df["_order_"] = df.apply(
+                lambda r: order_map.get((r["Category"], r["SubCategory"]), len(order_map)),
+                axis=1,
             )
 
-        # Build Param Missmatching DataFrames (NR / LTE)
-        if param_mismatch_rows_nr:
-            df_param_mismatch_nr = pd.DataFrame(param_mismatch_rows_nr)
-            for col_name in param_mismatch_columns_nr:
-                if col_name not in df_param_mismatch_nr.columns:
-                    df_param_mismatch_nr[col_name] = ""
-            df_param_mismatch_nr = df_param_mismatch_nr[param_mismatch_columns_nr]
-        else:
+            df = df.sort_values(by=["_order_"], kind="stable").drop(columns="_order_").reset_index(drop=True)
+
+            # Build NR param mismatching dataframe
+        df_param_mismatch_nr = pd.DataFrame(param_mismatch_rows_nr, columns=param_mismatch_columns_nr)
+        if df_param_mismatch_nr.empty:
             df_param_mismatch_nr = pd.DataFrame(columns=param_mismatch_columns_nr)
 
-        if param_mismatch_rows_gu:
-            df_param_mismatch_gu = pd.DataFrame(param_mismatch_rows_gu)
-            for col_name in param_mismatch_columns_gu:
-                if col_name not in df_param_mismatch_gu.columns:
-                    df_param_mismatch_gu[col_name] = ""
-            df_param_mismatch_gu = df_param_mismatch_gu[param_mismatch_columns_gu]
-        else:
+        # Build LTE param mismatching dataframe
+        df_param_mismatch_gu = pd.DataFrame(param_mismatch_rows_gu, columns=param_mismatch_columns_gu)
+        if df_param_mismatch_gu.empty:
             df_param_mismatch_gu = pd.DataFrame(columns=param_mismatch_columns_gu)
 
         return df, df_param_mismatch_nr, df_param_mismatch_gu
 
-    # =======================================================================
-    # ========================= END OF MAIN CODE ============================
-    # =======================================================================
-
-    df_summary, df_param_mismatch_nr, df_param_mismatch_gu = main()
-    return df_summary, df_param_mismatch_nr, df_param_mismatch_gu
-
+    return main()
