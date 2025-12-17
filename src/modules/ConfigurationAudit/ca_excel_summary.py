@@ -8,6 +8,7 @@ from pandas import DataFrame, Series
 
 from src.utils.utils_frequency import resolve_column_case_insensitive, parse_int_frequency, is_n77_from_string, extract_sync_frequencies
 from src.modules.Common.Common_Functions import load_nodes_names_and_id_from_summary_audit
+from src.utils.utils_dataframe import ensure_column_after
 
 
 # =====================================================================
@@ -1126,7 +1127,7 @@ def build_summary_audit(
                     if cell_col:
                         work[cell_col] = work[cell_col].astype(str).str.strip()
 
-                    work["_freq_int_"] = work[freq_col].map(_extract_freq_from_nrfrequencyref)
+                    work["GNodeB_SSB_Source"] = work[freq_col].map(_extract_freq_from_nrfrequencyref)
 
                     old_ssb = n77_ssb_pre
                     new_ssb = n77_ssb_post
@@ -1134,8 +1135,8 @@ def build_summary_audit(
                     # =========================
                     # SummaryAudit counts
                     # =========================
-                    count_old = int((work["_freq_int_"] == old_ssb).sum())
-                    count_new = int((work["_freq_int_"] == new_ssb).sum())
+                    count_old = int((work["GNodeB_SSB_Source"] == old_ssb).sum())
+                    count_new = int((work["GNodeB_SSB_Source"] == new_ssb).sum())
 
                     add_row(
                         "ExternalNRCellCU",
@@ -1206,6 +1207,11 @@ def build_summary_audit(
                             work["TermpointStatus"] = work["Termpoint"].map(tp_map["TermpointStatus"])
                             work["TermpointConsolidatedStatus"] = work["Termpoint"].map(tp_map["TermpointConsolidatedStatus"])
 
+                    # -------------------------------------------------
+                    # Place GNodeB_SSB_Source right after TermpointConsolidatedStatus
+                    # -------------------------------------------------
+                    work = ensure_column_after(work, "GNodeB_SSB_Source", "TermpointConsolidatedStatus")
+
                     # =========================
                     # GNodeB_SSB_Target
                     # =========================
@@ -1225,7 +1231,7 @@ def build_summary_audit(
                     # (only for SSB-PRE frequency AND target != SSB-Pre)
                     # =========================
                     if ext_gnb_col and cell_col:
-                        mask_pre = work["_freq_int_"] == old_ssb
+                        mask_pre = work["GNodeB_SSB_Source"] == old_ssb
                         mask_target = work["GNodeB_SSB_Target"] != "SSB-Pre"
                         mask_final = mask_pre & mask_target
 
@@ -1667,10 +1673,10 @@ def build_summary_audit(
                     work[node_col] = work[node_col].astype(str).str.strip()
 
                     # Extract numeric frequency from GUtranFreqRelationId (part before first '-')
-                    work["_freq_int_"] = work[freq_col].map(lambda v: parse_int_frequency(str(v).split("-", 1)[0]) if pd.notna(v) else None)
+                    work["GNodeB_SSB_Source"] = work[freq_col].map(lambda v: parse_int_frequency(str(v).split("-", 1)[0]) if pd.notna(v) else None)
 
-                    count_old = int((work["_freq_int_"] == n77_ssb_pre).sum())
-                    count_new = int((work["_freq_int_"] == n77_ssb_post).sum())
+                    count_old = int((work["GNodeB_SSB_Source"] == n77_ssb_pre).sum())
+                    count_new = int((work["GNodeB_SSB_Source"] == n77_ssb_post).sum())
 
                     add_row(
                         "GUtranCellRelation",
@@ -2198,7 +2204,7 @@ def build_summary_audit(
                     work[ratfreqprio_col] = work[ratfreqprio_col].astype(str).str.strip().str.lower()
 
                     # Parse frequency as integer to compare specific SSBs
-                    work["_freq_int_"] = work[freq_col].map(parse_int_frequency)
+                    work["GNodeB_SSB_Source"] = work[freq_col].map(parse_int_frequency)
 
                     # ------------------------------------------------------------------
                     # New checks: old SSB (648672) vs new SSB (647328) in FreqPrioNR
@@ -2206,8 +2212,8 @@ def build_summary_audit(
                     old_ssb = n77_ssb_pre
                     new_ssb = n77_ssb_post
 
-                    old_rows = work.loc[work["_freq_int_"] == old_ssb].copy()
-                    new_rows = work.loc[work["_freq_int_"] == new_ssb].copy()
+                    old_rows = work.loc[work["GNodeB_SSB_Source"] == old_ssb].copy()
+                    new_rows = work.loc[work["GNodeB_SSB_Source"] == new_ssb].copy()
 
                     old_nodes = set(old_rows[node_col].astype(str))
                     new_nodes = set(new_rows[node_col].astype(str))
@@ -2254,17 +2260,17 @@ def build_summary_audit(
                         cell_work[node_col] = cell_work[node_col].astype(str).str.strip()
                         cell_work[cell_col] = cell_work[cell_col].astype(str).str.strip()
                         cell_work[ratfreqprio_col] = cell_work[ratfreqprio_col].astype(str).str.strip().str.lower()
-                        cell_work["_freq_int_"] = cell_work[freq_col].map(parse_int_frequency)
+                        cell_work["GNodeB_SSB_Source"] = cell_work[freq_col].map(parse_int_frequency)
 
                         cell_work = cell_work.loc[
-                            cell_work["_freq_int_"].isin([old_ssb, new_ssb]) & (cell_work[cell_col] != "")
+                            cell_work["GNodeB_SSB_Source"].isin([old_ssb, new_ssb]) & (cell_work[cell_col] != "")
                             ].copy()
 
                         # Build mapping {(node, cell): {freq: row}}
                         pairs: Dict[tuple, Dict[int, pd.Series]] = {}
                         for _, row in cell_work.iterrows():
                             key = (row[node_col], row[cell_col])
-                            freq_val = row["_freq_int_"]
+                            freq_val = row["GNodeB_SSB_Source"]
                             if freq_val not in (old_ssb, new_ssb):
                                 continue
                             freq_map = pairs.setdefault(key, {})
@@ -2279,7 +2285,7 @@ def build_summary_audit(
                                 diff_cols: list[str] = []
 
                                 for col in cell_work.columns:
-                                    if col in {node_col, cell_col, freq_col, "_freq_int_"}:
+                                    if col in {node_col, cell_col, freq_col, "GNodeB_SSB_Source"}:
                                         continue
                                     val_old = row_old[col]
                                     val_new = row_new[col]

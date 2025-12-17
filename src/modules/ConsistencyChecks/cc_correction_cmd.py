@@ -658,6 +658,53 @@ def export_external_and_termpoint_commands(
 
     Returns the number of generated files.
     """
+
+    def _export_commands_from_audit_sheet(
+            audit_excel: str,
+            output_dir: str,
+            sheet_name: str,
+            command_column: str = "Correction Command",
+            filter_column: Optional[str] = None,
+            filter_value: Optional[str] = None,
+            output_filename: str = "",
+    ) -> Optional[str]:
+        """
+        Internal helper to export commands from a Configuration Audit Excel sheet.
+        """
+        if not audit_excel or not os.path.isfile(audit_excel):
+            return None
+
+        try:
+            df = pd.read_excel(audit_excel, sheet_name=sheet_name)
+        except Exception:
+            return None
+
+        if command_column not in df.columns:
+            return None
+
+        if filter_column and filter_column in df.columns and filter_value is not None:
+            df = df[df[filter_column].astype(str).str.strip() == str(filter_value)]
+
+        cmds = (
+            df[command_column]
+            .dropna()
+            .astype(str)
+            .map(str.strip)
+            .loc[lambda s: s != ""]
+            .tolist()
+        )
+
+        if not cmds:
+            return None
+
+        os.makedirs(output_dir, exist_ok=True)
+        out_path = os.path.join(output_dir, output_filename)
+
+        with open(out_path, "w", encoding="utf-8") as f:
+            f.write("\n\n".join(cmds))
+
+        return out_path
+
     if not audit_post_excel or not os.path.isfile(audit_post_excel):
         return 0
 
@@ -673,7 +720,7 @@ def export_external_and_termpoint_commands(
     # -----------------------------
     # ExternalNRCellCU - SSB-Post
     # -----------------------------
-    out = export_externals_and_termpoints_commands(
+    out = _export_commands_from_audit_sheet(
         audit_excel=audit_post_excel,
         output_dir=external_dir,
         sheet_name="ExternalNRCellCU",
@@ -688,7 +735,7 @@ def export_external_and_termpoint_commands(
     # -----------------------------
     # ExternalNRCellCU - Others (N/A)
     # -----------------------------
-    out = export_externals_and_termpoints_commands(
+    out = _export_commands_from_audit_sheet(
         audit_excel=audit_post_excel,
         output_dir=external_dir,
         sheet_name="ExternalNRCellCU",
@@ -703,7 +750,7 @@ def export_external_and_termpoint_commands(
     # -----------------------------
     # TermPointToGNodeB
     # -----------------------------
-    out = export_externals_and_termpoints_commands(
+    out = _export_commands_from_audit_sheet(
         audit_excel=audit_post_excel,
         output_dir=termpoints_dir,
         sheet_name="TermPointToGNodeB",
@@ -738,13 +785,9 @@ def export_correction_cmd_texts(output_dir: str, dfs_by_category: Dict[str, pd.D
     new_dir = os.path.join(base_dir, "New Relations")
     missing_dir = os.path.join(base_dir, "Missing Relations")
     discrepancies_dir = os.path.join(base_dir, "Discrepancies")
-    external_dir = os.path.join(base_dir, "Externals")
-    termpoints_dir = os.path.join(base_dir, "Termpoints")
     os.makedirs(new_dir, exist_ok=True)
     os.makedirs(missing_dir, exist_ok=True)
     os.makedirs(discrepancies_dir, exist_ok=True)
-    os.makedirs(external_dir, exist_ok=True)
-    os.makedirs(termpoints_dir, exist_ok=True)
 
     total_files = 0
 
