@@ -36,13 +36,13 @@
       - `TermpointStatus`: Contains the current status of the termpoint as concatenation of `administrativeState`-`operationalState`-`availabilityStatus`.
       - `TermpointConsolidatedStatus`: Contains the current status of the termpoint in a consolidated way.
       - `GNodeB_SSB_Target`: Useful to identify nodes with SSB-Pre/SSB-Post or nodes with SSB different to Pre/Post.
-      - `Correction Command`: Contains the correction command to fix the termpoint.
+      - `Correction_Cmd`: Contains the correction command to fix the termpoint.
     - Added Additional Columns to `TermPointToGNodeB` table:
       - `Termpoint`: Unique identifier to identify the termpoint.
       - `TermpointStatus`: Contains the current status of the termpoint as concatenation of `administrativeState`-`operationalState`-`availabilityStatus`.
       - `TermpointConsolidatedStatus`: Contains the current status of the termpoint in a consolidated way.
       - `SSB needs update`: Indicates those termpoints whose termpoint id has been found in `ExternalNRCellCU` with "SSB-Pre" and with `GNodeB_SSB_Target` different to "SSB-Pre".
-      - `Correction Command`: Contains the correction command to fix the termpoint.
+      - `Correction_Cmd`: Contains the correction command to fix the termpoint.
     - Added Correction Commands for External Cells and Termpoints.
 
   - #### 🚀 Enhancements:

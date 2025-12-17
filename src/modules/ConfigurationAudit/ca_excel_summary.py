@@ -1237,10 +1237,10 @@ def build_summary_audit(
 
                         nr_tail_series = work[freq_col].map(_extract_nrnetwork_tail)
 
-                        if "Correction Command" not in work.columns:
-                            work["Correction Command"] = ""
+                        if "Correction_Cmd" not in work.columns:
+                            work["Correction_Cmd"] = ""
 
-                        work.loc[mask_final, "Correction Command"] = work.loc[mask_final].apply(
+                        work.loc[mask_final, "Correction_Cmd"] = work.loc[mask_final].apply(
                             lambda r: _build_external_nrcellcu_correction(
                                 r[ext_gnb_col],
                                 r[cell_col],
@@ -1884,21 +1884,21 @@ def build_summary_audit(
 
             # -------------------------------------------------
             # SSB needs update
-            # (True ONLY if ExternalNRCellCU generates Correction Command)
+            # (True ONLY if ExternalNRCellCU generates Correction_Cmd)
             # -------------------------------------------------
             if "SSB needs update" not in work.columns:
                 if (
                         df_external_nr_cell_cu is not None
                         and not df_external_nr_cell_cu.empty
                         and "Termpoint" in df_external_nr_cell_cu.columns
-                        and "Correction Command" in df_external_nr_cell_cu.columns
+                        and "Correction_Cmd" in df_external_nr_cell_cu.columns
                 ):
-                    ext_tp = df_external_nr_cell_cu[["Termpoint", "Correction Command"]].copy()
+                    ext_tp = df_external_nr_cell_cu[["Termpoint", "Correction_Cmd"]].copy()
                     ext_tp["Termpoint"] = ext_tp["Termpoint"].astype(str).str.strip()
 
                     needs_update = set(
                         ext_tp.loc[
-                            ext_tp["Correction Command"].astype(str).str.strip() != "",
+                            ext_tp["Correction_Cmd"].astype(str).str.strip() != "",
                             "Termpoint"
                         ]
                     )
@@ -1909,11 +1909,16 @@ def build_summary_audit(
 
             # -------------------------------------------------
             # Correction Command
+            # (ONLY when SSB needs update == True)
             # -------------------------------------------------
-            if "Correction Command" not in work.columns:
-                work["Correction Command"] = work[ext_gnb_col].map(
-                    lambda v: _build_termpoint_to_gnodeb_correction(v, n77_ssb_post, n77_ssb_pre)
-                )
+            if "Correction_Cmd" not in work.columns:
+                work["Correction_Cmd"] = ""
+
+            mask_update = work["SSB needs update"] == True
+
+            work.loc[mask_update, "Correction_Cmd"] = work.loc[mask_update, ext_gnb_col].map(
+                lambda v: _build_termpoint_to_gnodeb_correction(v, n77_ssb_post, n77_ssb_pre)
+            )
 
             # -------------------------------------------------
             # Write back (NO column removal)
