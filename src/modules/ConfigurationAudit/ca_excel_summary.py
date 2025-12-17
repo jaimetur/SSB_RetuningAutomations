@@ -1083,9 +1083,12 @@ def build_summary_audit(
         def _build_external_nrcellcu_correction(ext_gnb: str, ext_cell: str, nr_tail: str) -> str:
             """
             Build correction command replacing old N77 SSB with new N77 SSB inside nr_tail.
+            Safely returns empty string if mandatory parameters are missing.
             """
-            if nr_tail:
-                nr_tail = str(nr_tail).replace(str(n77_ssb_pre), str(n77_ssb_post))
+            if not ext_gnb or not ext_cell or not nr_tail:
+                return ""
+
+            nr_tail = str(nr_tail).replace(str(n77_ssb_pre), str(n77_ssb_post))
 
             return (
                 "confb+\n"
@@ -1097,6 +1100,9 @@ def build_summary_audit(
             )
 
         def _normalize_state_local(value: object) -> str:
+            """
+            Normalize administrative / operational state values to uppercase string.
+            """
             if value is None or (isinstance(value, float) and pd.isna(value)):
                 return ""
             return str(value).strip().upper()
@@ -1121,22 +1127,26 @@ def build_summary_audit(
                 if node_col and freq_col:
                     work = df_external_nr_cell_cu.copy()
 
+                    # Normalize base columns to string to avoid mixed-type issues
                     work[node_col] = work[node_col].astype(str).str.strip()
                     if ext_gnb_col:
                         work[ext_gnb_col] = work[ext_gnb_col].astype(str).str.strip()
                     if cell_col:
                         work[cell_col] = work[cell_col].astype(str).str.strip()
 
-                    work["GNodeB_SSB_Source"] = work[freq_col].map(_extract_freq_from_nrfrequencyref)
+                    # Extract SSB source frequency safely
+                    work["GNodeB_SSB_Source"] = work[freq_col].map(
+                        lambda v: _extract_freq_from_nrfrequencyref(v) if isinstance(v, str) and v.strip() else ""
+                    )
 
-                    old_ssb = n77_ssb_pre
-                    new_ssb = n77_ssb_post
+                    old_ssb = str(n77_ssb_pre)
+                    new_ssb = str(n77_ssb_post)
 
                     # =========================
                     # SummaryAudit counts
                     # =========================
-                    count_old = int((work["GNodeB_SSB_Source"] == old_ssb).sum())
-                    count_new = int((work["GNodeB_SSB_Source"] == new_ssb).sum())
+                    count_old = int((work["GNodeB_SSB_Source"].astype(str) == old_ssb).sum())
+                    count_new = int((work["GNodeB_SSB_Source"].astype(str) == new_ssb).sum())
 
                     add_row(
                         "ExternalNRCellCU",
@@ -1181,9 +1191,10 @@ def build_summary_audit(
                                     + tp_src[ext_tp_col].astype(str).str.strip()
                             )
 
-                            admin_val = tp_src[admin_col] if admin_col else ""
-                            oper_val = tp_src[oper_col] if oper_col else ""
-                            avail_val = tp_src[avail_col] if avail_col else ""
+                            # Always work with Series to avoid attribute errors
+                            admin_val = tp_src[admin_col] if admin_col else pd.Series("", index=tp_src.index)
+                            oper_val = tp_src[oper_col] if oper_col else pd.Series("", index=tp_src.index)
+                            avail_val = tp_src[avail_col] if avail_col else pd.Series("", index=tp_src.index)
 
                             avail_txt = avail_val.astype(str).fillna("").replace("", "Empty")
 
@@ -1231,19 +1242,22 @@ def build_summary_audit(
                     # (only for SSB-PRE frequency AND target != SSB-Pre)
                     # =========================
                     if ext_gnb_col and cell_col:
-                        mask_pre = work["GNodeB_SSB_Source"] == old_ssb
+                        mask_pre = work["GNodeB_SSB_Source"].astype(str) == old_ssb
                         mask_target = work["GNodeB_SSB_Target"] != "SSB-Pre"
                         mask_final = mask_pre & mask_target
 
-                        nr_tail_series = work[freq_col].map(_extract_nrnetwork_tail)
+                        # Safely extract NR network tail
+                        nr_tail_series = work[freq_col].map(
+                            lambda v: _extract_nrnetwork_tail(v) if isinstance(v, str) and v.strip() else ""
+                        )
 
                         if "Correction_Cmd" not in work.columns:
                             work["Correction_Cmd"] = ""
 
                         work.loc[mask_final, "Correction_Cmd"] = work.loc[mask_final].apply(
                             lambda r: _build_external_nrcellcu_correction(
-                                r[ext_gnb_col],
-                                r[cell_col],
+                                r.get(ext_gnb_col, ""),
+                                r.get(cell_col, ""),
                                 nr_tail_series.loc[r.name],
                             ),
                             axis=1,
@@ -1271,7 +1285,7 @@ def build_summary_audit(
                 "ExternalNRCellCU",
                 "NR Frequency Audit",
                 "Error while checking ExternalNRCellCU",
-                f"ERROR: {ex}",
+                f"{type(ex).__name__}: {ex}",
             )
 
     # ----------------------------- LTE GUtranSyncSignalFrequency (OLD/NEW SSB + LowMidBand/mmWave) -----------------------------
@@ -1802,6 +1816,13 @@ def build_summary_audit(
     # ----------------------------- NEW: TermPointToGNodeB (NR Termpoint Audit) -----------------------------
     def process_term_point_to_gnodeb():
         def _build_termpoint_to_gnodeb_correction(ext_gnb: str, ssb_post: int, ssb_pre: int) -> str:
+            """
+            Build correction command for TermPointToGNodeB.
+            Safely returns empty string if ext_gnb is missing.
+            """
+            if not ext_gnb:
+                return ""
+
             return (
                 "confb+\n"
                 "lt all\n"
@@ -1831,9 +1852,9 @@ def build_summary_audit(
 
             node_col = resolve_column_case_insensitive(df_term_point_to_gnodeb, ["NodeId"])
             ext_gnb_col = resolve_column_case_insensitive(df_term_point_to_gnodeb, ["ExternalGNBCUCPFunctionId"])
-            admin_col = resolve_column_case_insensitive(df_term_point_to_gnodeb, ["administrativeState"])
-            oper_col = resolve_column_case_insensitive(df_term_point_to_gnodeb, ["operationalState"])
-            avail_col = resolve_column_case_insensitive(df_term_point_to_gnodeb, ["availabilityStatus"])
+            admin_col = resolve_column_case_insensitive(df_term_point_to_gnodeb, ["administrativeState", "AdministrativeState"])
+            oper_col = resolve_column_case_insensitive(df_term_point_to_gnodeb, ["operationalState", "OperationalState"])
+            avail_col = resolve_column_case_insensitive(df_term_point_to_gnodeb, ["availabilityStatus", "AvailabilityStatus"])
 
             if not node_col or not ext_gnb_col:
                 add_row(
@@ -1846,6 +1867,7 @@ def build_summary_audit(
 
             work = df_term_point_to_gnodeb.copy()
 
+            # Normalize base columns to string to avoid mixed-type issues
             work[node_col] = work[node_col].astype(str).str.strip()
             work[ext_gnb_col] = work[ext_gnb_col].astype(str).str.strip()
 
@@ -1856,11 +1878,11 @@ def build_summary_audit(
                 work["Termpoint"] = work[node_col] + "-" + work[ext_gnb_col]
 
             # -------------------------------------------------
-            # Normalize states
+            # Normalize states (ALWAYS as Series)
             # -------------------------------------------------
-            admin_norm = work[admin_col].astype(str).str.upper() if admin_col else ""
-            oper_norm = work[oper_col].astype(str).str.upper() if oper_col else ""
-            avail_raw = work[avail_col].astype(str).fillna("").str.strip() if avail_col else ""
+            admin_norm = work[admin_col].astype(str).str.upper() if admin_col else pd.Series("", index=work.index)
+            oper_norm = work[oper_col].astype(str).str.upper() if oper_col else pd.Series("", index=work.index)
+            avail_raw = work[avail_col].astype(str).fillna("").str.strip() if avail_col else pd.Series("", index=work.index)
             avail_norm = avail_raw.replace("", "EMPTY")
 
             # -------------------------------------------------
@@ -1949,7 +1971,7 @@ def build_summary_audit(
                 "TermPointToGNodeB",
                 "NR Termpoint Audit",
                 "Error while checking TermPointToGNodeB",
-                f"ERROR: {ex}",
+                f"{type(ex).__name__}: {ex}",
             )
 
     # ----------------------------- NEW: TermPointToGNB (X2 Termpoint Audit, LTE -> NR) -----------------------------

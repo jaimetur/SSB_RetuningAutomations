@@ -16,6 +16,7 @@
   - #### 🚀 Enhancements:
   
   - #### 🐛 Bug fixes:
+    - Fixed `ERROR: 'str' object has no attribute 'astype'` on `ConfigurationAudit` module when `availabilityStatus`column is not found.
     - Minor bug fixing.
     
   - #### 📚 Documentation: 
