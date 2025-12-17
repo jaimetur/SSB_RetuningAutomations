@@ -2,6 +2,7 @@
 
 import os
 from typing import List, Tuple, Optional, Dict
+from openpyxl.styles import Font
 import pandas as pd
 
 from src.utils.utils_io import find_log_files, read_text_file, to_long_path, pretty_path
@@ -450,7 +451,20 @@ class ConfigurationAudit:
             df_term_point_to_gnodeb=df_term_point_to_gnodeb,
             df_term_point_to_gnb=df_term_point_to_gnb,
             df_term_point_to_enodeb=df_term_point_to_enodeb,
+            module_name=module_name
         )
+
+        # ------------------------------------------------------------------
+        # Re-inject modified audit tables back into table_entries
+        # ------------------------------------------------------------------
+        for entry in table_entries:
+            sheet_name = str(entry.get("sheet_candidate", "")).strip()
+
+            if sheet_name == "ExternalNRCellCU":
+                entry["df"] = df_external_nr_cell_cu
+
+            elif sheet_name == "TermPointToGNodeB":
+                entry["df"] = df_term_point_to_gnodeb
 
         # =====================================================================
         #                PHASE 5: Write the Excel file
@@ -491,6 +505,25 @@ class ConfigurationAudit:
 
             # Apply header color + auto-fit to all sheets
             style_headers_autofilter_and_autofit(writer, freeze_header=True, align="left")
+
+            # ------------------------------------------------------------------
+            # Add hyperlinks from SummaryAudit.Category to corresponding sheets
+            # ------------------------------------------------------------------
+            ws_summary_audit = writer.sheets.get("SummaryAudit")
+            if ws_summary_audit is not None:
+                header = [cell.value for cell in ws_summary_audit[1]]
+                try:
+                    category_col_idx = header.index("Category") + 1
+                except ValueError:
+                    category_col_idx = None
+
+                if category_col_idx:
+                    for row in range(2, ws_summary_audit.max_row + 1):
+                        cell = ws_summary_audit.cell(row=row, column=category_col_idx)
+                        sheet_name = str(cell.value).strip() if cell.value else ""
+                        if sheet_name and sheet_name in writer.book.sheetnames:
+                            cell.hyperlink = f"#{sheet_name}!A1"
+                            cell.font = Font(color="0563C1", underline="single")
 
         print(f"{module_name} Wrote Excel with {len(table_entries)} sheet(s) in: '{pretty_path(excel_path)}'")
 

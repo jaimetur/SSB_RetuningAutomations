@@ -13,6 +13,10 @@ from src.utils.utils_excel import color_summary_tabs, style_headers_autofilter_a
 from src.utils.utils_frequency import detect_freq_column, detect_key_columns, extract_gu_freq_base, extract_nr_freq_base, enforce_gu_columns, enforce_nr_columns
 from src.utils.utils_io import read_text_lines, to_long_path, pretty_path
 from src.utils.utils_parsing import find_all_subnetwork_headers, extract_mo_from_subnetwork_line, parse_table_slice_from_subnetwork
+from src.modules.Common.Common_Functions import load_nodes_names_and_id_from_summary_audit
+from src.modules.ConsistencyChecks.cc_correction_cmd import export_external_and_termpoint_commands
+
+
 
 class ConsistencyChecks:
     """
@@ -217,78 +221,6 @@ class ConsistencyChecks:
         }
         return self.tables
 
-    # ----------------------------- LOAD NODES WITHOUT RETUNNING ----------------------------- #
-    def load_nodes_without_retune(self, audit_post_excel: Optional[str], module_name: Optional[str] = "") -> set[str]:
-        """
-        Read SummaryAudit sheet from POST Configuration Audit and extract node numeric identifiers
-        for nodes that have not completed the retuning.
-
-        It looks for rows with:
-          - SubCategory == 'NRCellDU'
-          - Metric containing 'NR nodes with N77 SSB in Pre-Retune allowed list'
-        and then parses the ExtraInfo field assuming it contains a comma-separated list of node names.
-
-        From each node name it extracts the leading numeric identifier (digits at the beginning).
-        Additionally, it prints the full node names that are being considered as "no retuning" nodes.
-        """
-        nodes: set[str] = set()
-        if not audit_post_excel:
-            return nodes
-
-        try:
-            audit_path = to_long_path(audit_post_excel)
-        except Exception:
-            audit_path = audit_post_excel
-
-        if not os.path.isfile(audit_path):
-            print(f"{module_name} [WARNING] POST audit Excel not found: '{audit_post_excel}'. Skipping node exclusion based on SummaryAudit.")
-            return nodes
-
-        try:
-            df = pd.read_excel(audit_path, sheet_name="SummaryAudit")
-        except Exception as e:
-            print(f"{module_name} [WARNING] Could not read 'SummaryAudit' sheet from POST audit Excel: {e}. Skipping node exclusion based on SummaryAudit.")
-            return nodes
-
-        required_cols = {"Category", "SubCategory", "Metric", "ExtraInfo"}
-        if not required_cols.issubset(df.columns):
-            print(f"{module_name} [WARNING] 'SummaryAudit' sheet does not contain required columns {required_cols}. Skipping node exclusion based on SummaryAudit.")
-            return nodes
-
-        sub = df.copy()
-        sub["Category"] = sub["Category"].astype(str).str.strip()
-        sub["Metric"] = sub["Metric"].astype(str)
-        sub["ExtraInfo"] = sub["ExtraInfo"].astype(str)
-
-        mask = (sub["Category"] == "NRCellDU") & sub["Metric"].str.contains(
-            "NR nodes with N77 SSB in Pre-Retune allowed list", case=False, na=False
-        )
-        rows = sub.loc[mask]
-        if rows.empty:
-            return nodes
-
-        pattern_id = re.compile(r"^\s*(\d+)")
-        full_node_names: set[str] = set()  # NEW: keep full node names (as they appear in ExtraInfo)
-
-        for extra in rows["ExtraInfo"]:
-            if not extra:
-                continue
-            parts = [p.strip() for p in str(extra).split(",") if p.strip()]
-            for token in parts:
-                m = pattern_id.match(token)
-                if m:
-                    # Store numeric identifier
-                    nodes.add(m.group(1))
-                    # Store full node name as destination of the relation being discarded
-                    full_node_names.add(token.strip())
-
-        if full_node_names:
-            print(f"{module_name} [INFO] Nodes without retuning and belonging to buffer (destination of relations to be skipped from Discrepancies): {sorted(full_node_names)}")
-        if nodes:
-            print(f"{module_name} [INFO] Nodes without retuning (numeric identifiers): {sorted(nodes)}")
-
-        return nodes
-
     # ----------------------------- COMPARISON ----------------------------- #
     def comparePrePost(
         self,
@@ -323,7 +255,8 @@ class ConsistencyChecks:
             return {}
 
         # NEW: load node numeric identifiers from POST Configuration Audit (SummaryAudit sheet)
-        nodes_without_retune_ids = self.load_nodes_without_retune(audit_post_excel, module_name)
+        nodes_without_retune_ids = load_nodes_names_and_id_from_summary_audit(audit_post_excel, stage="Pre", module_name=module_name)
+        nodes_with_retune_ids = load_nodes_names_and_id_from_summary_audit(audit_post_excel, stage="Post", module_name=module_name)
 
         results: Dict[str, Dict[str, pd.DataFrame]] = {}
 
@@ -993,10 +926,13 @@ class ConsistencyChecks:
                 empty_nr_missing_df.to_excel(writer, sheet_name="NR_missing", index=False)
                 empty_nr_new_df.to_excel(writer, sheet_name="NR_new", index=False)
 
-            # Export text files (outside GU/NR blocks, como ya tenías)
+            # Export text files (outside GU/NR blocks)
             if correction_cmd_sources:
                 cmd_files = export_correction_cmd_texts(output_dir, correction_cmd_sources)
 
+            # Export Correction Commands for Externals and Termpoints in txt
+            if self.audit_post_excel:
+                export_external_and_termpoint_commands(self.audit_post_excel, output_dir)
 
             # -------------------------------------------------------------------
             #  APPLY HEADER STYLING + AUTO-FIT COLUMNS FOR ALL SHEETS
@@ -1012,4 +948,3 @@ class ConsistencyChecks:
             if ws_comp is not None:
                 # Use default parameters: Category header name and default colors
                 apply_alternating_category_row_fills(ws_comp)
-
