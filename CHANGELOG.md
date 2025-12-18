@@ -15,6 +15,7 @@
 
   - #### 🚀 Enhancements:
     - Added Correction Commands for LTE External Cells and Termpoints.
+    - Code Refactored to split the module ca_summary into smaller modules for a better management of it.
   
   - #### 🐛 Bug fixes:
     - Fixed `ERROR: 'str' object has no attribute 'astype'` on `ConfigurationAudit` module when `availabilityStatus` column is not found.
