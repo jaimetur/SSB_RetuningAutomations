@@ -21,6 +21,7 @@ from src.modules.ConfigurationAudit.ca_process_others_tables import process_endc
 from src.modules.ConfigurationAudit.ca_process_external_termpoint_tables import process_external_nr_cell_cu, process_external_gutran_cell, process_term_point_to_gnodeb, process_term_point_to_gnb, process_term_point_to_enodeb
 from src.modules.ConfigurationAudit.ca_process_lte_tables import process_gu_sync_signal_freq, process_gu_freq_rel, process_gu_cell_relation
 from src.modules.ConfigurationAudit.ca_process_tables_nr import process_nr_cell_du, process_nr_freq, process_nr_freq_rel, process_nr_sector_carrier, process_nr_cell_relation
+from src.modules.Common.Common_Functions import load_nodes_names_and_id_from_summary_audit
 from src.utils.utils_frequency import parse_int_frequency
 
 
@@ -285,8 +286,10 @@ def build_summary_audit(
     process_gu_cell_relation(df_gu_cell_rel, n77_ssb_pre, n77_ssb_post, add_row)
 
     # Externals & Termpoints tables
-    process_external_nr_cell_cu(df_external_nr_cell_cu, rows, module_name, n77_ssb_pre, n77_ssb_post, add_row, df_term_point_to_gnodeb, extract_freq_from_nrfrequencyref, extract_nr_network_tail)
-    process_external_gutran_cell(df_external_gutran_cell, extract_ssb_from_gutran_sync_ref, n77_ssb_pre, n77_ssb_post, add_row, normalize_state, df_term_point_to_gnb, rows, module_name)
+    nodes_pre = set(load_nodes_names_and_id_from_summary_audit(rows, stage="Pre", module_name=module_name) or [])
+    nodes_post = set(load_nodes_names_and_id_from_summary_audit(rows, stage="Post", module_name=module_name) or [])
+    process_external_nr_cell_cu(df_external_nr_cell_cu, rows, module_name, n77_ssb_pre, n77_ssb_post, add_row, df_term_point_to_gnodeb, extract_freq_from_nrfrequencyref, extract_nr_network_tail, nodes_pre, nodes_post)
+    process_external_gutran_cell(df_external_gutran_cell, extract_ssb_from_gutran_sync_ref, n77_ssb_pre, n77_ssb_post, add_row, normalize_state, df_term_point_to_gnb, rows, module_name, nodes_pre, nodes_post)
     process_term_point_to_gnodeb(df_term_point_to_gnodeb, add_row, df_external_nr_cell_cu, n77_ssb_post, n77_ssb_pre)
     process_term_point_to_gnb(df_term_point_to_gnb, normalize_state, normalize_ip, add_row, df_external_gutran_cell, n77_ssb_post, n77_ssb_pre)
     process_term_point_to_enodeb(df_term_point_to_enodeb, normalize_state, add_row)

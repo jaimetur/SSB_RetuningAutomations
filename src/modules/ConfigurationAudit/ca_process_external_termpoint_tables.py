@@ -1,12 +1,11 @@
 # -*- coding: utf-8 -*-
 import pandas as pd
 
-from src.modules.Common.Common_Functions import load_nodes_names_and_id_from_summary_audit
 from src.utils.utils_dataframe import ensure_column_after
 from src.utils.utils_frequency import resolve_column_case_insensitive
 
 # ----------------------------- NEW: ExternalNRCellCU (same value as NRCellRelation old/new counts) -----------------------------
-def process_external_nr_cell_cu(df_external_nr_cell_cu, rows, module_name, n77_ssb_pre, n77_ssb_post, add_row, df_term_point_to_gnodeb, _extract_freq_from_nrfrequencyref, _extract_nrnetwork_tail):
+def process_external_nr_cell_cu(df_external_nr_cell_cu, rows, module_name, n77_ssb_pre, n77_ssb_post, add_row, df_term_point_to_gnodeb, _extract_freq_from_nrfrequencyref, _extract_nrnetwork_tail, nodes_pre, nodes_post):
     def _build_external_nrcellcu_correction(ext_gnb: str, ext_cell: str, nr_tail: str) -> str:
         """
         Build correction command replacing old N77 SSB with new N77 SSB inside nr_tail.
@@ -45,8 +44,8 @@ def process_external_nr_cell_cu(df_external_nr_cell_cu, rows, module_name, n77_s
             cell_col = resolve_column_case_insensitive(df_external_nr_cell_cu, ["ExternalNRCellCUId"])
 
             # Load node identifiers from SummaryAudit (Pre / Post)
-            nodes_without_retune_ids = load_nodes_names_and_id_from_summary_audit(rows, stage="Pre", module_name=module_name)
-            nodes_with_retune_ids = load_nodes_names_and_id_from_summary_audit(rows, stage="Post", module_name=module_name)
+            nodes_without_retune_ids = nodes_pre
+            nodes_with_retune_ids = nodes_post
 
             nodes_without_retune_ids = {str(v) for v in nodes_without_retune_ids or []}
             nodes_with_retune_ids = {str(v) for v in nodes_with_retune_ids or []}
@@ -127,20 +126,25 @@ def process_external_nr_cell_cu(df_external_nr_cell_cu, rows, module_name, n77_s
                         admin_norm = admin_val.astype(str).fillna("").str.strip().str.upper()
                         oper_norm = oper_val.astype(str).fillna("").str.strip().str.upper()
                         avail_raw = avail_val.astype(str).fillna("").str.strip()
+                        avail_up = avail_raw.str.upper()
+
+                        admin_disp = admin_norm.replace("", "EMPTY")
+                        oper_disp = oper_norm.replace("", "EMPTY")
+                        avail_disp = avail_raw.replace("", "EMPTY")
 
                         tp_src["TermpointStatus"] = (
-                            "administrativeState=" + admin_norm +
-                            ", operationalState=" + oper_norm +
-                            ", availabilityStatus=" + avail_raw.replace("", "EMPTY")
+                            "administrativeState=" + admin_disp +
+                            ", operationalState=" + oper_disp +
+                            ", availabilityStatus=" + avail_disp
                         )
 
                         # CHANGE: Missing/blank states must NOT force NOT_OK
                         # - admin OK if Missing/blank OR UNLOCKED
                         # - oper OK if Missing/blank OR ENABLED
                         # - avail OK if Missing/blank
-                        admin_ok = (admin_norm == "") | (admin_norm == "UNLOCKED")
-                        oper_ok = (oper_norm == "") | (oper_norm == "ENABLED")
-                        avail_ok = (avail_raw == "")
+                        admin_ok = (admin_norm == "") | (admin_norm == "EMPTY") | (admin_norm == "UNLOCKED")
+                        oper_ok = (oper_norm == "") | (oper_norm == "EMPTY") | (oper_norm == "ENABLED")
+                        avail_ok = (avail_raw == "") | (avail_up == "EMPTY")
 
                         tp_src["TermpointConsolidatedStatus"] = (
                             (admin_ok & oper_ok & avail_ok)
@@ -223,7 +227,7 @@ def process_external_nr_cell_cu(df_external_nr_cell_cu, rows, module_name, n77_s
         )
 
 # ----------------------------- NEW: ExternalGUtranCell (old/new counts + OUT_OF_SERVICE row counts) -----------------------------
-def process_external_gutran_cell(df_external_gutran_cell, _extract_ssb_from_gutran_sync_ref, n77_ssb_pre, n77_ssb_post, add_row, _normalize_state, df_term_point_to_gnb, rows, module_name):
+def process_external_gutran_cell(df_external_gutran_cell, _extract_ssb_from_gutran_sync_ref, n77_ssb_pre, n77_ssb_post, add_row, _normalize_state, df_term_point_to_gnb, rows, module_name, nodes_pre, nodes_post):
     try:
         if df_external_gutran_cell is not None and not df_external_gutran_cell.empty:
             # NEW: Always work on a full copy (same pattern as NR)
@@ -335,17 +339,22 @@ def process_external_gutran_cell(df_external_gutran_cell, _extract_ssb_from_gutr
                 admin_norm = admin_val.astype(str).fillna("").str.strip().str.upper()
                 oper_norm = oper_val.astype(str).fillna("").str.strip().str.upper()
                 avail_raw = avail_val.astype(str).fillna("").str.strip()
+                avail_up = avail_raw.str.upper()
+
+                admin_disp = admin_norm.replace("", "EMPTY")
+                oper_disp = oper_norm.replace("", "EMPTY")
+                avail_disp = avail_raw.replace("", "EMPTY")
 
                 tp["TermpointStatus"] = (
-                    "administrativeState=" + admin_norm +
-                    ", operationalState=" + oper_norm +
-                    ", availabilityStatus=" + avail_raw.replace("", "EMPTY")
+                    "administrativeState=" + admin_disp +
+                    ", operationalState=" + oper_disp +
+                    ", availabilityStatus=" + avail_disp
                 )
 
                 # OK if missing/blank OR expected value
-                admin_ok = (admin_norm == "") | (admin_norm == "UNLOCKED")
-                oper_ok = (oper_norm == "") | (oper_norm == "ENABLED")
-                avail_ok = (avail_raw == "")
+                admin_ok = (admin_norm == "") | (admin_norm == "EMPTY") | (admin_norm == "UNLOCKED")
+                oper_ok = (oper_norm == "") | (oper_norm == "EMPTY") | (oper_norm == "ENABLED")
+                avail_ok = (avail_raw == "") | (avail_up == "EMPTY")
 
                 tp["TermpointConsolidatedStatus"] = (
                     (admin_ok & oper_ok & avail_ok)
@@ -365,8 +374,8 @@ def process_external_gutran_cell(df_external_gutran_cell, _extract_ssb_from_gutr
         # -------------------------------------------------
         # GNodeB_SSB_Target (Unknown instead of Other)
         # -------------------------------------------------
-        nodes_pre = set(load_nodes_names_and_id_from_summary_audit(rows, stage="Pre", module_name=module_name) or [])
-        nodes_post = set(load_nodes_names_and_id_from_summary_audit(rows, stage="Post", module_name=module_name) or [])
+        nodes_pre = set(nodes_pre or [])
+        nodes_post = set(nodes_post or [])
 
         def _detect_gnodeb_target_lte(value: object) -> str:
             s = str(value)
@@ -475,27 +484,33 @@ def process_term_point_to_gnodeb(df_term_point_to_gnodeb, add_row, df_external_n
         # -------------------------------------------------
         # Normalize states (ALWAYS as Series)
         # -------------------------------------------------
-        admin_norm = work[admin_col].astype(str).str.upper() if admin_col else pd.Series("", index=work.index)
-        oper_norm = work[oper_col].astype(str).str.upper() if oper_col else pd.Series("", index=work.index)
-        avail_raw = work[avail_col].astype(str).fillna("").str.strip() if avail_col else pd.Series("", index=work.index)
-        avail_norm = avail_raw.replace("", "EMPTY")
+        admin_norm = work[admin_col].fillna("").astype(str).str.strip().str.upper() if admin_col else pd.Series("", index=work.index)
+        oper_norm = work[oper_col].fillna("").astype(str).str.strip().str.upper() if oper_col else pd.Series("", index=work.index)
+        avail_raw = work[avail_col].fillna("").astype(str).str.strip() if avail_col else pd.Series("", index=work.index)
+        avail_up = avail_raw.astype(str).str.upper()
+
+        admin_disp = admin_norm.replace("", "EMPTY")
+        oper_disp = oper_norm.replace("", "EMPTY")
+        avail_disp = avail_raw.replace("", "EMPTY")
 
         # -------------------------------------------------
         # TermpointStatus (CONCAT ONLY)
         # -------------------------------------------------
         work["TermpointStatus"] = (
-                "administrativeState=" + admin_norm +
-                ", operationalState=" + oper_norm +
-                ", availabilityStatus=" + avail_norm
+                "administrativeState=" + admin_disp +
+                ", operationalState=" + oper_disp +
+                ", availabilityStatus=" + avail_disp
         )
 
         # -------------------------------------------------
         # TermPointConsolidatedStatus (LOGIC)
         # -------------------------------------------------
+        admin_ok = (admin_norm == "") | (admin_norm == "EMPTY") | (admin_norm == "UNLOCKED")
+        oper_ok = (oper_norm == "") | (oper_norm == "EMPTY") | (oper_norm == "ENABLED")
+        avail_ok = (avail_raw == "") | (avail_up == "EMPTY")
+
         work["TermPointConsolidatedStatus"] = (
-            ((admin_norm == "UNLOCKED") &
-             (oper_norm == "ENABLED") &
-             (avail_raw == ""))
+            (admin_ok & oper_ok & avail_ok)
             .map(lambda v: "OK" if v else "NOT_OK")
         )
 
@@ -659,18 +674,27 @@ def process_term_point_to_gnb(df_term_point_to_gnb, _normalize_state, _normalize
         # -------------------------------------------------
         # TermpointStatus / ConsolidatedStatus
         # -------------------------------------------------
-        admin_norm = work[admin_col].astype(str).str.upper() if admin_col else ""
-        oper_norm = work[oper_col].astype(str).str.upper() if oper_col else ""
-        avail_raw = work[avail_col].astype(str).fillna("").str.strip() if avail_col else ""
+        admin_norm = work[admin_col].fillna("").astype(str).str.strip().str.upper() if admin_col else pd.Series("", index=work.index)
+        oper_norm = work[oper_col].fillna("").astype(str).str.strip().str.upper() if oper_col else pd.Series("", index=work.index)
+        avail_raw = work[avail_col].fillna("").astype(str).str.strip() if avail_col else pd.Series("", index=work.index)
+        avail_up = avail_raw.astype(str).str.upper()
+
+        admin_disp = admin_norm.replace("", "EMPTY")
+        oper_disp = oper_norm.replace("", "EMPTY")
+        avail_disp = avail_raw.replace("", "EMPTY")
 
         work["TermpointStatus"] = (
-                "administrativeState=" + admin_norm +
-                ", operationalState=" + oper_norm +
-                ", availabilityStatus=" + avail_raw.replace("", "EMPTY")
+                "administrativeState=" + admin_disp +
+                ", operationalState=" + oper_disp +
+                ", availabilityStatus=" + avail_disp
         )
 
+        admin_ok = (admin_norm == "") | (admin_norm == "EMPTY") | (admin_norm == "UNLOCKED")
+        oper_ok = (oper_norm == "") | (oper_norm == "EMPTY") | (oper_norm == "ENABLED")
+        avail_ok = (avail_raw == "") | (avail_up == "EMPTY")
+
         work["TermPointConsolidatedStatus"] = (
-            ((admin_norm == "UNLOCKED") & (oper_norm == "ENABLED") & (avail_raw == ""))
+            (admin_ok & oper_ok & avail_ok)
             .map(lambda v: "OK" if v else "NOT_OK")
         )
 
