@@ -14,10 +14,8 @@ IMPORTANT:
   to avoid relying on side-effects.
 """
 
-from typing import List, Dict
-
 import pandas as pd
-from pandas import DataFrame
+from typing import List, Dict
 
 from src.modules.ConfigurationAudit.ca_summary_others import process_endc_distr_profile, process_freq_prio_nr, process_cardinalities
 from src.modules.ConfigurationAudit.ca_summary_external_termpoint import process_external_nr_cell_cu, process_external_gutran_cell, process_term_point_to_gnodeb, process_term_point_to_gnb, process_term_point_to_enodeb
@@ -55,7 +53,7 @@ def build_summary_audit(
         df_term_point_to_enodeb,
         module_name,
 
-) -> tuple[DataFrame, DataFrame, DataFrame]:
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """
     Build a synthetic 'SummaryAudit' table with high-level checks:
 

@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
+import pandas as pd
 from typing import Dict
 
-import pandas
 
 from src.utils.utils_frequency import resolve_column_case_insensitive, extract_sync_frequencies, parse_int_frequency, is_n77_from_string
 
