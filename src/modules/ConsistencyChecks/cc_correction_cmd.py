@@ -683,14 +683,14 @@ def export_external_and_termpoint_commands(
             return None
 
     def _export_grouped_commands_from_sheet(
-        audit_excel: str,
-        sheet_name: str,
-        output_dir: str,
-        command_column: str = "Correction_Cmd",
-        node_column: str = "NodeId",
-        filter_column: Optional[str] = None,
-        filter_values: Optional[list[str]] = None,
-        filename_suffix: Optional[str] = None,
+            audit_excel: str,
+            sheet_name: str,
+            output_dir: str,
+            command_column: str = "Correction_Cmd",
+            node_column: str = "NodeId",
+            filter_column: Optional[str] = None,
+            filter_values: Optional[list[str]] = None,
+            filename_suffix: Optional[str] = None,
     ) -> int:
         """
         Export Correction_Cmd grouped by NodeId from a given sheet into output_dir.
@@ -721,7 +721,6 @@ def export_external_and_termpoint_commands(
 
         work = df.copy()
         work[node_column] = work[node_column].astype(str).str.strip()
-        work[command_column] = work[command_column].astype(str)
 
         suffix = filename_suffix if filename_suffix else str(sheet_name).strip()
         generated_files = 0
@@ -731,14 +730,18 @@ def export_external_and_termpoint_commands(
             if not node_str:
                 continue
 
+            # IMPORTANT: do NOT cast the whole column to str before dropna(), otherwise NaN becomes "nan"
+            raw_series = group[command_column]
+            raw_series = raw_series[raw_series.notna()]
+
             cmds = (
-                group[command_column]
-                .dropna()
+                raw_series
                 .astype(str)
                 .map(str.strip)
-                .loc[lambda s: s != ""]
+                .loc[lambda s: (s != "") & (s.str.lower() != "nan") & (s.str.lower() != "none")]
                 .tolist()
             )
+
             if not cmds:
                 continue
 
