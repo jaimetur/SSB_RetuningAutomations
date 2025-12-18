@@ -12,9 +12,15 @@
   - #### 🚨 Breaking Changes:
   
   - #### 🌟 New Features:
+    - When running `ConsistencyCheck` module, the Pre/Post Audits now are saved into the same output folder as the `ConsistencyCheck` output.
 
   - #### 🚀 Enhancements:
-  
+    - Added Correction Commands for LTE External Cells and Termpoints.
+    - External commands and Termpoint commands are now split by Node.
+    - External commands are now saved into subfolders `ExternalNRCellCU` and `ExternalGUtranCell`.
+    - External commands are now saved into subfolders `TermPointToGNodeB` and `TermPointToGNB`.
+    - Code Refactored to split the module ca_summary into smaller modules for a better management of it.
+
   - #### 🐛 Bug fixes:
     - Fixed `ERROR: 'str' object has no attribute 'astype'` on `ConfigurationAudit` module when `availabilityStatus` column is not found.
     - Fixed Error when any MO has the same name as the expected table but with some letter in upper/lower capital.

@@ -598,6 +598,7 @@ def run_configuration_audit(
     allowed_n77_arfcn_post_csv: Optional[str] = None,
     versioned_suffix: Optional[str] = None,
     market_label: Optional[str] = None,
+    external_output_dir: Optional[str] = None,  # NEW: force outputs to be written into this folder
 ) -> Optional[str]:
     """
     Run ConfigurationAudit on a folder or recursively on all its subfolders
@@ -723,7 +724,12 @@ def run_configuration_audit(
                 suffix = f"_{ml}"
 
         # Create dedicated output folder for ConfigurationAudit
-        output_dir = os.path.join(folder_fs, f"ConfigurationAudit_{versioned_suffix}{suffix}")
+        # NEW: if external_output_dir is provided, use it as-is (shared output folder with ConsistencyChecks)
+        if external_output_dir:
+            output_dir = to_long_path(external_output_dir)
+        else:
+            output_dir = os.path.join(folder_fs, f"ConfigurationAudit_{versioned_suffix}{suffix}")
+
         os.makedirs(output_dir, exist_ok=True)
         print(f"{module_name} Output folder: '{pretty_path(output_dir)}'")
 
@@ -893,6 +899,17 @@ def run_consistency_checks_for_market_pairs(
         pre_dir_fs = to_long_path(pre_dir)
         post_dir_fs = to_long_path(post_dir)
 
+        # NEW: compute output_dir upfront so both audits and consistency outputs land together
+        if market_label != "GLOBAL":
+            output_dir = os.path.join(post_dir_fs, f"ConsistencyChecks_{versioned_suffix}_{market_label}")
+        else:
+            output_dir = os.path.join(post_dir_fs, f"ConsistencyChecks_{versioned_suffix}")
+        os.makedirs(output_dir, exist_ok=True)
+
+        # NEW: Build Pre/Post audit suffixes (Pre/Post before the timestamp)
+        audit_pre_suffix = f"Pre_{versioned_suffix}"
+        audit_post_suffix = f"Post_{versioned_suffix}"
+
         # --- Run Configuration Audit for PRE and POST ---
         print(f"{module_name} {market_tag} Running Configuration Audit for PRE folder before consistency checks...")
         print("-" * 80)
@@ -906,8 +923,9 @@ def run_consistency_checks_for_market_pairs(
             allowed_n77_arfcn_pre_csv=allowed_n77_arfcn_pre_csv,
             allowed_n77_ssb_post_csv=allowed_n77_ssb_post_csv,
             allowed_n77_arfcn_post_csv=allowed_n77_arfcn_post_csv,
-            versioned_suffix=versioned_suffix,
+            versioned_suffix=audit_pre_suffix,                 # NEW
             market_label=market_label,
+            external_output_dir=output_dir,                    # NEW
         )
         print("-" * 80)
         if pre_audit_excel:
@@ -927,8 +945,9 @@ def run_consistency_checks_for_market_pairs(
             allowed_n77_arfcn_pre_csv=allowed_n77_arfcn_pre_csv,
             allowed_n77_ssb_post_csv=allowed_n77_ssb_post_csv,
             allowed_n77_arfcn_post_csv=allowed_n77_arfcn_post_csv,
-            versioned_suffix=versioned_suffix,
+            versioned_suffix=audit_post_suffix,                # NEW
             market_label=market_label,
+            external_output_dir=output_dir,                    # NEW
         )
         print("-" * 80)
         if post_audit_excel:
@@ -954,11 +973,6 @@ def run_consistency_checks_for_market_pairs(
             print(f"{module_name} {market_tag}         Please update ConsistencyChecks.loadPrePost(pre_dir, post_dir) to enable dual-input mode.")
             continue
 
-        if market_label != "GLOBAL":
-            output_dir = os.path.join(post_dir_fs, f"ConsistencyChecks_{versioned_suffix}_{market_label}")
-        else:
-            output_dir = os.path.join(post_dir_fs, f"ConsistencyChecks_{versioned_suffix}")
-
         results = None
         if n77_ssb_pre and n77_ssb_post:
             try:
@@ -978,6 +992,7 @@ def run_consistency_checks_for_market_pairs(
         else:
             print(f"{module_name} {market_tag} [INFO] Frequencies not provided. Comparison will be skipped; only tables will be saved.")
 
+        # output_dir is already the shared folder (audits + consistency outputs)
         app.save_outputs_excel(output_dir, results, versioned_suffix=versioned_suffix)
 
         print(f"\n{module_name} {market_tag} Outputs saved to: '{pretty_path(output_dir)}'")
@@ -985,7 +1000,6 @@ def run_consistency_checks_for_market_pairs(
             print(f"{module_name} {market_tag} Wrote CellRelation.xlsx and CellRelationDiscrepancies.xlsx (with Summary and details).")
         else:
             print(f"{module_name} {market_tag} Wrote CellRelation.xlsx (all tables). No comparison Excel because frequencies were not provided.")
-
 
 def run_consistency_checks_manual(
     input_pre_dir: Optional[str],

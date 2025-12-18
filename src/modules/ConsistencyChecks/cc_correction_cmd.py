@@ -12,9 +12,8 @@ from __future__ import annotations
 
 import os
 import re
-from typing import Dict, Optional
-
 import pandas as pd
+from typing import Dict, Optional
 
 from src.utils.utils_dataframe import ensure_column_after, build_row_lookup, pick_non_empty_value
 from src.utils.utils_io import to_long_path, pretty_path
@@ -649,28 +648,26 @@ def export_external_and_termpoint_commands(
     """
     Export correction commands coming from POST Configuration Audit Excel:
       - ExternalNRCellCU (SSB-Post)
-      - ExternalNRCellCU (Other)
+      - ExternalNRCellCU (Unknown)
+      - ExternalGUtranCell (SSB-Post)
+      - ExternalGUtranCell (Unknown)
+      - TermPointToGNB
       - TermPointToGNodeB
 
     Files are written under:
-      <output_dir>/Correction_Cmd/Externals
-      <output_dir>/Correction_Cmd/Termpoints
+      <output_dir>/Correction_Cmd/ExternalNRCellCU/{SSB-Post,Unknown}
+      <output_dir>/Correction_Cmd/ExternalGUtranCell/{SSB-Post,Unknown}
+      <output_dir>/Correction_Cmd/TermPointToGNB
+      <output_dir>/Correction_Cmd/TermPointToGNodeB
+
+    One text file per NodeId is generated (grouped like other Correction_Cmd exports).
 
     Returns the number of generated files.
     """
 
-    def _export_commands_from_audit_sheet(
-            audit_excel: str,
-            output_dir: str,
-            sheet_name: str,
-            command_column: str = "Correction_Cmd",
-            filter_column: Optional[str] = None,
-            filter_value: Optional[str] = None,
-            output_filename: str = "",
-    ) -> Optional[str]:
+    def _read_sheet_case_insensitive(audit_excel: str, sheet_name: str) -> Optional[pd.DataFrame]:
         """
-        Internal helper to export commands from a Configuration Audit Excel sheet.
-        Sheet name matching is case-insensitive for robustness.
+        Read a sheet using case-insensitive matching. Returns None if not found or on error.
         """
         if not audit_excel or not os.path.isfile(audit_excel):
             return None
@@ -678,97 +675,176 @@ def export_external_and_termpoint_commands(
         try:
             xl = pd.ExcelFile(audit_excel)
             sheet_map = {s.lower(): s for s in xl.sheet_names}
-            real_sheet = sheet_map.get(sheet_name.lower())
+            real_sheet = sheet_map.get(str(sheet_name).lower())
             if not real_sheet:
                 return None
-            df = xl.parse(real_sheet)
+            return xl.parse(real_sheet)
         except Exception:
             return None
+
+    def _export_grouped_commands_from_sheet(
+            audit_excel: str,
+            sheet_name: str,
+            output_dir: str,
+            command_column: str = "Correction_Cmd",
+            node_column: str = "NodeId",
+            filter_column: Optional[str] = None,
+            filter_values: Optional[list[str]] = None,
+            filename_suffix: Optional[str] = None,
+    ) -> int:
+        """
+        Export Correction_Cmd grouped by NodeId from a given sheet into output_dir.
+        Returns how many files were generated.
+        """
+        df = _read_sheet_case_insensitive(audit_excel, sheet_name)
+        if df is None or df.empty:
+            return 0
 
         # Allow backward compatibility with old column name
         if command_column not in df.columns and "Correction Command" in df.columns:
             command_column = "Correction Command"
 
         if command_column not in df.columns:
-            return None
+            return 0
 
-        if filter_column and filter_column in df.columns and filter_value is not None:
-            df = df[df[filter_column].astype(str).str.strip() == str(filter_value)]
+        if node_column not in df.columns:
+            return 0
 
-        cmds = (
-            df[command_column]
-            .dropna()
-            .astype(str)
-            .map(str.strip)
-            .loc[lambda s: s != ""]
-            .tolist()
-        )
+        if filter_column and filter_column in df.columns and filter_values is not None:
+            allowed = {str(v).strip() for v in filter_values}
+            df = df[df[filter_column].astype(str).str.strip().isin(allowed)]
 
-        if not cmds:
-            return None
+        if df.empty:
+            return 0
 
         os.makedirs(output_dir, exist_ok=True)
-        out_path = os.path.join(output_dir, output_filename)
 
-        with open(out_path, "w", encoding="utf-8") as f:
-            f.write("\n\n".join(cmds))
+        work = df.copy()
+        work[node_column] = work[node_column].astype(str).str.strip()
 
-        return out_path
+        suffix = filename_suffix if filename_suffix else str(sheet_name).strip()
+        generated_files = 0
+
+        for node_id, group in work.groupby(node_column):
+            node_str = str(node_id).strip()
+            if not node_str:
+                continue
+
+            # IMPORTANT: do NOT cast the whole column to str before dropna(), otherwise NaN becomes "nan"
+            raw_series = group[command_column]
+            raw_series = raw_series[raw_series.notna()]
+
+            cmds = (
+                raw_series
+                .astype(str)
+                .map(str.strip)
+                .loc[lambda s: (s != "") & (s.str.lower() != "nan") & (s.str.lower() != "none")]
+                .tolist()
+            )
+
+            if not cmds:
+                continue
+
+            file_name = f"{node_str}_{suffix}.txt"
+            out_path = os.path.join(output_dir, file_name)
+            out_path_long = to_long_path(out_path)
+
+            with open(out_path_long, "w", encoding="utf-8") as f:
+                f.write("\n\n".join(cmds))
+
+            generated_files += 1
+
+        return generated_files
 
     if not audit_post_excel or not os.path.isfile(audit_post_excel):
         return 0
 
     base_dir = os.path.join(output_dir, "Correction_Cmd")
-    external_dir = os.path.join(base_dir, "Externals")
-    termpoints_dir = os.path.join(base_dir, "Termpoints")
 
-    os.makedirs(external_dir, exist_ok=True)
-    os.makedirs(termpoints_dir, exist_ok=True)
+    ext_nr_base = os.path.join(base_dir, "ExternalNRCellCU")
+    ext_gu_base = os.path.join(base_dir, "ExternalGUtranCell")
+    tp_gnb_dir = os.path.join(base_dir, "TermPointToGNB")
+    tp_gnodeb_dir = os.path.join(base_dir, "TermPointToGNodeB")
+
+    ext_nr_ssbpost_dir = os.path.join(ext_nr_base, "SSB-Post")
+    ext_nr_unknown_dir = os.path.join(ext_nr_base, "Unknown")
+    ext_gu_ssbpost_dir = os.path.join(ext_gu_base, "SSB-Post")
+    ext_gu_unknown_dir = os.path.join(ext_gu_base, "Unknown")
+
+    os.makedirs(ext_nr_ssbpost_dir, exist_ok=True)
+    os.makedirs(ext_nr_unknown_dir, exist_ok=True)
+    os.makedirs(ext_gu_ssbpost_dir, exist_ok=True)
+    os.makedirs(ext_gu_unknown_dir, exist_ok=True)
+    os.makedirs(tp_gnb_dir, exist_ok=True)
+    os.makedirs(tp_gnodeb_dir, exist_ok=True)
 
     generated = 0
 
     # -----------------------------
-    # ExternalNRCellCU - SSB-Post
+    # ExternalNRCellCU - SSB-Post / Unknown
     # -----------------------------
-    out = _export_commands_from_audit_sheet(
+    generated += _export_grouped_commands_from_sheet(
         audit_excel=audit_post_excel,
-        output_dir=external_dir,
         sheet_name="ExternalNRCellCU",
+        output_dir=ext_nr_ssbpost_dir,
         command_column="Correction_Cmd",
         filter_column="GNodeB_SSB_Target",
-        filter_value="SSB-Post",
-        output_filename="ExternalNRCellCU_SSB-Post.txt",
+        filter_values=["SSB-Post"],
+        filename_suffix="ExternalNRCellCU",
     )
-    if out:
-        generated += 1
+    generated += _export_grouped_commands_from_sheet(
+        audit_excel=audit_post_excel,
+        sheet_name="ExternalNRCellCU",
+        output_dir=ext_nr_unknown_dir,
+        command_column="Correction_Cmd",
+        filter_column="GNodeB_SSB_Target",
+        filter_values=["Unknown", "Unkwnow"],
+        filename_suffix="ExternalNRCellCU",
+    )
 
     # -----------------------------
-    # ExternalNRCellCU - Others (Other)
+    # ExternalGUtranCell - SSB-Post / Unknown
     # -----------------------------
-    out = _export_commands_from_audit_sheet(
+    generated += _export_grouped_commands_from_sheet(
         audit_excel=audit_post_excel,
-        output_dir=external_dir,
-        sheet_name="ExternalNRCellCU",
+        sheet_name="ExternalGUtranCell",
+        output_dir=ext_gu_ssbpost_dir,
         command_column="Correction_Cmd",
         filter_column="GNodeB_SSB_Target",
-        filter_value="Other",
-        output_filename="ExternalNRCellCU_SSB-Others.txt",
+        filter_values=["SSB-Post"],
+        filename_suffix="ExternalGUtranCell",
     )
-    if out:
-        generated += 1
+    generated += _export_grouped_commands_from_sheet(
+        audit_excel=audit_post_excel,
+        sheet_name="ExternalGUtranCell",
+        output_dir=ext_gu_unknown_dir,
+        command_column="Correction_Cmd",
+        filter_column="GNodeB_SSB_Target",
+        filter_values=["Unknown", "Unkwnow"],
+        filename_suffix="ExternalGUtranCell",
+    )
 
     # -----------------------------
     # TermPointToGNodeB
     # -----------------------------
-    out = _export_commands_from_audit_sheet(
+    generated += _export_grouped_commands_from_sheet(
         audit_excel=audit_post_excel,
-        output_dir=termpoints_dir,
         sheet_name="TermPointToGNodeB",
+        output_dir=tp_gnodeb_dir,
         command_column="Correction_Cmd",
-        output_filename="TermPointToGNodeB.txt",
+        filename_suffix="TermPointToGNodeB",
     )
-    if out:
-        generated += 1
+
+    # -----------------------------
+    # TermPointToGNB
+    # -----------------------------
+    generated += _export_grouped_commands_from_sheet(
+        audit_excel=audit_post_excel,
+        sheet_name="TermPointToGNB",
+        output_dir=tp_gnb_dir,
+        command_column="Correction_Cmd",
+        filename_suffix="TermPointToGNB",
+    )
 
     if generated:
         print(
@@ -777,6 +853,7 @@ def export_external_and_termpoint_commands(
         )
 
     return generated
+
 
 
 # ----------------------------------------------------------------------
