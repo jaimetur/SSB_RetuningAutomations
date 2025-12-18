@@ -229,7 +229,11 @@ def process_external_gutran_cell(df_external_gutran_cell, _extract_ssb_from_gutr
 
             if node_col and ref_col:
                 work[node_col] = work[node_col].astype(str).str.strip()
-                work["GNodeB_SSB_Target"] = work[ref_col].map(_extract_ssb_from_gutran_sync_ref)
+
+                # -------------------------------------------------
+                # Extract SSB source frequency
+                # -------------------------------------------------
+                work["GNodeB_SSB_Source"] = work[ref_col].map(_extract_ssb_from_gutran_sync_ref)
 
                 old_ssb = n77_ssb_pre
                 new_ssb = n77_ssb_post
@@ -295,6 +299,7 @@ def process_external_gutran_cell(df_external_gutran_cell, _extract_ssb_from_gutr
                 "ExternalGUtranCell table",
                 "Table not found or empty",
             )
+            return
 
         # -------------------------------------------------
         # Termpoint / TermpointStatus / ConsolidatedStatus
@@ -343,7 +348,7 @@ def process_external_gutran_cell(df_external_gutran_cell, _extract_ssb_from_gutr
         # -------------------------------------------------
         # Place GNodeB_SSB_Source right after TermpointConsolidatedStatus
         # -------------------------------------------------
-        work = ensure_column_after(work, "GNodeB_SSB_Target", "TermpointConsolidatedStatus")
+        work = ensure_column_after(work, "GNodeB_SSB_Source", "TermpointConsolidatedStatus")
 
         # -------------------------------------------------
         # GNodeB_SSB_Target
@@ -377,7 +382,7 @@ def process_external_gutran_cell(df_external_gutran_cell, _extract_ssb_from_gutr
             "gs+\n"
             "lt all\n"
             "alt\n"
-            f"set ENodeBFunction={r[ext_gnb_col]},ExternalGUtranCell={r.get('ExternalGUtranCellId', '')} "
+            f"set ExternalGNodeBFunction={r[ext_gnb_col]},ExternalGUtranCell={r.get('ExternalGUtranCellId', '')} "
             f"gUtranSyncSignalFrequencyRef GUtraNetwork=1,GUtranSyncSignalFrequency={n77_ssb_post}-30\n"
             "alt",
             axis=1,
