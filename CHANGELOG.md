@@ -14,6 +14,7 @@
   - #### 🌟 New Features:
 
   - #### 🚀 Enhancements:
+    - Added Correction Commands for LTE External Cells and Termpoints.
   
   - #### 🐛 Bug fixes:
     - Fixed `ERROR: 'str' object has no attribute 'astype'` on `ConfigurationAudit` module when `availabilityStatus` column is not found.

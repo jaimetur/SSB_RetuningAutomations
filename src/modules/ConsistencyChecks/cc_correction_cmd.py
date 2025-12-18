@@ -770,6 +770,49 @@ def export_external_and_termpoint_commands(
     if out:
         generated += 1
 
+    # -----------------------------
+    # ExternalGUtranCell - SSB-Post
+    # -----------------------------
+    out = _export_commands_from_audit_sheet(
+        audit_excel=audit_post_excel,
+        output_dir=external_dir,
+        sheet_name="ExternalGUtranCell",
+        command_column="Correction_Cmd",
+        filter_column="GNodeB_SSB_Target",
+        filter_value="SSB-Post",
+        output_filename="ExternalGUtranCell_SSB-Post.txt",
+    )
+    if out:
+        generated += 1
+
+    # -----------------------------
+    # ExternalGUtranCell - Others (Other)
+    # -----------------------------
+    out = _export_commands_from_audit_sheet(
+        audit_excel=audit_post_excel,
+        output_dir=external_dir,
+        sheet_name="ExternalGUtranCell",
+        command_column="Correction_Cmd",
+        filter_column="GNodeB_SSB_Target",
+        filter_value="Other",
+        output_filename="ExternalGUtranCell_SSB-Others.txt",
+    )
+    if out:
+        generated += 1
+
+    # -----------------------------
+    # TermPointToGNB
+    # -----------------------------
+    out = _export_commands_from_audit_sheet(
+        audit_excel=audit_post_excel,
+        output_dir=termpoints_dir,
+        sheet_name="TermPointToGNB",
+        command_column="Correction_Cmd",
+        output_filename="TermPointToGNB.txt",
+    )
+    if out:
+        generated += 1
+
     if generated:
         print(
             f"[Consistency Checks] Generated {generated} extra Correction_Cmd files "

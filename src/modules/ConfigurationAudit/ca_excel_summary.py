@@ -1805,6 +1805,89 @@ def build_summary_audit(
                     "ExternalGUtranCell table",
                     "Table not found or empty",
                 )
+
+            # -------------------------------------------------
+            # Termpoint / TermpointStatus / ConsolidatedStatus
+            # (same logic as ExternalNRCellCU, but LTE side)
+            # -------------------------------------------------
+            if node_col and ext_gnb_col:
+                work["Termpoint"] = work[node_col] + "-" + work[ext_gnb_col]
+
+            if (
+                    df_term_point_to_gnb is not None
+                    and not df_term_point_to_gnb.empty
+                    and "Termpoint" in work.columns
+            ):
+                tp = df_term_point_to_gnb.copy()
+
+                tp_node = resolve_column_case_insensitive(tp, ["NodeId"])
+                tp_ext = resolve_column_case_insensitive(tp, ["ExternalGNodeBFunctionId"])
+                admin_col_tp = resolve_column_case_insensitive(tp, ["administrativeState", "AdministrativeState"])
+                oper_col_tp = resolve_column_case_insensitive(tp, ["operationalState", "OperationalState"])
+                avail_col_tp = resolve_column_case_insensitive(tp, ["availabilityStatus", "AvailabilityStatus"])
+
+                if tp_node and tp_ext:
+                    tp["Termpoint"] = tp[tp_node].astype(str).str.strip() + "-" + tp[tp_ext].astype(str).str.strip()
+
+                    admin = tp[admin_col_tp].astype(str).str.upper() if admin_col_tp else ""
+                    oper = tp[oper_col_tp].astype(str).str.upper() if oper_col_tp else ""
+                    avail_raw = tp[avail_col_tp].astype(str).fillna("").str.strip() if avail_col_tp else ""
+
+                    tp["TermpointStatus"] = (
+                            "administrativeState=" + admin +
+                            ", operationalState=" + oper +
+                            ", availabilityStatus=" + avail_raw.replace("", "EMPTY")
+                    )
+
+                    tp["TermpointConsolidatedStatus"] = (
+                        ((admin == "UNLOCKED") & (oper == "ENABLED") & (avail_raw == ""))
+                        .map(lambda v: "OK" if v else "NOT_OK")
+                    )
+
+                    tp_map = tp.drop_duplicates("Termpoint").set_index("Termpoint")
+
+                    work["TermpointStatus"] = work["Termpoint"].map(tp_map["TermpointStatus"])
+                    work["TermpointConsolidatedStatus"] = work["Termpoint"].map(tp_map["TermpointConsolidatedStatus"])
+
+            # -------------------------------------------------
+            # GNodeB_SSB_Target
+            # -------------------------------------------------
+            nodes_pre = set(load_nodes_names_and_id_from_summary_audit(rows, stage="Pre", module_name=module_name) or [])
+            nodes_post = set(load_nodes_names_and_id_from_summary_audit(rows, stage="Post", module_name=module_name) or [])
+
+            def _detect_gnodeb_target_lte(value: object) -> str:
+                s = str(value)
+                if any(n in s for n in nodes_pre):
+                    return "SSB-Pre"
+                if any(n in s for n in nodes_post):
+                    return "SSB-Post"
+                return "Other"
+
+            work["GNodeB_SSB_Target"] = work[ext_gnb_col].map(_detect_gnodeb_target_lte)
+
+            # -------------------------------------------------
+            # Correction Command (LTE)
+            # -------------------------------------------------
+            if "Correction_Cmd" not in work.columns:
+                work["Correction_Cmd"] = ""
+
+            mask_pre = work["_ssb_int_"] == n77_ssb_pre
+            mask_target = work["GNodeB_SSB_Target"] != "SSB-Pre"
+
+            work.loc[mask_pre & mask_target, "Correction_Cmd"] = work.loc[mask_pre & mask_target].apply(
+                lambda r:
+                "confb+\n"
+                "gs+\n"
+                "lt all\n"
+                "alt\n"
+                f"set ExternalGNodeBFunction={r[ext_gnb_col]},ExternalGUtranCell={r.get('ExternalGUtranCellId', '')} "
+                f"gUtranSyncSignalFrequencyRef GUtraNetwork=1,GUtranSyncSignalFrequency={n77_ssb_post}-30\n"
+                "alt",
+                axis=1,
+            )
+
+            df_external_gutran_cell.loc[:, work.columns] = work
+
         except Exception as ex:
             add_row(
                 "ExternalGUtranCell",
@@ -2052,6 +2135,76 @@ def build_summary_audit(
                     "TermPointToGNB table",
                     "Table not found or empty",
                 )
+
+            # -------------------------------------------------
+            # Termpoint
+            # -------------------------------------------------
+            if node_col and ext_gnb_col:
+                work["Termpoint"] = work[node_col] + "-" + work[ext_gnb_col]
+
+            # -------------------------------------------------
+            # TermpointStatus / ConsolidatedStatus
+            # -------------------------------------------------
+            admin_norm = work[admin_col].astype(str).str.upper() if admin_col else ""
+            oper_norm = work[oper_col].astype(str).str.upper() if oper_col else ""
+            avail_raw = work[avail_col].astype(str).fillna("").str.strip() if avail_col else ""
+
+            work["TermpointStatus"] = (
+                    "administrativeState=" + admin_norm +
+                    ", operationalState=" + oper_norm +
+                    ", availabilityStatus=" + avail_raw.replace("", "EMPTY")
+            )
+
+            work["TermPointConsolidatedStatus"] = (
+                ((admin_norm == "UNLOCKED") & (oper_norm == "ENABLED") & (avail_raw == ""))
+                .map(lambda v: "OK" if v else "NOT_OK")
+            )
+
+            # -------------------------------------------------
+            # SSB needs update (driven by ExternalGUtranCell)
+            # -------------------------------------------------
+            if (
+                    df_external_gutran_cell is not None
+                    and not df_external_gutran_cell.empty
+                    and "Termpoint" in df_external_gutran_cell.columns
+                    and "Correction_Cmd" in df_external_gutran_cell.columns
+            ):
+                needs_update = set(
+                    df_external_gutran_cell.loc[
+                        df_external_gutran_cell["Correction_Cmd"].astype(str).str.strip() != "",
+                        "Termpoint"
+                    ]
+                )
+                work["SSB needs update"] = work["Termpoint"].map(lambda v: v in needs_update)
+            else:
+                work["SSB needs update"] = False
+
+            # -------------------------------------------------
+            # Correction Command
+            # -------------------------------------------------
+            if "Correction_Cmd" not in work.columns:
+                work["Correction_Cmd"] = ""
+
+            work.loc[work["SSB needs update"] == True, "Correction_Cmd"] = work.loc[
+                work["SSB needs update"] == True, ext_gnb_col
+            ].map(
+                lambda v:
+                "confb+\n"
+                "lt all\n"
+                "alt\n"
+                f"hget ExternalGNodeBFunction={v},ExternalGUtranCell GUtranSyncSignalFrequency {n77_ssb_post}-30\n"
+                f"hget ExternalGNodeBFunction={v},ExternalGUtranCell GUtranSyncSignalFrequency {n77_ssb_pre}-30\n"
+                f"get ExternalGNodeBFunction={v},TermpointToGNB\n"
+                f"bl ExternalGNodeBFunction={v},TermpointToGNB\n"
+                "wait 5\n"
+                f"deb ExternalGNodeBFunction={v},TermpointToGNB\n"
+                "wait 60\n"
+                f"get ExternalGNodeBFunction={v},TermpointToGNB\n"
+                "alt"
+            )
+
+            df_term_point_to_gnb.loc[:, work.columns] = work
+
         except Exception as ex:
             add_row(
                 "TermPointToGNB",

@@ -466,6 +466,12 @@ class ConfigurationAudit:
             elif sheet_name == "TermPointToGNodeB":
                 entry["df"] = df_term_point_to_gnodeb
 
+            elif sheet_name == "ExternalGUtranCell":
+                entry["df"] = df_external_gutran_cell
+
+            elif sheet_name == "TermPointToGNB":
+                entry["df"] = df_term_point_to_gnb
+
         # =====================================================================
         #                PHASE 5: Write the Excel file
         # =====================================================================
