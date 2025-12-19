@@ -58,9 +58,9 @@ The tool automatically adds a **timestamped + versioned suffix** to outputs, whi
 - 📁 Output Example Structure: 
   ```
   <InputFolder>/
-  └─ ConfigurationAudit_<timestamp>_v0.2.0/
-     ├─ ConfigurationAudit_<timestamp>_v0.2.0.xlsx
-     └─ ConfigurationAudit_<timestamp>_v0.2.0.pptx
+  └─ ConfigurationAudit_<timestamp>_<version>/
+     ├─ ConfigurationAudit_<timestamp>_<version>.xlsx
+     └─ ConfigurationAudit_<timestamp>_<version>.pptx
   ```
 
 ---
@@ -79,20 +79,65 @@ The tool automatically adds a **timestamped + versioned suffix** to outputs, whi
 - 📁 Output Example Structure: 
   ```
   <PostInputFolder>/
-  └─ ConsistencyChecks_<timestamp>_v0.2.0/
-     ├─ CellRelation_<timestamp>_v0.2.0.xlsx
-     └─ ConsistencyChecks_CellRelation_<timestamp>_v0.2.0.xlsx
+  └─ ConsistencyChecks_<timestamp>_<version>/
+     └─ ConfigurationAudit_Post_<timestamp>_<version>.pptx
+     └─ ConfigurationAudit_Post_<timestamp>_<version>.xlsx
+     └─ ConfigurationAudit_Pre_<timestamp>_<version>.pptx
+     └─ ConfigurationAudit_Pre_<timestamp>_<version>.xlsx
+     ├─ CellRelation_<timestamp>_<version>.xlsx
+     └─ ConsistencyChecks_CellRelation_<timestamp>_<version>.xlsx
+     └─ FoldersCompared.txt
      └─ Correction_Cmd/
-        └─ New_Relations/
-           └─ <NODE_NAME>_NR_New.txt
-           └─ <NODE_NAME>_GU_New.txt
-        └─ Missing_Relations/
-           └─ <NODE_NAME>_NR_Missing.txt
-           └─ <NODE_NAME>_GU_Missing.txt
-        └─ Discrepancies/
-           └─ <NODE_NAME>_NR_Disc.txt
-           └─ <NODE_NAME>_GU_Disc.txt
-  ```
+        └─ NewRelations/
+           └─ NR/
+              └─ <NODE_NAME>_NR_New.txt
+              └─ <NODE_NAME>_NR_New.txt
+           └─ GU/
+              └─ <NODE_NAME>_GU_New.txt
+              └─ <NODE_NAME>_GU_New.txt
+        └─ MissingRelations/
+           └─ NR/
+              └─ <NODE_NAME>_NR_Missing.txt
+              └─ <NODE_NAME>_NR_Missing.txt
+           └─ GU/
+              └─ <NODE_NAME>_GU_Missing.txt
+              └─ <NODE_NAME>_GU_Missing.txt
+        └─ RelationsDiscrepancies/
+           └─ NR/
+              └─ <NODE_NAME>_NR_Disc.txt
+              └─ <NODE_NAME>_NR_Disc.txt
+           └─ GU/
+              └─ <NODE_NAME>_GU_Disc.txt
+              └─ <NODE_NAME>_GU_Disc.txt
+        └─ ExternalNRCellCU/
+           └─ SSB-Post/
+              └─ <NODE_NAME>_ExternalNRCellCU.txt
+              └─ <NODE_NAME>_ExternalNRCellCU.txt
+           └─ Unknown/
+              └─ <NODE_NAME>_ExternalNRCellCU.txt
+              └─ <NODE_NAME>_ExternalNRCellCU.txt
+        └─ ExternalGUtranCell/
+           └─ SSB-Post/
+              └─ <NODE_NAME>_ExternalGUtranCell.txt
+              └─ <NODE_NAME>_ExternalGUtranCell.txt
+           └─ Unknown/
+              └─ <NODE_NAME>_ExternalGUtranCell.txt
+              └─ <NODE_NAME>_ExternalGUtranCell.txt
+        └─ TermPointToGNodeB/
+           └─ SSB-Post/
+              └─ <NODE_NAME>_TermPointToGNodeB.txt
+              └─ <NODE_NAME>_TermPointToGNodeB.txt
+           └─ Unknown/
+              └─ <NODE_NAME>_TermPointToGNodeB.txt
+              └─ <NODE_NAME>_TermPointToGNodeB.txt
+        └─ TermPointToGNB/
+           └─ SSB-Post/
+              └─ <NODE_NAME>_TermPointToGNB.txt
+              └─ <NODE_NAME>_TermPointToGNB.txt
+           └─ Unknown/
+              └─ <NODE_NAME>_TermPointToGNB.txt
+              └─ <NODE_NAME>_TermPointToGNB.txt
+   ```
 
 ---
 

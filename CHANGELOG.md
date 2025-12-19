@@ -4,6 +4,26 @@
 
 ---
 
+## Release: v0.4.3
+- ### Release Date: 2025-12-19
+
+- ### Main Changes:
+  
+  - #### 🚨 Breaking Changes:
+  
+  - #### 🌟 New Features:
+
+  - #### 🚀 Enhancements:
+    - Added `FoldersCompared.txt` file to output folder when `ConsistencyCheck` module has been executed to show the folders used for Pre and Post. 
+
+  - #### 🐛 Bug fixes:
+    - Minor bug fixing.
+    
+  - #### 📚 Documentation: 
+    - Updated documentation with latest changes.
+
+---
+
 ## Release: v0.4.2
 - ### Release Date: 2025-12-19
 

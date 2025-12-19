@@ -31,7 +31,7 @@ from pathlib import Path
 from src.utils.utils_datetime import format_duration_hms
 from src.utils.utils_dialog import tk, ttk, filedialog, messagebox, ask_reopen_launcher, ask_yes_no_dialog, ask_yes_no_dialog_custom
 from src.utils.utils_infrastructure import LoggerDual
-from src.utils.utils_io import load_cfg_values, save_cfg_values, log_module_exception, to_long_path, pretty_path, folder_has_valid_logs, detect_pre_post_subfolders
+from src.utils.utils_io import load_cfg_values, save_cfg_values, log_module_exception, to_long_path, pretty_path, folder_has_valid_logs, detect_pre_post_subfolders, write_compared_folders_file
 from src.utils.utils_parsing import normalize_csv_list, parse_arfcn_csv_to_set, cap_rows
 
 from src.modules.ConsistencyChecks.ConsistencyChecks import ConsistencyChecks
@@ -43,7 +43,7 @@ from src.modules.CleanUp.FinalCleanUp import FinalCleanUp
 # ================================ VERSIONING ================================ #
 
 TOOL_NAME           = "RetuningAutomations"
-TOOL_VERSION        = "0.4.2"
+TOOL_VERSION        = "0.4.3"
 TOOL_DATE           = "2025-12-19"
 TOOL_NAME_VERSION   = f"{TOOL_NAME}_v{TOOL_VERSION}"
 COPYRIGHT_TEXT      = "(c) 2025 - Jaime Tur (jaime.tur@ericsson.com)"
@@ -906,6 +906,15 @@ def run_consistency_checks_for_market_pairs(
             output_dir = os.path.join(post_dir_fs, f"ConsistencyChecks_{versioned_suffix}")
         os.makedirs(output_dir, exist_ok=True)
 
+        # NEW: write FoldersCompared.txt with the exact PRE/POST folders used
+        try:
+            txt_path = write_compared_folders_file(output_dir=output_dir, pre_dir=pre_dir_fs, post_dir=post_dir_fs)
+            if txt_path:
+                print(f"{module_name} {market_tag} Compared folders file written: '{pretty_path(txt_path)}'")
+        except Exception as ex:
+            print(f"{module_name} {market_tag} [WARN] Failed to write FoldersCompared.txt: {ex}")
+
+
         # NEW: Build Pre/Post audit suffixes (Pre/Post before the timestamp)
         audit_pre_suffix = f"Pre_{versioned_suffix}"
         audit_post_suffix = f"Post_{versioned_suffix}"
@@ -997,7 +1006,7 @@ def run_consistency_checks_for_market_pairs(
 
         print(f"\n{module_name} {market_tag} Outputs saved to: '{pretty_path(output_dir)}'")
         if results:
-            print(f"{module_name} {market_tag} Wrote CellRelation.xlsx and CellRelationDiscrepancies.xlsx (with Summary and details).")
+            print(f"{module_name} {market_tag} Wrote CellRelation.xlsx and ConsistencyChecks_CellRelation.xlsx (with Summary and details).")
         else:
             print(f"{module_name} {market_tag} Wrote CellRelation.xlsx (all tables). No comparison Excel because frequencies were not provided.")
 
