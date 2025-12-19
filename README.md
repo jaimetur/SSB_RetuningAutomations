@@ -74,6 +74,7 @@ The tool automatically adds a **timestamped + versioned suffix** to outputs, whi
 - Produces:
   - `CellRelation.xlsx` (all relevant tables)  
   - `ConsistencyChecks_CellRelation.xlsx` (summary + detailed discrepancies) **only** if both frequencies are provided.  
+  - `Correction_Cmd` (folder with all correction commands in AMOS format).  
 - 📁 Output is written under: `<POST_INPUT_FOLDER>/ConsistencyChecks_<YYYYMMDD-HHMMSS>_v<TOOL_VERSION>/`
 - 📁 Correction Commands are written under: `<POST_INPUT_FOLDER>/ConsistencyChecks_<YYYYMMDD-HHMMSS>_v<TOOL_VERSION>/Correction_Cmd`
 - 📁 Output Example Structure: 
