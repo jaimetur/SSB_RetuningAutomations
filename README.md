@@ -142,11 +142,9 @@ The tool automatically adds a **timestamped + versioned suffix** to outputs, whi
 
 ---
 
-### `3. Initial Clean-Up (During Maintenance Window)`
-**Purpose:** Utility to sanitize intermediate outputs (delete/add relations, change parameters, etc.) during Maintainance Window (after retuning).
+### `4. Profiles Audit (During Maintenance Window)`
+**Purpose:** Utility to execute a Profiles Audit during Maintainance Window (after retuning).
 
-**Notes**
-- Module scaffold present. Extend `CleanUp.run(...)` with your clean-up policies.
 
 ---
 
@@ -168,7 +166,7 @@ Running the launcher **without CLI arguments** opens a compact Tkinter dialog wh
 
 **Start (GUI):**
 ```bash
-python SSB-RetuningAutomations.py
+python SSB_RetuningAutomations.py
 ```
 
 > The GUI is skipped if Tkinter is not available or `--no-gui` is used.
@@ -304,7 +302,7 @@ Forces CLI-only mode even if arguments are missing.
 ### 1. Configuration Audit
 
 ```bash
-python SSB-RetuningAutomations.py \
+python SSB_RetuningAutomations.py \
   --module configuration-audit \
   --input "./AuditInput" \
   --n77-ssb-pre 647328 \
@@ -314,7 +312,7 @@ python SSB-RetuningAutomations.py \
 ### 2. Consistency Check (Pre/Post folders)
 
 ```bash
-python SSB-RetuningAutomations.py \
+python SSB_RetuningAutomations.py \
   --module consistency-check \
   --input-pre "./Step0" \
   --input-post "./Step3" \
@@ -325,7 +323,7 @@ python SSB-RetuningAutomations.py \
 ### 3. Configuration Audit with custom allowed lists
 
 ```bash
-python SSB-RetuningAutomations.py \
+python SSB_RetuningAutomations.py \
   --module configuration-audit \
   --input "./audit" \
   --allowed-n77-ssb-pre 648672,649200 \

@@ -36,13 +36,12 @@ from src.utils.utils_parsing import normalize_csv_list, parse_arfcn_csv_to_set
 
 from src.modules.ConsistencyChecks.ConsistencyChecks import ConsistencyChecks
 from src.modules.ConfigurationAudit import ConfigurationAudit
-from src.modules.CleanUp.InitialCleanUp import InitialCleanUp
 from src.modules.CleanUp.FinalCleanUp import FinalCleanUp
 
 
 # ================================ VERSIONING ================================ #
 
-TOOL_NAME           = "SSB-RetuningAutomations"
+TOOL_NAME           = "SSB_RetuningAutomations"
 TOOL_VERSION        = "0.5.0"
 TOOL_DATE           = "2025-12-19"
 TOOL_NAME_VERSION   = f"{TOOL_NAME}_v{TOOL_VERSION}"
@@ -109,7 +108,7 @@ CONFIG_KEY_LAST_INPUT_AUDIT             = "last_input_dir_audit"
 CONFIG_KEY_LAST_INPUT_CC_PRE            = "last_input_dir_cc_pre"
 CONFIG_KEY_LAST_INPUT_CC_POST           = "last_input_dir_cc_post"
 CONFIG_KEY_LAST_INPUT_CC_BULK           = "last_input_dir_cc_bulk"
-CONFIG_KEY_LAST_INPUT_INITIAL_CLEANUP   = "last_input_dir_initial_cleanup"
+CONFIG_KEY_LAST_INPUT_PROFILES_AUDIT    = "last_input_dir_profiles_audit"
 CONFIG_KEY_LAST_INPUT_FINAL_CLEANUP     = "last_input_dir_final_cleanup"
 CONFIG_KEY_N77_SSB_PRE                  = "n77_ssb_pre"
 CONFIG_KEY_N77_SSB_POST                 = "n77_ssb_post"
@@ -128,7 +127,7 @@ CFG_FIELD_MAP = {
     "last_input_cc_pre":          CONFIG_KEY_LAST_INPUT_CC_PRE,
     "last_input_cc_post":         CONFIG_KEY_LAST_INPUT_CC_POST,
     "last_input_cc_bulk":         CONFIG_KEY_LAST_INPUT_CC_BULK,
-    "last_input_initial_cleanup": CONFIG_KEY_LAST_INPUT_INITIAL_CLEANUP,
+    "last_input_profiles_audit":  CONFIG_KEY_LAST_INPUT_PROFILES_AUDIT,
     "last_input_final_cleanup":   CONFIG_KEY_LAST_INPUT_FINAL_CLEANUP,
     "n77_ssb_pre":                CONFIG_KEY_N77_SSB_PRE,
     "n77_ssb_post":               CONFIG_KEY_N77_SSB_POST,
@@ -184,7 +183,7 @@ def gui_config_dialog(
     default_input_cc_pre: str = "",
     default_input_cc_post: str = "",
     default_input_cc_bulk: str = "",
-    default_input_initial_cleanup: str = "",
+    default_input_profiles_audit: str = "",
     default_input_final_cleanup: str = "",
     default_n77_ssb_pre: str = DEFAULT_N77_SSB_PRE,
     default_n77_ssb_post: str = DEFAULT_N77_SSB_POST,
@@ -216,7 +215,7 @@ def gui_config_dialog(
     module_single_defaults: Dict[str, str] = {
         MODULE_NAMES[0]: default_input_audit or default_input or "",
         MODULE_NAMES[2]: default_input_cc_bulk or default_input or "",
-        MODULE_NAMES[3]: default_input_initial_cleanup or default_input or "",
+        MODULE_NAMES[3]: default_input_profiles_audit or default_input or "",
         MODULE_NAMES[4]: default_input_final_cleanup or default_input or "",
     }
 
@@ -730,7 +729,8 @@ def run_configuration_audit(
         if external_output_dir:
             output_dir = to_long_path(external_output_dir)
         else:
-            output_dir = os.path.join(folder_fs, f"ConfigurationAudit_{versioned_suffix}{suffix}")
+            folder_prefix = "ProfilesAudit" if profiles_audit else "ConfigurationAudit"
+            output_dir = os.path.join(folder_fs, f"{folder_prefix}_{versioned_suffix}{suffix}")
 
         os.makedirs(output_dir, exist_ok=True)
         print(f"{module_name} Output folder: '{pretty_path(output_dir)}'")
@@ -1415,7 +1415,7 @@ def main():
         "last_input",
         "last_input_audit",
         "last_input_cc_bulk",
-        "last_input_initial_cleanup",
+        "last_input_profiles_audit",
         "last_input_final_cleanup",
         "last_input_cc_pre",
         "last_input_cc_post",
@@ -1438,7 +1438,7 @@ def main():
     persisted_last_cc_pre              = cfg["last_input_cc_pre"]
     persisted_last_cc_post             = cfg["last_input_cc_post"]
     persisted_last_cc_bulk             = cfg["last_input_cc_bulk"]
-    persisted_last_initial_cleanup     = cfg["last_input_initial_cleanup"]
+    persisted_last_profiles_audit      = cfg["last_input_profiles_audit"]
     persisted_last_final_cleanup       = cfg["last_input_final_cleanup"]
 
     persisted_n77_ssb_pre              = cfg["n77_ssb_pre"]
@@ -1454,7 +1454,7 @@ def main():
     # Defaults per module (CLI > persisted per-module > global fallback > hardcode)
     default_input_audit = args.input or persisted_last_audit or persisted_last_single or INPUT_FOLDER or ""
     default_input_cc_bulk = args.input or persisted_last_cc_bulk or persisted_last_single or INPUT_FOLDER or ""
-    default_input_initial_cleanup = args.input or persisted_last_initial_cleanup or persisted_last_single or INPUT_FOLDER or ""
+    default_input_profiles_audit = args.input or persisted_last_profiles_audit or persisted_last_single or INPUT_FOLDER or ""
     default_input_final_cleanup = args.input or persisted_last_final_cleanup or persisted_last_single or INPUT_FOLDER or ""
 
     default_input_cc_pre = args.input_pre or persisted_last_cc_pre or INPUT_FOLDER_PRE or ""
@@ -1490,7 +1490,7 @@ def main():
                 default_input_cc_pre=default_input_cc_pre,
                 default_input_cc_post=default_input_cc_post,
                 default_input_cc_bulk=default_input_cc_bulk,
-                default_input_initial_cleanup=default_input_initial_cleanup,
+                default_input_profiles_audit=default_input_profiles_audit,
                 default_input_final_cleanup=default_input_final_cleanup,
                 default_n77_ssb_pre=default_n77_ssb_pre,
                 default_n77_ssb_post=default_n77_ssb_post,
@@ -1524,7 +1524,7 @@ def main():
                 elif sel.module == MODULE_NAMES[2]:
                     default_input_cc_bulk = sel.input_dir
                 elif sel.module == MODULE_NAMES[3]:
-                    default_input_initial_cleanup = sel.input_dir
+                    default_input_profiles_audit = sel.input_dir
                 elif sel.module == MODULE_NAMES[4]:
                     default_input_final_cleanup = sel.input_dir
                 default_input = default_input_audit
@@ -1556,7 +1556,7 @@ def main():
                     persist_kwargs["last_input_cc_bulk"] = sel.input_dir
                     persist_kwargs["last_input"] = sel.input_dir
                 elif sel.module == MODULE_NAMES[3]:
-                    persist_kwargs["last_input_initial_cleanup"] = sel.input_dir
+                    persist_kwargs["last_input_profiles_audit"] = sel.input_dir
                     persist_kwargs["last_input"] = sel.input_dir
                 elif sel.module == MODULE_NAMES[4]:
                     persist_kwargs["last_input_final_cleanup"] = sel.input_dir
@@ -1758,7 +1758,7 @@ def main():
         return
 
     # Initial Clean-Up (module 4) and Final Clean-Up (module 5): single-input
-    input_dir = args.input or (default_input_initial_cleanup if module_fn is run_profiles_audit else default_input_final_cleanup)
+    input_dir = args.input or (default_input_profiles_audit if module_fn is run_profiles_audit else default_input_final_cleanup)
     if not input_dir:
         print("Error: --input is required for this module in CLI mode.\n")
         parser.print_help()
@@ -1770,7 +1770,7 @@ def main():
             config_path=CONFIG_PATH,
             config_section=CONFIG_SECTION,
             cfg_field_map=CFG_FIELD_MAP,
-            last_input_initial_cleanup=input_dir,
+            last_input_profiles_audit=input_dir,
             last_input=input_dir,
             n77_ssb_pre=n77_ssb_pre,
             n77_ssb_post=n77_ssb_post,
