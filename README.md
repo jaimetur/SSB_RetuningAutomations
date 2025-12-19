@@ -73,7 +73,7 @@ The tool automatically adds a **timestamped + versioned suffix** to outputs, whi
 - Optional **frequency comparison** when both `----n77-ssb-pre` and `----n77-ssb-post` are provided.  
 - Produces:
   - `CellRelation.xlsx` (all relevant tables)  
-  - `CellRelationDiscrepancies.xlsx` (summary + detailed discrepancies) **only** if both frequencies are provided.  
+  - `ConsistencyChecks_CellRelation.xlsx` (summary + detailed discrepancies) **only** if both frequencies are provided.  
 - 📁 Output is written under: `<POST_INPUT_FOLDER>/ConsistencyChecks_<YYYYMMDD-HHMMSS>_v<TOOL_VERSION>/`
 - 📁 Correction Commands are written under: `<POST_INPUT_FOLDER>/ConsistencyChecks_<YYYYMMDD-HHMMSS>_v<TOOL_VERSION>/Correction_Cmd`
 - 📁 Output Example Structure: 
