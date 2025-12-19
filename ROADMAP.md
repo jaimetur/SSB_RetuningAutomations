@@ -4,11 +4,10 @@
 
 ---
 
-## Release: v0.5.0 
+## Release: v0.6.0 
 
 - ### TODO:
   - #### 🌟 New Features:
-    - Create logic for Module '4. Initial Clean-Up'
     - Create logic for Module '5. Final Clean-Up'
     - Generate output commands to run clean-up
 
