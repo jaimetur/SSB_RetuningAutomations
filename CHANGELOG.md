@@ -68,7 +68,7 @@
     - Added Correction Commands for LTE External Cells and Termpoints.
     - External commands and Termpoint commands are now split by Node.
     - External commands are now saved into subfolders `ExternalNRCellCU` and `ExternalGUtranCell`.
-    - External commands are now saved into subfolders `TermPointToGNodeB` and `TermPointToGNB`.
+    - Termpoint commands are now saved into subfolders `TermPointToGNodeB` and `TermPointToGNB`.
     - Code Refactored to split the module ca_summary into smaller modules for a better management of it.
 
   - #### 🐛 Bug fixes:
@@ -120,7 +120,7 @@
       - `TermpointConsolidatedStatus`: Contains the current status of the termpoint in a consolidated way.
       - `SSB needs update`: Indicates those termpoints whose termpoint id has been found in `ExternalNRCellCU` with "SSB-Pre" and with `GNodeB_SSB_Target` different to "SSB-Pre".
       - `Correction_Cmd`: Contains the correction command to fix the termpoint.
-    - Added Correction Commands for External Cells and Termpoints.
+    - Added Correction Commands for NR External Cells and Termpoints.
 
   - #### 🚀 Enhancements:
     - Excel columns Autofit now is limited to a maximum column width of 100.
