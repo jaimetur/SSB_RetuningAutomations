@@ -20,10 +20,12 @@
   - #### 🚀 Enhancements:
 
   - #### 🐛 Bug fixes:
+    - Fixed build_all.yml to update the new Tool name.
     - Minor bug fixing.
     
   - #### 📚 Documentation: 
     - Updated README.md.
+    - Updated ROADMAP.md.
     - Logo updated.
     - Updated documentation with latest changes.
 
