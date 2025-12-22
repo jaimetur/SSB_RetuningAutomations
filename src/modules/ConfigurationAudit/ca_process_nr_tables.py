@@ -294,13 +294,10 @@ def process_nr_freq_rel(df_nr_freq_rel, is_old, add_row, n77_ssb_pre, is_new, n7
                             nodes_pointing_to_same_profile_ref = sorted(set(nodes_pointing_to_same_profile_ref))
                             nodes_pointing_to_clone_profile_ref = sorted(set(nodes_pointing_to_clone_profile_ref))
 
-                            add_row("NRFreqRelation", "NR Frequency Inconsistencies", f"NR nodes with the old N77 SSB ({n77_ssb_pre}) and the new SSB ({n77_ssb_post}) pointing to some mcpcPCellNrFreqRelProfileRef (from NRFreqRelation table)", len(nodes_pointing_to_same_profile_ref), ", ".join(nodes_pointing_to_same_profile_ref))
-                            add_row("NRFreqRelation", "NR Frequency Inconsistencies", f"NR nodes with the old N77 SSB ({n77_ssb_pre}) and the new SSB ({n77_ssb_post}) pointing to clone mcpcPCellNrFreqRelProfileRef (from NRFreqRelation table)", len(nodes_pointing_to_clone_profile_ref), ", ".join(nodes_pointing_to_clone_profile_ref))
-                            add_row("NRFreqRelation", "Profiles Inconsistencies", f"NR nodes with the old N77 SSB ({n77_ssb_pre}) and the new SSB ({n77_ssb_post}) pointing to some mcpcPCellNrFreqRelProfileRef (from NRFreqRelation table)", len(nodes_pointing_to_same_profile_ref), ", ".join(nodes_pointing_to_same_profile_ref))
-                            add_row("NRFreqRelation", "Profiles Inconsistencies", f"NR nodes with the old N77 SSB ({n77_ssb_pre}) and the new SSB ({n77_ssb_post}) pointing to clone mcpcPCellNrFreqRelProfileRef (from NRFreqRelation table)", len(nodes_pointing_to_clone_profile_ref), ", ".join(nodes_pointing_to_clone_profile_ref))
+                            add_row("NRFreqRelation", "NR Frequency Audit", f"NR nodes with the old N77 SSB ({n77_ssb_pre}) and the new SSB ({n77_ssb_post}) NRFreqRelation pointing to same mcpcPCellNrFreqRelProfileRef containing old SSB name (from NRFreqRelation table)", len(nodes_pointing_to_same_profile_ref), ", ".join(nodes_pointing_to_same_profile_ref))
+                            add_row("NRFreqRelation", "NR Frequency Audit", f"NR nodes with the new SSB ({n77_ssb_post}) NRFreqRelation pointing to mcpcPCellNrFreqRelProfileRef containing new SSB name (cloned) or Other (from NRFreqRelation table)", len(nodes_pointing_to_clone_profile_ref), ", ".join(nodes_pointing_to_clone_profile_ref))
                         else:
                             add_row("NRFreqRelation", "NR Frequency Inconsistencies", "NRFreqRelation mcpcPCellNrFreqRelProfileRef clone check skipped (mcpcPCellNrFreqRelProfileRef missing)", "N/A")
-                            add_row("NRFreqRelation", "Profiles Inconsistencies", "NRFreqRelation mcpcPCellNrFreqRelProfileRef clone check skipped (mcpcPCellNrFreqRelProfileRef missing)", "N/A")
 
                         # Parameter equality check (ignoring ID/reference columns and helper columns)
                         cols_to_ignore = {arfcn_col, "_arfcn_int_"}

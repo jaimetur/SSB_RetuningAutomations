@@ -256,8 +256,7 @@ class ConsistencyChecks:
             return {}
 
         # NEW: load node numeric identifiers from POST Configuration Audit (SummaryAudit sheet)
-        nodes_without_retune_ids = load_nodes_names_and_id_from_summary_audit(audit_post_excel, stage="Pre", module_name=module_name)
-        nodes_with_retune_ids = load_nodes_names_and_id_from_summary_audit(audit_post_excel, stage="Post", module_name=module_name)
+        nodes_id_pre, nodes_name_pre = load_nodes_names_and_id_from_summary_audit(audit_post_excel, stage="Pre", module_name=module_name)
 
         results: Dict[str, Dict[str, pd.DataFrame]] = {}
 
@@ -360,7 +359,7 @@ class ConsistencyChecks:
             # NEW: optionally exclude discrepancies for relations whose destination nodes did not complete the retuning
             rel_series = None
             pattern_nodes = None
-            if nodes_without_retune_ids and table_name in ("GUtranCellRelation", "NRCellRelation"):
+            if nodes_id_pre and table_name in ("GUtranCellRelation", "NRCellRelation"):
                 relation_col = "GUtranCellRelationId" if table_name == "GUtranCellRelation" else "NRCellRelationId"
 
                 # Ensure the relation column exists either in PRE or POST
@@ -371,7 +370,7 @@ class ConsistencyChecks:
                     rel_series = src_rel_df[relation_col].reindex(pre_common.index).astype(str).fillna("")
                     try:
                         # Build a substring-matching pattern for all numeric node identifiers
-                        pattern_nodes = "|".join(re.escape(x) for x in sorted(nodes_without_retune_ids))
+                        pattern_nodes = "|".join(re.escape(x) for x in sorted(nodes_id_pre))
                         # Build the skip mask: all rows whose relation contains a non-retuned node id
                         skip_mask = rel_series.str.contains(pattern_nodes, regex=True, na=False)
                         # Remove those rows from discrepancy masks (parameter and frequency differences)
@@ -947,5 +946,5 @@ class ConsistencyChecks:
             # NEW: apply alternating Category fills (and inconsistency font colors) on SummaryAuditComparisson sheet
             ws_comp = writer.sheets.get("SummaryAuditComparisson")
             if ws_comp is not None:
-                # Use default parameters: Category header name and default colors
-                apply_alternating_category_row_fills(ws_comp)
+                apply_alternating_category_row_fills(ws_comp, value_header="Value_Post")
+

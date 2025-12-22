@@ -402,6 +402,15 @@ def process_termpoint_to_gnodeb(df_term_point_to_gnodeb, add_row, df_external_nr
 # ----------------------------- NEW: TermPointToGNB (X2 Termpoint Audit, LTE -> NR) -----------------------------
 def process_termpoint_to_gnb(df_term_point_to_gnb, _normalize_state, _normalize_ip, add_row, df_external_gutran_cell, n77_ssb_post, n77_ssb_pre):
     try:
+        # Initialize locals to avoid UnboundLocalError if early branches happen
+        work = None
+        node_col = None
+        ext_gnb_col = None
+        admin_col = None
+        oper_col = None
+        ip_col = None
+        avail_col = None
+
         if df_term_point_to_gnb is not None and not df_term_point_to_gnb.empty:
             # NEW: Always work on a full copy (same pattern as NR)
             work = df_term_point_to_gnb.copy()
@@ -412,6 +421,10 @@ def process_termpoint_to_gnb(df_term_point_to_gnb, _normalize_state, _normalize_
             oper_col = resolve_column_case_insensitive(work, ["operationalState", "OperationalState"])
             ip_col = resolve_column_case_insensitive(work, ["usedIpAddress", "UsedIpAddress"])
             avail_col = resolve_column_case_insensitive(work, ["availabilityStatus", "AvailabilityStatus"])
+
+            if not node_col or not ext_gnb_col:
+                add_row("TermPointToGNB", "X2 Termpoint Audit", "TermPointToGNB table present but required columns missing (NodeId/ExternalGNBCUCPFunctionId/admin/oper/ip)", "N/A")
+                return
 
             if node_col and ext_gnb_col and (admin_col or oper_col or ip_col):
                 work[node_col] = work[node_col].astype(str).str.strip()
@@ -453,13 +466,13 @@ def process_termpoint_to_gnb(df_term_point_to_gnb, _normalize_state, _normalize_
                 add_row("TermPointToGNB", "X2 Termpoint Audit", "TermPointToGNB table present but required columns missing (NodeId/ExternalGNBCUCPFunctionId/admin/oper/ip)", "N/A")
         else:
             add_row("TermPointToGNB", "X2 Termpoint Audit", "TermPointToGNB table", "Table not found or empty")
+            return
 
         # -------------------------------------------------
         # Termpoint
         # -------------------------------------------------
-        if df_term_point_to_gnb is not None and not df_term_point_to_gnb.empty:
-            if node_col and ext_gnb_col:
-                work["Termpoint"] = work[node_col] + "-" + work[ext_gnb_col]
+        if node_col and ext_gnb_col:
+            work["Termpoint"] = work[node_col] + "-" + work[ext_gnb_col]
 
         # -------------------------------------------------
         # TermpointStatus / ConsolidatedStatus
@@ -501,11 +514,11 @@ def process_termpoint_to_gnb(df_term_point_to_gnb, _normalize_state, _normalize_
         # -------------------------------------------------
         # Write back (NO column removal)
         # -------------------------------------------------
-        if df_term_point_to_gnb is not None and not df_term_point_to_gnb.empty:
-            df_term_point_to_gnb.loc[:, work.columns] = work
+        df_term_point_to_gnb.loc[:, work.columns] = work
 
     except Exception as ex:
         add_row("TermPointToGNB", "X2 Termpoint Audit", "Error while checking TermPointToGNB", f"ERROR: {ex}")
+
 
 
 # ----------------------------- NEW: TermPointToENodeB (X2 Termpoint Audit, NR -> LTE) -----------------------------

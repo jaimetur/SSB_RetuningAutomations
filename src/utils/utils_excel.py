@@ -38,6 +38,7 @@ def apply_alternating_category_row_fills(
     end_row: int | None = None,
     fill_color_1: str = "E0F7FA",
     fill_color_2: str = "B2EBF2",
+    value_header: str = "Value",
 ) -> None:
     """
     Apply alternating background fills to row blocks based on Category changes.
@@ -56,6 +57,8 @@ def apply_alternating_category_row_fills(
     subcategory_col_idx: int | None = None
     value_col_idx: int | None = None
 
+    value_header_norm = str(value_header).strip().lower()
+
     for cell in ws[header_row]:
         header_value = str(cell.value).strip() if cell.value is not None else ""
         header_lower = header_value.lower()
@@ -64,7 +67,7 @@ def apply_alternating_category_row_fills(
             category_col_idx = cell.column
         elif header_lower == "subcategory":
             subcategory_col_idx = cell.column
-        elif header_lower == "value":
+        elif header_lower == value_header_norm:
             value_col_idx = cell.column
 
     if category_col_idx is None:
