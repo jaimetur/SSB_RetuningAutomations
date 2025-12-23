@@ -269,41 +269,6 @@ def process_nr_freq_rel(df_nr_freq_rel, is_old, add_row, n77_ssb_pre, is_new, n7
                                 vals = [v for v in vals if v]
                                 return sorted(set(vals))
 
-                            # NEW: smart clone builder for McpcPCellNrFreqRelProfileRef
-                            # Some refs contain the old SSB twice, e.g. "...McpcPCellNrFreqRelProfile=648672_648672"
-                            # Expected post-retune clone is typically "...McpcPCellNrFreqRelProfile=648672_647328"
-                            # So we must NOT replace both occurrences (a naive replace would create 647328_647328).
-                            def _build_expected_profile_ref_clone_smart(old_ref: object, old_ssb: object, new_ssb: object) -> str:
-                                s = "" if old_ref is None else str(old_ref).strip()
-                                if not s:
-                                    return s
-
-                                old_ssb_str = str(old_ssb).strip()
-                                new_ssb_str = str(new_ssb).strip()
-
-                                key = "McpcPCellNrFreqRelProfile="
-                                idx = s.find(key)
-                                if idx >= 0:
-                                    start = idx + len(key)
-                                    end = s.find(",", start)
-                                    if end < 0:
-                                        end = len(s)
-
-                                    token = s[start:end].strip()
-                                    if "_" in token:
-                                        left, right = token.split("_", 1)
-                                        # Only replace the RIGHT side when it matches old SSB (keep LEFT as-is)
-                                        if str(right).strip() == old_ssb_str:
-                                            right = new_ssb_str
-                                        new_token = f"{left}_{right}"
-                                        return s[:start] + new_token + s[end:]
-
-                                # Fallback to legacy function (if available) for other formats
-                                try:
-                                    return build_expected_profile_ref_clone(s, old_ssb, new_ssb)
-                                except Exception:
-                                    return s
-
                             # Compare OLD vs NEW by NodeId + NRCellCUId (NRCellRelationId is not expected to match)
                             group_cols = [node_col, cell_col]
                             for (node_id_val, cell_id_val), grp in full_n77.groupby(group_cols, dropna=False):
@@ -319,11 +284,7 @@ def process_nr_freq_rel(df_nr_freq_rel, is_old, add_row, n77_ssb_pre, is_new, n7
 
                                 node_id_val = str(node_id_val)
                                 same_found = any(new_ref == old_ref for old_ref in old_refs for new_ref in new_refs)
-                                clone_found = any(
-                                    new_ref == _build_expected_profile_ref_clone_smart(old_ref, n77_ssb_pre, n77_ssb_post)
-                                    for old_ref in old_refs
-                                    for new_ref in new_refs
-                                )
+                                clone_found = any(new_ref == build_expected_profile_ref_clone(old_ref, n77_ssb_pre, n77_ssb_post) for old_ref in old_refs for new_ref in new_refs)
 
                                 if same_found:
                                     nodes_pointing_to_same_profile_ref.add(node_id_val)
@@ -357,21 +318,8 @@ def process_nr_freq_rel(df_nr_freq_rel, is_old, add_row, n77_ssb_pre, is_new, n7
                             new_str = str(new_value).strip()
                             if not old_str or not new_str:
                                 return False
-
-                            # NEW: use the smart clone builder to avoid double-replacing the old SSB when it appears twice
-                            try:
-                                expected_smart = _build_expected_profile_ref_clone_smart(old_str, n77_ssb_pre, n77_ssb_post)
-                                if new_str == expected_smart:
-                                    return True
-                            except Exception:
-                                pass
-
-                            # Fallback to legacy clone builder for backward compatibility
-                            try:
-                                expected = build_expected_profile_ref_clone(old_str, n77_ssb_pre, n77_ssb_post)
-                                return new_str == expected
-                            except Exception:
-                                return False
+                            expected = build_expected_profile_ref_clone(old_str, n77_ssb_pre, n77_ssb_post)
+                            return new_str == expected
 
                         def _values_differ(col_name: str, old_value: object, new_value: object) -> bool:
                             # NEW: ignore profile ref changes when they match the expected clone
@@ -536,6 +484,369 @@ def process_nr_freq_rel(df_nr_freq_rel, is_old, add_row, n77_ssb_pre, is_new, n7
     except Exception as ex:
         add_row("NRFreqRelation", "NR Frequency Audit", "Error while checking NRFreqRelation", f"ERROR: {ex}")
 
+
+# The function below replace the previous one if we want to accept that cases of McpcPCellNrFreqRelProfile=648672_648672 changed to McpcPCellNrFreqRelProfile=647328_47328 after step2 don't raise a NR Frequency Inconsistencies with the metric: "NR cells with mismatching params between old N77 SSB (648672) and the new N77 SSB (647328) (from NRFreqRelation table)"
+
+# # ----------------------------- NRFreqRelation (OLD/NEW SSB on NR rows) -----------------------------
+# def process_nr_freq_rel(df_nr_freq_rel, is_old, add_row, n77_ssb_pre, is_new, n77_ssb_post, series_only_not_old_not_new, param_mismatch_rows_nr):
+#     try:
+#         if df_nr_freq_rel is not None and not df_nr_freq_rel.empty:
+#             node_col = resolve_column_case_insensitive(df_nr_freq_rel, ["NodeId"])
+#             arfcn_col = resolve_column_case_insensitive(df_nr_freq_rel, ["NRFreqRelationId"])
+#             gnb_col = resolve_column_case_insensitive(df_nr_freq_rel, ["GNBCUCPFunctionId"])
+#
+#             if node_col and arfcn_col:
+#                 work = df_nr_freq_rel[[node_col, arfcn_col]].copy()
+#                 work[node_col] = work[node_col].astype(str)
+#
+#                 n77_work = work.loc[work[arfcn_col].map(is_n77_from_string)].copy()
+#
+#                 if not n77_work.empty:
+#                     grouped = n77_work.groupby(node_col)[arfcn_col]
+#
+#                     # NR Frequency Audit: NR nodes with the old N77 SSB (from NRFreqRelation table)
+#                     old_nodes = sorted(str(node) for node, series in grouped if any(is_old(v) for v in series))
+#                     add_row("NRFreqRelation", "NR Frequency Audit", f"NR nodes with the old N77 SSB ({n77_ssb_pre}) (from NRFreqRelation table)", len(old_nodes), ", ".join(old_nodes))
+#
+#                     new_nodes = sorted(str(node) for node, series in grouped if any(is_new(v) for v in series))
+#                     add_row("NRFreqRelation", "NR Frequency Audit", f"NR nodes with the new N77 SSB ({n77_ssb_post}) (from NRFreqRelation table)", len(new_nodes), ", ".join(new_nodes))
+#
+#                     # NEW: node-level check old_ssb vs new_ssb presence
+#                     old_set = set(old_nodes)
+#                     new_set = set(new_nodes)
+#
+#                     nodes_old_and_new = sorted(old_set & new_set)
+#                     add_row("NRFreqRelation", "NR Frequency Audit", f"NR nodes with both, the old N77 SSB ({n77_ssb_pre}) and the new N77 SSB ({n77_ssb_post}) (from NRFreqRelation table)", len(nodes_old_and_new), ", ".join(nodes_old_and_new))
+#
+#                     nodes_old_without_new = sorted(old_set - new_set)
+#                     add_row("NRFreqRelation", "NR Frequency Audit", f"NR nodes with the old N77 SSB ({n77_ssb_pre}) but without the new N77 SSB ({n77_ssb_post}) (from NRFreqRelation table)", len(nodes_old_without_new), ", ".join(nodes_old_without_new))
+#
+#                     # NR Frequency Inconsistencies: NR nodes with the SSB not in ({old_ssb}, {new_ssb}) (from NRFreqRelation table)
+#                     not_old_not_new_nodes = sorted(str(node) for node, series in grouped if series_only_not_old_not_new(series))
+#                     add_row("NRFreqRelation", "NR Frequency Inconsistencies", f"NR nodes with the N77 SSB not in ({n77_ssb_pre}, {n77_ssb_post}) (from NRFreqRelation table)", len(not_old_not_new_nodes), ", ".join(not_old_not_new_nodes))
+#
+#                     # NEW: nodes where NRFreqRelationId contains new SSB but has extra characters (e.g. 'auto_647328')
+#                     post_freq_str = str(n77_ssb_post)
+#                     pattern_work = df_nr_freq_rel[[node_col, arfcn_col]].copy()
+#                     pattern_work[node_col] = pattern_work[node_col].astype(str)
+#                     pattern_work[arfcn_col] = pattern_work[arfcn_col].astype(str)
+#
+#                     mask_contains_post = pattern_work[arfcn_col].str.contains(post_freq_str, na=False)
+#
+#                     def _has_same_int_and_extra(value: object) -> bool:
+#                         s = str(value).strip()
+#                         int_val = parse_int_frequency(s)
+#                         return int_val == n77_ssb_post and s != post_freq_str
+#
+#                     mask_bad_pattern = mask_contains_post & pattern_work[arfcn_col].map(_has_same_int_and_extra)
+#
+#                     bad_pattern_nodes = sorted(pattern_work.loc[mask_bad_pattern, node_col].astype(str).unique())
+#                     add_row("NRFreqRelation", "NR Frequency Inconsistencies", f"NR nodes with Auto-created NRFreqRelationId to new N77 SSB ({n77_ssb_post}) but not following VZ naming convention (e.g. with extra characters: 'auto_{n77_ssb_post}')", len(bad_pattern_nodes), ", ".join(bad_pattern_nodes))
+#
+#                     cell_col = resolve_column_case_insensitive(df_nr_freq_rel, ["NRCellCUId", "NRCellId", "CellId"])
+#                     rel_col = resolve_column_case_insensitive(df_nr_freq_rel, ["NRCellRelationId"])
+#
+#                     if cell_col:
+#                         full = df_nr_freq_rel.copy()
+#                         full[node_col] = full[node_col].astype(str)
+#                         full[cell_col] = full[cell_col].astype(str)
+#                         if rel_col:
+#                             full[rel_col] = full[rel_col].astype(str)
+#
+#                         # Restrict to N77 rows (based on SSB inside NRFreqRelationId)
+#                         mask_n77_full = full[arfcn_col].map(is_n77_from_string)
+#                         full_n77 = full.loc[mask_n77_full].copy()
+#                         full_n77["_arfcn_int_"] = full_n77[arfcn_col].map(parse_int_frequency)
+#
+#                         old_mask = full_n77["_arfcn_int_"] == n77_ssb_pre
+#                         new_mask = full_n77["_arfcn_int_"] == n77_ssb_post
+#
+#                         cells_with_old = set(full_n77.loc[old_mask, cell_col].astype(str))
+#                         cells_with_new = set(full_n77.loc[new_mask, cell_col].astype(str))
+#
+#                         cells_both = sorted(cells_with_old & cells_with_new)
+#                         cells_old_without_new = sorted(cells_with_old - cells_with_new)
+#
+#                         add_row("NRFreqRelation", "NR Frequency Audit", f"NR cells with the old N77 SSB ({n77_ssb_pre}) and the new SSB ({n77_ssb_post}) (from NRFreqRelation table)", len(cells_both), ", ".join(cells_both))
+#                         add_row("NRFreqRelation", "NR Frequency Audit", f"NR cells with the old N77 SSB ({n77_ssb_pre}) but without new N77 SSB ({n77_ssb_post}) (from NRFreqRelation table)", len(cells_old_without_new), ", ".join(cells_old_without_new))
+#
+#                         # ----------------------------- NEW: mcpcPCellNrFreqRelProfileRef clone checks (OLD SSB -> NEW SSB) -----------------------------
+#                         profile_col = resolve_column_case_insensitive(full_n77, ["mcpcPCellNrFreqRelProfileRef"])
+#                         if profile_col:
+#                             nodes_pointing_to_same_profile_ref = set()
+#                             nodes_pointing_to_clone_profile_ref = set()
+#
+#                             def _collect_unique_refs(df_block):
+#                                 vals = df_block[profile_col].dropna().astype(str).map(lambda x: x.strip()).tolist()
+#                                 vals = [v for v in vals if v]
+#                                 return sorted(set(vals))
+#
+#                             # NEW: smart clone builder for McpcPCellNrFreqRelProfileRef
+#                             # Some refs contain the old SSB twice, e.g. "...McpcPCellNrFreqRelProfile=648672_648672"
+#                             # Expected post-retune clone is typically "...McpcPCellNrFreqRelProfile=648672_647328"
+#                             # So we must NOT replace both occurrences (a naive replace would create 647328_647328).
+#                             def _build_expected_profile_ref_clone_smart(old_ref: object, old_ssb: object, new_ssb: object) -> str:
+#                                 s = "" if old_ref is None else str(old_ref).strip()
+#                                 if not s:
+#                                     return s
+#
+#                                 old_ssb_str = str(old_ssb).strip()
+#                                 new_ssb_str = str(new_ssb).strip()
+#
+#                                 key = "McpcPCellNrFreqRelProfile="
+#                                 idx = s.find(key)
+#                                 if idx >= 0:
+#                                     start = idx + len(key)
+#                                     end = s.find(",", start)
+#                                     if end < 0:
+#                                         end = len(s)
+#
+#                                     token = s[start:end].strip()
+#                                     if "_" in token:
+#                                         left, right = token.split("_", 1)
+#                                         # Only replace the RIGHT side when it matches old SSB (keep LEFT as-is)
+#                                         if str(right).strip() == old_ssb_str:
+#                                             right = new_ssb_str
+#                                         new_token = f"{left}_{right}"
+#                                         return s[:start] + new_token + s[end:]
+#
+#                                 # Fallback to legacy function (if available) for other formats
+#                                 try:
+#                                     return build_expected_profile_ref_clone(s, old_ssb, new_ssb)
+#                                 except Exception:
+#                                     return s
+#
+#                             # Compare OLD vs NEW by NodeId + NRCellCUId (NRCellRelationId is not expected to match)
+#                             group_cols = [node_col, cell_col]
+#                             for (node_id_val, cell_id_val), grp in full_n77.groupby(group_cols, dropna=False):
+#                                 old_rows = grp.loc[grp["_arfcn_int_"] == n77_ssb_pre]
+#                                 new_rows = grp.loc[grp["_arfcn_int_"] == n77_ssb_post]
+#                                 if old_rows.empty or new_rows.empty:
+#                                     continue
+#
+#                                 old_refs = _collect_unique_refs(old_rows)
+#                                 new_refs = _collect_unique_refs(new_rows)
+#                                 if not old_refs or not new_refs:
+#                                     continue
+#
+#                                 node_id_val = str(node_id_val)
+#                                 same_found = any(new_ref == old_ref for old_ref in old_refs for new_ref in new_refs)
+#                                 clone_found = any(
+#                                     new_ref == _build_expected_profile_ref_clone_smart(old_ref, n77_ssb_pre, n77_ssb_post)
+#                                     for old_ref in old_refs
+#                                     for new_ref in new_refs
+#                                 )
+#
+#                                 if same_found:
+#                                     nodes_pointing_to_same_profile_ref.add(node_id_val)
+#                                 if clone_found:
+#                                     nodes_pointing_to_clone_profile_ref.add(node_id_val)
+#
+#                             nodes_pointing_to_same_profile_ref = sorted(set(nodes_pointing_to_same_profile_ref))
+#                             nodes_pointing_to_clone_profile_ref = sorted(set(nodes_pointing_to_clone_profile_ref))
+#
+#                             add_row("NRFreqRelation", "NR Frequency Audit", f"NR nodes with the old N77 SSB ({n77_ssb_pre}) and the new SSB ({n77_ssb_post}) NRFreqRelation pointing to same mcpcPCellNrFreqRelProfileRef containing old SSB name (from NRFreqRelation table)", len(nodes_pointing_to_same_profile_ref), ", ".join(nodes_pointing_to_same_profile_ref))
+#                             add_row("NRFreqRelation", "NR Frequency Audit", f"NR nodes with the new SSB ({n77_ssb_post}) NRFreqRelation pointing to mcpcPCellNrFreqRelProfileRef containing new SSB name (cloned) or Other (from NRFreqRelation table)", len(nodes_pointing_to_clone_profile_ref), ", ".join(nodes_pointing_to_clone_profile_ref))
+#                         else:
+#                             add_row("NRFreqRelation", "NR Frequency Inconsistencies", "NRFreqRelation mcpcPCellNrFreqRelProfileRef clone check skipped (mcpcPCellNrFreqRelProfileRef missing)", "N/A")
+#
+#                         # Parameter equality check (ignoring ID/reference columns and helper columns)
+#                         cols_to_ignore = {arfcn_col, "_arfcn_int_"}
+#                         for name in full_n77.columns:
+#                             lname = str(name).lower()
+#                             if lname in {"nrfreqrelationid", "nrfrequencyref", "reservedby"}:
+#                                 cols_to_ignore.add(name)
+#
+#                         # NEW: intelligent rule for mcpcPCellNrFreqRelProfileRef differences (expected clone is NOT a mismatch)
+#                         profile_ref_col_local = resolve_column_case_insensitive(full_n77, ["mcpcPCellNrFreqRelProfileRef"])
+#
+#                         def _is_expected_profile_ref_clone(old_value: object, new_value: object) -> bool:
+#                             if profile_ref_col_local is None:
+#                                 return False
+#                             if pd.isna(old_value) or pd.isna(new_value):
+#                                 return False
+#                             old_str = str(old_value).strip()
+#                             new_str = str(new_value).strip()
+#                             if not old_str or not new_str:
+#                                 return False
+#
+#                             # NEW: use the smart clone builder to avoid double-replacing the old SSB when it appears twice
+#                             try:
+#                                 expected_smart = _build_expected_profile_ref_clone_smart(old_str, n77_ssb_pre, n77_ssb_post)
+#                                 if new_str == expected_smart:
+#                                     return True
+#                             except Exception:
+#                                 pass
+#
+#                             # Fallback to legacy clone builder for backward compatibility
+#                             try:
+#                                 expected = build_expected_profile_ref_clone(old_str, n77_ssb_pre, n77_ssb_post)
+#                                 return new_str == expected
+#                             except Exception:
+#                                 return False
+#
+#                         def _values_differ(col_name: str, old_value: object, new_value: object) -> bool:
+#                             # NEW: ignore profile ref changes when they match the expected clone
+#                             if profile_ref_col_local and str(col_name) == str(profile_ref_col_local) and _is_expected_profile_ref_clone(old_value, new_value):
+#                                 return False
+#                             return (pd.isna(old_value) and not pd.isna(new_value)) or (not pd.isna(old_value) and pd.isna(new_value)) or (old_value != new_value)
+#
+#                         bad_cells_params = []
+#
+#                         for cell_id in cells_both:
+#                             cell_rows = full_n77.loc[full_n77[cell_col].astype(str) == cell_id].copy()
+#                             old_rows = cell_rows.loc[cell_rows["_arfcn_int_"] == n77_ssb_pre]
+#                             new_rows = cell_rows.loc[cell_rows["_arfcn_int_"] == n77_ssb_post]
+#
+#                             if old_rows.empty or new_rows.empty:
+#                                 continue
+#
+#                             if rel_col:
+#                                 # Only compares pairs OLD/NEW with same NRCellRelationId
+#                                 rel_old = set(old_rows[rel_col].astype(str))
+#                                 rel_new = set(new_rows[rel_col].astype(str))
+#                                 common_rels = rel_old & rel_new
+#
+#                                 for rel_id in common_rels:
+#                                     old_rel = old_rows.loc[old_rows[rel_col].astype(str) == rel_id]
+#                                     new_rel = new_rows.loc[new_rows[rel_col].astype(str) == rel_id]
+#
+#                                     if old_rel.empty or new_rel.empty:
+#                                         continue
+#
+#                                     old_clean = (old_rel.drop(columns=list(cols_to_ignore), errors="ignore").drop_duplicates().reset_index(drop=True))
+#                                     new_clean = (new_rel.drop(columns=list(cols_to_ignore), errors="ignore").drop_duplicates().reset_index(drop=True))
+#
+#                                     # Allign and sort rows
+#                                     old_clean = old_clean.reindex(sorted(old_clean.columns), axis=1)
+#                                     new_clean = new_clean.reindex(sorted(new_clean.columns), axis=1)
+#
+#                                     sort_cols = list(old_clean.columns)
+#                                     old_clean = old_clean.sort_values(by=sort_cols).reset_index(drop=True)
+#                                     new_clean = new_clean.sort_values(by=sort_cols).reset_index(drop=True)
+#
+#                                     if not old_clean.equals(new_clean):
+#                                         # NEW: if after applying the intelligent rule there are no real mismatches, treat as equal and skip
+#                                         mismatch_cols = []
+#                                         for col_name in sort_cols:
+#                                             try:
+#                                                 if _values_differ(col_name, old_clean.iloc[0][col_name], new_clean.iloc[0][col_name]):
+#                                                     mismatch_cols.append(str(col_name))
+#                                             except Exception:
+#                                                 mismatch_cols.append(str(col_name))
+#
+#                                         if not mismatch_cols:
+#                                             continue
+#
+#                                         # NEW: if the only differences are expected profile ref clones, treat as equal and skip mismatch
+#                                         if profile_ref_col_local and set(mismatch_cols).issubset({str(profile_ref_col_local)}):
+#                                             if _is_expected_profile_ref_clone(old_clean.iloc[0][profile_ref_col_local], new_clean.iloc[0][profile_ref_col_local]):
+#                                                 continue
+#
+#                                         # Take first row of each side to report parameter-level differences
+#                                         old_row = old_clean.iloc[0]
+#                                         new_row = new_clean.iloc[0]
+#
+#                                         node_val = ""
+#                                         gnb_val = ""
+#                                         nrcell_val = ""
+#                                         nrfreqrel_val = ""
+#                                         try:
+#                                             base_row = old_rel.iloc[0]
+#                                             node_val = str(base_row[node_col]) if node_col in base_row.index else ""
+#                                             if gnb_col and gnb_col in base_row.index:
+#                                                 gnb_val = str(base_row[gnb_col])
+#                                             if cell_col in base_row.index:
+#                                                 nrcell_val = str(base_row[cell_col])
+#                                             if arfcn_col in base_row.index:
+#                                                 nrfreqrel_val = str(base_row[arfcn_col])
+#                                         except Exception:
+#                                             node_val = ""
+#
+#                                         diff_reported = False
+#                                         for col_name in sort_cols:
+#                                             old_val = old_row[col_name]
+#                                             new_val = new_row[col_name]
+#                                             if _values_differ(str(col_name), old_val, new_val):
+#                                                 param_mismatch_rows_nr.append({"Layer": "NR", "Table": "NRFreqRelation", "NodeId": node_val, "GNBCUCPFunctionId": gnb_val, "NRCellCUId": nrcell_val, "NRFreqRelationId": nrfreqrel_val, "Parameter": str(col_name), "OldSSB": n77_ssb_pre, "NewSSB": n77_ssb_post, "OldValue": "" if pd.isna(old_val) else str(old_val), "NewValue": "" if pd.isna(new_val) else str(new_val)})
+#                                                 diff_reported = True
+#
+#                                         if diff_reported:
+#                                             bad_cells_params.append(str(cell_id))
+#                                             break
+#
+#                             else:
+#                                 # Fallback: without NRCellRelationId, compare all block OLD vs NEW
+#                                 old_clean = (old_rows.drop(columns=list(cols_to_ignore), errors="ignore").drop_duplicates().reset_index(drop=True))
+#                                 new_clean = (new_rows.drop(columns=list(cols_to_ignore), errors="ignore").drop_duplicates().reset_index(drop=True))
+#
+#                                 old_clean = old_clean.reindex(sorted(old_clean.columns), axis=1)
+#                                 new_clean = new_clean.reindex(sorted(new_clean.columns), axis=1)
+#
+#                                 sort_cols = list(old_clean.columns)
+#                                 old_clean = old_clean.sort_values(by=sort_cols).reset_index(drop=True)
+#                                 new_clean = new_clean.sort_values(by=sort_cols).reset_index(drop=True)
+#
+#                                 if not old_clean.equals(new_clean):
+#                                     # NEW: if after applying the intelligent rule there are no real mismatches, treat as equal and skip
+#                                     mismatch_cols = []
+#                                     for col_name in sort_cols:
+#                                         try:
+#                                             if _values_differ(col_name, old_clean.iloc[0][col_name], new_clean.iloc[0][col_name]):
+#                                                 mismatch_cols.append(str(col_name))
+#                                         except Exception:
+#                                             mismatch_cols.append(str(col_name))
+#
+#                                     if not mismatch_cols:
+#                                         continue
+#
+#                                     # NEW: if the only differences are expected profile ref clones, treat as equal and skip mismatch
+#                                     if profile_ref_col_local and set(mismatch_cols).issubset({str(profile_ref_col_local)}):
+#                                         if _is_expected_profile_ref_clone(old_clean.iloc[0][profile_ref_col_local], new_clean.iloc[0][profile_ref_col_local]):
+#                                             continue
+#
+#                                     old_row = old_clean.iloc[0]
+#                                     new_row = new_clean.iloc[0]
+#
+#                                     node_val = ""
+#                                     gnb_val = ""
+#                                     nrcell_val = ""
+#                                     nrfreqrel_val = ""
+#                                     try:
+#                                         base_row = old_rows.iloc[0]
+#                                         node_val = str(base_row[node_col]) if node_col in base_row.index else ""
+#                                         if gnb_col and gnb_col in base_row.index:
+#                                             gnb_val = str(base_row[gnb_col])
+#                                         if cell_col in base_row.index:
+#                                             nrcell_val = str(base_row[cell_col])
+#                                         if arfcn_col in base_row.index:
+#                                             nrfreqrel_val = str(base_row[arfcn_col])
+#                                     except Exception:
+#                                         node_val = ""
+#
+#                                     diff_reported = False
+#                                     for col_name in sort_cols:
+#                                         old_val = old_row[col_name]
+#                                         new_val = new_row[col_name]
+#                                         if _values_differ(str(col_name), old_val, new_val):
+#                                             param_mismatch_rows_nr.append({"Layer": "NR", "Table": "NRFreqRelation", "NodeId": node_val, "GNBCUCPFunctionId": gnb_val, "NRCellCUId": nrcell_val, "NRFreqRelationId": nrfreqrel_val, "Parameter": str(col_name), "OldSSB": n77_ssb_pre, "NewSSB": n77_ssb_post, "OldValue": "" if pd.isna(old_val) else str(old_val), "NewValue": "" if pd.isna(new_val) else str(new_val)})
+#                                             diff_reported = True
+#
+#                                     if diff_reported:
+#                                         bad_cells_params.append(str(cell_id))
+#
+#                         bad_cells_params = sorted(set(bad_cells_params))
+#                         add_row("NRFreqRelation", "NR Frequency Inconsistencies", f"NR cells with mismatching params between old N77 SSB ({n77_ssb_pre}) and the new N77 SSB ({n77_ssb_post}) (from NRFreqRelation table)", len(bad_cells_params), ", ".join(bad_cells_params))
+#                     else:
+#                         add_row("NRFreqRelation", "NR Frequency Audit", "NRFreqRelation cell-level check skipped (NRCellCUId/NRCellId/CellId missing)", "N/A")
+#                 else:
+#                     add_row("NRFreqRelation", "NR Frequency Audit", "NRFreqRelation table has no N77 rows", 0)
+#             else:
+#                 add_row("NRFreqRelation", "NR Frequency Audit", "NRFreqRelation table present but SSB/NodeId missing", "N/A")
+#         else:
+#             add_row("NRFreqRelation", "NR Frequency Audit", "NRFreqRelation table", "Table not found or empty")
+#     except Exception as ex:
+#         add_row("NRFreqRelation", "NR Frequency Audit", "Error while checking NRFreqRelation", f"ERROR: {ex}")
 
 
 # ----------------------------- NRSectorCarrier (N77 + allowed ARCFN) -----------------------------
