@@ -20,7 +20,7 @@ try:
     src_path = os.path.abspath(os.path.join(current_dir, "src"))
     if src_path not in sys.path:
         sys.path.insert(0, src_path)
-    from RetuningAutomations import TOOL_VERSION
+    from SSB_RetuningAutomations import TOOL_VERSION
 except Exception as e:
     print(f"❌ ERROR: Unable to import TOOL_VERSION from SSB_RetuningAutomations.py\n{e}")
     sys.exit(1)
