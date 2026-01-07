@@ -22,8 +22,7 @@ from src.modules.ConfigurationAudit.ca_process_external_termpoint_tables import 
 from src.modules.ConfigurationAudit.ca_process_lte_tables import process_gu_sync_signal_freq, process_gu_freq_rel, process_gu_cell_relation
 from src.modules.ConfigurationAudit.ca_process_nr_tables import process_nr_cell_du, process_nr_freq, process_nr_freq_rel, process_nr_sector_carrier, process_nr_cell_relation
 from src.modules.ConfigurationAudit.ca_process_others_tables import process_endc_distr_profile, process_freq_prio_nr, process_cardinalities
-from src.modules.ProfilesAudit.pa_process_profiles_tables import process_profiles_tables
-from src.modules.ProfilesAudit.pa_post_step2 import cc_post_step2
+from src.modules.ProfilesAudit.ProfilesAudit import cc_post_step2, process_profiles_tables
 from src.utils.utils_frequency import parse_int_frequency
 
 
@@ -312,6 +311,7 @@ def build_summary_audit(
     if profiles_audit:
         profiles_tables_work = profiles_tables or {}
         process_profiles_tables(profiles_tables_work, add_row, n77_ssb_pre, n77_ssb_post)
+        df_mcpc_pcell_nr_freq_rel_profile_uecfg = (profiles_tables or {}).get("McpcPCellNrFreqRelProfileUeCfg", pd.DataFrame())
 
         # Consistency Checks Post Step2
         cc_post_step2(
@@ -321,6 +321,7 @@ def build_summary_audit(
             n77_ssb_pre=n77_ssb_pre,
             n77_ssb_post=n77_ssb_post,
             nodes_post = nodes_name_post,
+            df_mcpc_pcell_nr_freq_rel_profile_uecfg=df_mcpc_pcell_nr_freq_rel_profile_uecfg
         )
 
 
