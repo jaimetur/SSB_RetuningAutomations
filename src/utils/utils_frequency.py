@@ -171,3 +171,87 @@ def extract_sync_frequencies(value: str):
         return set()
     matches = re.findall(r"GUtranSyncSignalFrequency=(\d+)-", value)
     return set(matches)
+
+
+
+def extract_ssb_from_profile_ref(profile_ref: object, side: str) -> Optional[int]:
+    """
+    Extract SSB/ARFCN integer from a mcpcPCellNrFreqRelProfileRef string.
+
+    Expected patterns:
+      - "xxxx_647328"  -> side="suffix"
+      - "647328_xxxx"  -> side="prefix"
+
+    Args:
+      profile_ref: Raw value from dataframe (can be None/NaN/str).
+      side: "prefix" (before first underscore) or "suffix" (after last underscore).
+
+    Returns:
+      int if a numeric token is found on the requested side, otherwise None.
+    """
+    if profile_ref is None:
+        return None
+
+    s = str(profile_ref).strip()
+    if not s or "_" not in s:
+        return None
+
+    parts = [p.strip() for p in s.split("_") if p.strip()]
+    if not parts:
+        return None
+
+    token = parts[0] if side == "prefix" else parts[-1]
+    if not token.isdigit():
+        return None
+
+    try:
+        return int(token)
+    except Exception:
+        return None
+
+
+def detect_profile_ref_ssb_side(profile_ref: object, old_ssb: int, new_ssb: int) -> str:
+    """
+    Detect whether SSB is encoded as prefix or suffix in the profile ref.
+
+    Returns:
+      - "prefix" if the left token matches old/new SSB
+      - "suffix" if the right token matches old/new SSB
+      - "" if it cannot be detected
+    """
+    prefix_val = extract_ssb_from_profile_ref(profile_ref, "prefix")
+    if prefix_val in {old_ssb, new_ssb}:
+        return "prefix"
+
+    suffix_val = extract_ssb_from_profile_ref(profile_ref, "suffix")
+    if suffix_val in {old_ssb, new_ssb}:
+        return "suffix"
+
+    return ""
+
+
+def build_expected_profile_ref_clone_by_side(old_profile_ref: str, old_ssb: int, new_ssb: int, side: str) -> str:
+    """
+    Build the expected cloned profile reference replacing old SSB with new SSB on the requested side.
+
+    Examples:
+      - side="suffix": "430090_648672" -> "430090_647328"
+      - side="prefix": "648672_430090" -> "647328_430090"
+    """
+    s = str(old_profile_ref).strip()
+    if not s or "_" not in s:
+        return s
+
+    parts = [p for p in s.split("_")]
+    if not parts:
+        return s
+
+    if side == "prefix":
+        if parts[0].strip().isdigit() and int(parts[0].strip()) == int(old_ssb):
+            parts[0] = str(new_ssb)
+        return "_".join(parts)
+
+    # side == "suffix"
+    if parts[-1].strip().isdigit() and int(parts[-1].strip()) == int(old_ssb):
+        parts[-1] = str(new_ssb)
+    return "_".join(parts)

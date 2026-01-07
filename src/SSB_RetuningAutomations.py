@@ -42,8 +42,8 @@ from src.modules.CleanUp.FinalCleanUp import FinalCleanUp
 # ================================ VERSIONING ================================ #
 
 TOOL_NAME           = "SSB_RetuningAutomations"
-TOOL_VERSION        = "0.5.1"
-TOOL_DATE           = "2025-12-23"
+TOOL_VERSION        = "0.5.2"
+TOOL_DATE           = "2026-01-07"
 TOOL_NAME_VERSION   = f"{TOOL_NAME}_v{TOOL_VERSION}"
 COPYRIGHT_TEXT      = "(c) 2025 - Jaime Tur (jaime.tur@ericsson.com)"
 TOOL_DESCRIPTION    = textwrap.dedent(f"""
@@ -788,10 +788,16 @@ def run_configuration_audit(
 
         try:
             out = app.run(folder_fs, **kwargs)
-        except TypeError:
+        except TypeError as ex:
+            msg = str(ex)
+            print(f"{module_name} [ERROR] ConfigurationAudit.run TypeError: {msg}")
+
             # Legacy fallback: ConfigurationAudit without output_dir / filters
-            print(f"{module_name} [WARN] Installed ConfigurationAudit does not support 'output_dir' and/or 'filter_frequencies'. Running with legacy signature.")
-            out = app.run(folder_fs, module_name=module_name, versioned_suffix=versioned_suffix, tables_order=TABLES_ORDER)
+            if "unexpected keyword argument" in msg:
+                print(f"{module_name} [WARN] Installed ConfigurationAudit does not support 'output_dir' and/or 'filter_frequencies'. Running with legacy signature.")
+                out = app.run(folder_fs, module_name=module_name, versioned_suffix=versioned_suffix, tables_order=TABLES_ORDER)
+            else:
+                raise
 
         if out:
             print(f"{module_name} Done → '{pretty_path(out)}'")
