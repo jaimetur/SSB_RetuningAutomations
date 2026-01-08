@@ -368,7 +368,7 @@ python SSB_RetuningAutomations.py \
 
 - The launcher prints a banner on start:
   ```
-  RetuningAutomations_v0.2.0 - 2025-11-05
+  SSB-RetuningAutomations_v0.2.0 - 2025-11-05
   Multi-Platform/Multi-Arch tool designed to Automate some process during SSB Retuning
   ©️ 2025 by Jaime Tur (jaime.tur@ericsson.com)
   ```
