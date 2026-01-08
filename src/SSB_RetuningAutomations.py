@@ -23,7 +23,6 @@ from datetime import datetime
 from dataclasses import dataclass
 from typing import Optional, List, Dict, Tuple
 import textwrap
-import importlib
 from pathlib import Path
 
 
@@ -1352,6 +1351,7 @@ def execute_module(
 
 # ================================== MAIN =================================== #
 def main():
+    import os
     os.system('cls' if os.name == 'nt' else 'clear')
 
     # --- Initialize log file inside ./Logs folder ---
