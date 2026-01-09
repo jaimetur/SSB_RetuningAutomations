@@ -31,7 +31,7 @@ global archive_path_relative
 # ---------------------------- GLOBAL VARIABLES ----------------------------
 COMPILE_IN_ONE_FILE = True
 
-# TAG and TAGS Colored for messages output (in console and log)
+# Tag strings and colored tags for console messages
 MSG_TAGS = {
     'VERBOSE'                   : "VERBOSE : ",
     'DEBUG'                     : "DEBUG   : ",
@@ -53,11 +53,31 @@ MSG_TAGS_COLORED = {
 
 # ---------------------------------- HELPERS -------------------------------
 def _clear_screen():
+    """
+    Clears the terminal screen.
+
+    Uses `clear` on POSIX systems and `cls` on Windows.
+    """
     os.system('clear' if os.name == 'posix' else 'cls')
 
 
 def _get_os(step_name=""):
-    """Return normalized operating system name (linux, macos, windows)"""
+    """
+    Detects and normalizes the current operating system name.
+
+    Recognized OS values are normalized to:
+      - "linux"
+      - "macos"
+      - "windows"
+
+    If the OS is not recognized, returns "unknown".
+
+    Args:
+        step_name (str): Optional prefix to include in console output.
+
+    Returns:
+        str: Normalized OS label ("linux" | "macos" | "windows" | "unknown").
+    """
     current_os = platform.system()
     if current_os in ["Linux", "linux"]:
         os_label = "linux"
@@ -73,7 +93,21 @@ def _get_os(step_name=""):
 
 
 def _get_arch(step_name=""):
-    """Return normalized system architecture (e.g., x64, arm64)"""
+    """
+    Detects and normalizes the machine architecture.
+
+    Common normalizations:
+      - x86_64/amd64/AMD64/X64/x64 -> "x64"
+      - aarch64/arm64/ARM64       -> "arm64"
+
+    If the architecture is not recognized, returns "unknown".
+
+    Args:
+        step_name (str): Optional prefix to include in console output.
+
+    Returns:
+        str: Normalized architecture label ("x64" | "arm64" | "unknown").
+    """
     current_arch = platform.machine()
     if current_arch in ["x86_64", "amd64", "AMD64", "X64", "x64"]:
         arch_label = "x64"
@@ -88,14 +122,16 @@ def _get_arch(step_name=""):
 
 def _print_arguments_pretty(arguments, title="Arguments", step_name="", use_custom_print=True):
     """
-    Prints a list of command-line arguments in a structured and readable one-line-per-arg format.
+    Prints a list of command-line arguments in a readable one-line-per-arg format.
+
+    If `use_custom_print` is True, it uses `custom_print` from
+    `utils_infrastructure.StandaloneUtils`. Otherwise, it prints directly to stdout.
 
     Args:
-        :param arguments:
-        :param step_name:
-        :param title:
-        :param use_custom_print:
-        :param use_logger:
+        arguments (list[str]): Full command argument list.
+        title (str): Header title to print before the arguments.
+        step_name (str): Optional prefix for each printed line.
+        use_custom_print (bool): Whether to use the custom_print helper.
     """
     print("")
     indent = "    "
@@ -113,7 +149,6 @@ def _print_arguments_pretty(arguments, title="Arguments", step_name="", use_cust
                 custom_print(f"{step_name}{indent}{arg}")
                 i += 1
     else:
-        pass
         print(f"{MSG_TAGS['INFO']}{title}:")
         while i < len(arguments):
             arg = arguments[i]
@@ -127,12 +162,22 @@ def _print_arguments_pretty(arguments, title="Arguments", step_name="", use_cust
 
 
 def _zip_folder(temp_dir, output_file):
+    """
+    Creates a ZIP archive from a folder, preserving its structure (including empty directories).
+
+    Args:
+        temp_dir (str | Path): Directory to compress.
+        output_file (str | Path): Output ZIP file path.
+
+    Returns:
+        None
+    """
     print(f"Creating packed file: {output_file}...")
 
-    # Convertir output_file a un objeto Path
+    # Convert output_file to a Path object
     output_path = Path(output_file)
 
-    # Crear los directorios padres si no existen
+    # Create parent directories if they do not exist
     if not output_path.parent.exists():
         print(f"Creating needed folder for: {output_path.parent}")
         output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -141,16 +186,40 @@ def _zip_folder(temp_dir, output_file):
         for root, dirs, files in os.walk(temp_dir):
             for file in files:
                 file_path = Path(root) / file
-                # Añade al zip respetando la estructura de carpetas
+                # Add to zip preserving the folder structure
                 zipf.write(file_path, file_path.relative_to(temp_dir))
             for dir in dirs:
                 dir_path = Path(root) / dir
-                # Añade directorios vacíos al zip
+                # Add empty directories to zip
                 if not os.listdir(dir_path):
                     zipf.write(dir_path, dir_path.relative_to(temp_dir))
+
     print(f"File successfully packed: {output_file}")
 
+
 def _include_extrafiles_and_zip(input_file, output_file):
+    """
+    Copies the compiled binary plus extra project files into a temporary folder and zips them.
+
+    It creates a temporary folder with the structure:
+      <temp>/<TOOL_NAME_VERSION>/
+        - compiled binary
+        - assets/logos/...
+        - docs/...
+        - help/...
+
+    Then it creates a ZIP file at `output_file` and deletes the temporary folder.
+
+    Args:
+        input_file (str | Path): Compiled binary path.
+        output_file (str | Path): Output ZIP archive path.
+
+    Returns:
+        None
+
+    Raises:
+        SystemExit: If input arguments are missing or `input_file` does not exist.
+    """
     extra_files_to_subdir = [
         {
             'subdir': 'assets/logos',  # These files go into the 'assets/logos' subdirectory
@@ -166,67 +235,121 @@ def _include_extrafiles_and_zip(input_file, output_file):
             'files': ["./help/*.pptx"]
         },
     ]
+
     if not input_file or not output_file:
         print("Usage: _include_extrafiles_and_zip(input_file, output_file)")
         sys.exit(1)
+
     if not Path(input_file).is_file():
         print(f"ERROR   : The input file '{input_file}' does not exists.")
         sys.exit(1)
+
     temp_dir = Path(tempfile.mkdtemp())
     tool_version_dir = os.path.join(temp_dir, TOOL_NAME_VERSION)
     print(tool_version_dir)
     os.makedirs(tool_version_dir, exist_ok=True)
+
+    # Copy compiled binary into the tool folder
     shutil.copy(input_file, tool_version_dir)
 
-    # Now copy the extra files
+    # Copy extra files
     for subdirs_dic in extra_files_to_subdir:
-        subdir = subdirs_dic.get('subdir', '')  # If 'subdir' is empty, it will copy into the root directory
+        subdir = subdirs_dic.get('subdir', '')  # If 'subdir' is empty, copy into the root directory
         files = subdirs_dic.get('files', [])  # Ensure we always have a list
         subdir_path = os.path.join(tool_version_dir, subdir) if subdir else tool_version_dir
         os.makedirs(subdir_path, exist_ok=True)  # Create the folder if it does not exist
+
         for file_pattern in files:
             # Convert the relative path pattern into an absolute path
             absolute_pattern = os.path.abspath(file_pattern)
+
             # Find files matching the pattern
             matched_files = glob.glob(absolute_pattern)
+
             # If no files were found and the path is a valid file, treat it as such
             if not matched_files and os.path.isfile(absolute_pattern):
                 matched_files = [absolute_pattern]
+
             # Copy matched files into the destination directory
             for file in matched_files:
                 shutil.copy(file, subdir_path)
+
     # Zip the temporary directory and then remove it
     _zip_folder(temp_dir, output_file)
     shutil.rmtree(temp_dir)
 
 
 def _get_tool_version(file):
+    """
+    Reads the TOOL_VERSION value from a Python source file.
+
+    The function searches for a line starting with `TOOL_VERSION` and extracts the
+    first quoted value (split by double quotes).
+
+    Args:
+        file (str | Path): Path to the Python file to inspect.
+
+    Returns:
+        str | None: The extracted version string, or None if the file does not exist
+                   or if TOOL_VERSION was not found.
+    """
     if not Path(file).is_file():
         print(f"ERROR   : The file {file} does not exists.")
         return None
+
     with open(file, 'r') as f:
         for line in f:
             if line.startswith("TOOL_VERSION"):
                 return line.split('"')[1]
+
     print("ERROR   : Not found any value between colons after TOOL_VERSION.")
     return None
 
 
 def _get_clean_version(version: str):
+    """
+    Removes the leading 'v' from a version string, if present.
+
+    Examples:
+        "v1.2.3" -> "1.2.3"
+        "1.2.3"  -> "1.2.3"
+
+    Args:
+        version (str): Version string.
+
+    Returns:
+        str: Cleaned version string without a leading 'v'.
+    """
     # Remove the leading 'v' if present
     clean_version = version.lstrip('v')
     return clean_version
 
 
 def _extract_release_body(input_file, output_file, download_file):
-    """Extracts two specific sections from the changelog file, modifies a header, and appends them along with additional content from another file."""
+    """
+    Builds a RELEASE-NOTES file by extracting the latest changelog section and appending DOWNLOAD info.
+
+    It extracts content starting at the line "# 🗓️ CHANGELOG" and stops right before the
+    second occurrence of "## Release:" (so it keeps only the newest release section),
+    then appends the content of `download_file`.
+
+    Args:
+        input_file (str | Path): Path to CHANGELOG.md.
+        output_file (str | Path): Path to the generated RELEASE-NOTES.md.
+        download_file (str | Path): Path to DOWNLOAD.md to append at the end.
+
+    Returns:
+        None
+    """
     # Open the file and read its content into a list
     with open(input_file, 'r', encoding='utf-8') as infile:
         lines = infile.readlines()
+
     # Initialize key indices and counter
     changelog_index = None
     second_release_index = None
     release_count = 0
+
     # Loop through lines to find the start of the "Changelog" section and locate the second occurrence of "## Release"
     for i, line in enumerate(lines):
         if line.strip() == "# 🗓️ CHANGELOG":
@@ -237,22 +360,27 @@ def _extract_release_body(input_file, output_file, download_file):
             if release_count == 2:
                 second_release_index = i
                 break
+
     # Validate that the changelog section exists
     if changelog_index is None:
         print("Required sections not found in the file.")
         return
+
     # Extract content from "## Changelog:" to the second "## Release"
     if second_release_index is not None:
         release_section = lines[changelog_index:second_release_index]
     else:
         release_section = lines[changelog_index:]
+
     # Read content of download_file
     with open(download_file, 'r', encoding='utf-8') as df:
         download_content = df.readlines()
+
     # Append both the download file content and the release section to the output file
     # If the output file already exists, remove it
     if os.path.exists(output_file):
         os.remove(output_file)
+
     with open(output_file, 'a', encoding='utf-8') as outfile:
         outfile.writelines(release_section)
         outfile.writelines(download_content)
@@ -260,6 +388,23 @@ def _extract_release_body(input_file, output_file, download_file):
 
 
 def main(compiler='pyinstaller', compile_in_one_file=COMPILE_IN_ONE_FILE):
+    """
+    Entry point that prepares build metadata and optionally runs compilation.
+
+    Responsibilities:
+      - Detect OS and architecture
+      - Compute build paths and filenames
+      - Generate RELEASE-NOTES.md from CHANGELOG.md + DOWNLOAD.md
+      - Write build_info.txt with build metadata
+      - Run `compile(...)` if a compiler is provided
+
+    Args:
+        compiler (str | None): 'pyinstaller', 'nuitka', or None to skip compilation.
+        compile_in_one_file (bool): True for onefile builds, False for onedir/standalone builds.
+
+    Returns:
+        bool: True if everything succeeded, False otherwise.
+    """
     # =======================
     # Create global variables
     # =======================
@@ -277,7 +422,7 @@ def main(compiler='pyinstaller', compile_in_one_file=COMPILE_IN_ONE_FILE):
     OPERATING_SYSTEM = _get_os()
     ARCHITECTURE = _get_arch()
 
-    # Script Names
+    # Script names
     TOOL_SOURCE_NAME = f"{TOOL_NAME}.py"
     TOOL_VERSION_WITHOUT_V = _get_clean_version(TOOL_VERSION)
     TOOL_NAME_VERSION = f"{TOOL_NAME}_v{TOOL_VERSION}"
@@ -343,13 +488,32 @@ def main(compiler='pyinstaller', compile_in_one_file=COMPILE_IN_ONE_FILE):
         print(f'ARCHIVE_PATH: {archive_path_relative}')
 
     ok = True
+
     # Run compilation
     if compiler:
         ok = compile(compiler=compiler, compile_in_one_file=compile_in_one_file)
+
     return ok
 
 
 def compile(compiler='pyinstaller', compile_in_one_file=COMPILE_IN_ONE_FILE):
+    """
+    Compiles the project using the selected compiler (PyInstaller or Nuitka) and optionally packages it into a ZIP.
+
+    Responsibilities:
+      - Compute output filenames for the selected OS/arch/compiler
+      - Write extra metadata into build_info.txt
+      - Execute the compilation command (PyInstaller or Nuitka)
+      - If onefile build, move the output next to the project root and create a ZIP with extra files
+      - Clean up temporary build directories and intermediate files
+
+    Args:
+        compiler (str): 'pyinstaller' or 'nuitka'.
+        compile_in_one_file (bool): True for onefile builds, False for onedir/standalone builds.
+
+    Returns:
+        bool: True if compilation and packaging succeeded, False otherwise.
+    """
     global OPERATING_SYSTEM
     global ARCHITECTURE
     global TOOL_SOURCE_NAME
@@ -398,7 +562,7 @@ def compile(compiler='pyinstaller', compile_in_one_file=COMPILE_IN_ONE_FILE):
         print("Compiling with Pyinstaller...")
         import PyInstaller.__main__
 
-        # Build and Dist folders for PyInstaller
+        # Build and dist folders for PyInstaller
         build_path = "./pyinstaller_build"
         dist_path = "./pyinstaller_dist"
 
@@ -451,7 +615,7 @@ def compile(compiler='pyinstaller', compile_in_one_file=COMPILE_IN_ONE_FILE):
     elif compiler == 'nuitka':
         print("Compiling with Nuitka...")
 
-        # Build and Dist folders for Nuitka
+        # Build and dist folders for Nuitka
         dist_path = "./nuitka_dist"
         build_path = f"{dist_path}/{TOOL_NAME}.build"
 
@@ -494,7 +658,6 @@ def compile(compiler='pyinstaller', compile_in_one_file=COMPILE_IN_ONE_FILE):
             f"--file-description={TOOL_NAME_VERSION} by Jaime Tur",
             f"--file-version={TOOL_VERSION_WITHOUT_V.split('-')[0]}",
             f"--product-version={TOOL_VERSION_WITHOUT_V.split('-')[0]}",
-
         ])
 
         # Force-include the tableauhyperapi/bin directory when available (helps with hyperd and native libs)
