@@ -15,6 +15,7 @@
     - Scope ProfilesAudit's checks to nodes that have completed retuning (nodes_post), when provided.
     - Added TrStSaNrFreqRelProfileUeCfg to the ProfilesAudit with the same two checks as McpcPCellNrFreqRelProfileUeCfg (missing old→new clone and parameter discrepancies), scoped to post-retuned nodes (nodes_post_scope).
     - Logging messages now has a timestamp prefix.
+    - Input folders now can contain the logs files in ZIP format (for a faster download from Onedrive).
 
   - #### 🐛 Bug fixes:
     - Minor bug fixing.

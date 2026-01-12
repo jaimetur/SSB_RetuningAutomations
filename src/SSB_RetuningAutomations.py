@@ -30,7 +30,7 @@ from pathlib import Path
 from src.utils.utils_datetime import format_duration_hms
 from src.utils.utils_dialog import tk, ttk, filedialog, messagebox, ask_reopen_launcher, ask_yes_no_dialog, ask_yes_no_dialog_custom
 from src.utils.utils_infrastructure import LoggerDual
-from src.utils.utils_io import load_cfg_values, save_cfg_values, log_module_exception, to_long_path, pretty_path, folder_has_valid_logs, detect_pre_post_subfolders, write_compared_folders_file
+from src.utils.utils_io import load_cfg_values, save_cfg_values, log_module_exception, to_long_path, pretty_path, folder_has_valid_logs, detect_pre_post_subfolders, write_compared_folders_file, ensure_logs_available
 from src.utils.utils_parsing import normalize_csv_list, parse_arfcn_csv_to_set
 
 from src.modules.ConsistencyChecks.ConsistencyChecks import ConsistencyChecks
@@ -716,6 +716,15 @@ def run_configuration_audit(
         # Use long-path version for filesystem operations
         folder_fs = to_long_path(folder) if folder else folder
 
+        # Use long-path version for filesystem operations
+        folder_fs = to_long_path(folder) if folder else folder
+
+        # NEW: If folder only contains ZIP logs, extract and process the extracted folder
+        folder_to_process_fs = ensure_logs_available(folder_fs)
+        if pretty_path(folder_to_process_fs) != pretty_path(folder_fs):
+            print(f"{module_name} [INFO] ZIP logs detected. Using extracted logs folder: '{pretty_path(folder_to_process_fs)}'")
+
+
         # If market_label is provided and not GLOBAL, append it as suffix
         suffix = ""
         if market_label:
@@ -786,7 +795,8 @@ def run_configuration_audit(
             kwargs["filter_frequencies"] = [x.strip() for x in ca_freq_filters_csv.split(",") if x.strip()]
 
         try:
-            out = app.run(folder_fs, **kwargs)
+            out = app.run(folder_to_process_fs, **kwargs)
+
         except TypeError as ex:
             msg = str(ex)
             print(f"{module_name} [ERROR] ConfigurationAudit.run TypeError: {msg}")
@@ -794,7 +804,8 @@ def run_configuration_audit(
             # Legacy fallback: ConfigurationAudit without output_dir / filters
             if "unexpected keyword argument" in msg:
                 print(f"{module_name} [WARN] Installed ConfigurationAudit does not support 'output_dir' and/or 'filter_frequencies'. Running with legacy signature.")
-                out = app.run(folder_fs, module_name=module_name, versioned_suffix=versioned_suffix, tables_order=TABLES_ORDER)
+                out = app.run(folder_to_process_fs, module_name=module_name, versioned_suffix=versioned_suffix, tables_order=TABLES_ORDER)
+
             else:
                 raise
 
@@ -1089,6 +1100,16 @@ def run_consistency_checks(
             pre_dir_fs = to_long_path(pre_dir)
             post_dir_fs = to_long_path(post_dir)
 
+            # NEW: Resolve folders that may contain ZIP logs (extract if needed)
+            pre_dir_process_fs = ensure_logs_available(pre_dir_fs)
+            post_dir_process_fs = ensure_logs_available(post_dir_fs)
+
+            if pretty_path(pre_dir_process_fs) != pretty_path(pre_dir_fs):
+                print(f"{module_name} {market_tag} [INFO] PRE ZIP logs detected. Using extracted folder: '{pretty_path(pre_dir_process_fs)}'")
+            if pretty_path(post_dir_process_fs) != pretty_path(post_dir_fs):
+                print(f"{module_name} {market_tag} [INFO] POST ZIP logs detected. Using extracted folder: '{pretty_path(post_dir_process_fs)}'")
+
+
             # NEW: compute output_dir upfront so both audits and consistency outputs land together
             if market_label != "GLOBAL":
                 output_dir = os.path.join(post_dir_fs, f"ConsistencyChecks_{versioned_suffix}_{market_label}")
@@ -1162,7 +1183,7 @@ def run_consistency_checks(
 
             loaded = False
             try:
-                app.loadPrePost(pre_dir_fs, post_dir_fs)
+                app.loadPrePost(pre_dir_process_fs, post_dir_process_fs)
                 loaded = True
             except TypeError:
                 loaded = False
