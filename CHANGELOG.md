@@ -16,7 +16,9 @@
     - Added TrStSaNrFreqRelProfileUeCfg to the ProfilesAudit with the same two checks as McpcPCellNrFreqRelProfileUeCfg (missing old→new clone and parameter discrepancies), scoped to post-retuned nodes (nodes_post_scope).
     - Logging messages now has a timestamp prefix.
     - Input folders now can contain the logs files in ZIP format (for a faster download from Onedrive). If Input Folder contains some zip files with .txt/.log inside, it will consideer as a valid Input folder with Logs and the logs will be extracted into `__unzipped_logs__` suffolder to be processed.
-    - Excel Output file is now saved into a TEMP folder and then moved into the final output folder. This prevent to save the Excel file into a Onedrive folder which is quite slow. 
+    - Excel Output file is now saved into a TEMP folder and then moved into the final output folder. This prevents to save the Excel file into a Onedrive folder which is quite slow. 
+    - Performance Improvements on `ConfigurationAudit` module.
+    - `ConfigurationAudit` module now shows details of time per phase to see which phases are more time-consuming.
 
   - #### 🐛 Bug fixes:
     - Minor bug fixing.

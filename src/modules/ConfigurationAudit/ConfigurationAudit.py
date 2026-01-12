@@ -15,7 +15,7 @@ from src.utils.utils_excel import sanitize_sheet_name, unique_sheet_name, color_
 from src.utils.utils_sorting import natural_logfile_key
 from src.utils.utils_pivot import safe_pivot_count, safe_crosstab_count, apply_frequency_column_filter
 from src.utils.utils_dataframe import concat_or_empty
-from src.utils.utils_datetime import log_phase_timer
+from src.utils.utils_datetime import log_phase_timer, format_duration_hms
 from .ca_summary_excel import build_summary_audit
 from .ca_summary_ppt import generate_ppt_summary
 
@@ -551,8 +551,20 @@ class ConfigurationAudit:
                 tmp_excel_path_long = to_long_path(tmp_excel_path)
 
                 try:
-                    with pd.ExcelWriter(tmp_excel_path_long, engine="openpyxl") as writer:
+                    # ------------------------------------------------------------------
+                    # PHASE 5.0: Open ExcelWriter (measure open cost)
+                    # ------------------------------------------------------------------
+                    t_open0 = time.perf_counter()
+                    _log_info(f"PHASE 5.0: ExcelWriter OPEN starting → tmp: '{pretty_path(tmp_excel_path)}'")
 
+                    writer = None
+                    try:
+                        writer = pd.ExcelWriter(tmp_excel_path_long, engine="openpyxl")
+                        t_open1 = time.perf_counter()
+                        _log_info(f"PHASE 5.0: ExcelWriter OPEN done in {format_duration_hms(t_open1 - t_open0)} ({t_open1 - t_open0:.3f}s)")
+
+                        # We emulate "with" to measure close precisely
+                        # (so we can time writer.close() and/or writer.__exit__ behavior)
                         # ------------------------------------------------------------------
                         # PHASE 5.1: Write Summary + SummaryAudit + Param mismatch sheets
                         # ------------------------------------------------------------------
@@ -562,6 +574,7 @@ class ConfigurationAudit:
 
                             # SummaryAudit with high-level checks
                             summary_audit_df.to_excel(writer, sheet_name="SummaryAudit", index=False)
+
                             # Apply alternating background colors by Category for SummaryAudit sheet
                             wb = writer.book
                             ws_summary_audit = writer.sheets.get("SummaryAudit")
@@ -578,8 +591,7 @@ class ConfigurationAudit:
                         # ------------------------------------------------------------------
                         # PHASE 5.2: Write pivot summary sheets
                         # ------------------------------------------------------------------
-                        with log_phase_timer("PHASE 5.2: Write pivot summary sheets", log_fn=_log_info, show_start=show_phase_starts, show_end=False, show_timing=show_phase_timings, line_prefix="", start_level="INFO", end_level="INFO",
-                                             timing_level="INFO"):
+                        with log_phase_timer("PHASE 5.2: Write pivot summary sheets", log_fn=_log_info, show_start=show_phase_starts, show_end=False, show_timing=show_phase_timings, line_prefix="", start_level="INFO", end_level="INFO", timing_level="INFO"):
                             # Extra summary sheets
                             pivot_nr_cells_du.to_excel(writer, sheet_name="Summary NR_CellDU", index=False)
                             pivot_nr_sector_carrier.to_excel(writer, sheet_name="Summary NR_SectorCarrier", index=False)
@@ -638,10 +650,47 @@ class ConfigurationAudit:
                                             cell.hyperlink = f"#{target_sheet}!A1"
                                             cell.font = Font(color="0563C1", underline="single")
 
+                        # ------------------------------------------------------------------
+                        # PHASE 5.5: CLOSE / FINALIZE workbook (THIS IS THE LIKELY 7 min)
+                        # ------------------------------------------------------------------
+                        _log_info("PHASE 5.5: ExcelWriter CLOSE starting (finalize workbook / write zip parts)...")
+                        t_close0 = time.perf_counter()
+
+                        # Optional: force a GC before close to reduce memory spikes / pauses
+                        # (Leave enabled only for diagnosis; keep disabled if no benefit)
+                        # import gc
+                        # t_gc0 = time.perf_counter()
+                        # gc.collect()
+                        # _log_info(f"PHASE 5.X: gc.collect() took {time.perf_counter() - t_gc0:.3f}s")
+
+                        writer.close()  # <-- this is where openpyxl can take minutes
+
+                        t_close1 = time.perf_counter()
+
+                        _log_info(f"PHASE 5.5: ExcelWriter CLOSE done in {format_duration_hms(t_close1 - t_close0)} ({t_close1 - t_close0:.3f}s)")
+
+                    finally:
+                        # Safety close (avoid leaked handles if something fails mid-write)
+                        try:
+                            if writer is not None:
+                                # If already closed, this is a no-op / may raise; ignore.
+                                writer.close()
+                        except Exception:
+                            pass
+
                     # ----------------------------------------------------------------------
-                    # PHASE 5.5: Move Excel into final destination (prefer atomic replace)
+                    # PHASE 5.6: Inspect temp file size after close (helps diagnose)
                     # ----------------------------------------------------------------------
-                    with log_phase_timer("PHASE 5.5: Move Excel into destination", log_fn=_log_info, show_start=show_phase_starts, show_end=False, show_timing=show_phase_timings, line_prefix="", start_level="INFO", end_level="INFO", timing_level="INFO"):
+                    try:
+                        tmp_size = os.path.getsize(tmp_excel_path_long)
+                        _log_info(f"PHASE 5.6: Temp XLSX size: {tmp_size / (1024 * 1024):.2f} MB")
+                    except Exception as ex:
+                        _log_warn(f"PHASE 5.6: Could not read temp XLSX size: {ex}")
+
+                    # ----------------------------------------------------------------------
+                    # PHASE 5.7: Move Excel into final destination (prefer atomic replace)
+                    # ----------------------------------------------------------------------
+                    with log_phase_timer("PHASE 5.7: Move Excel into destination", log_fn=_log_info, show_start=show_phase_starts, show_end=False, show_timing=show_phase_timings, line_prefix="", start_level="INFO", end_level="INFO", timing_level="INFO"):
                         # Move into final destination (prefer atomic replace)
                         _move_into_place(tmp_excel_path_long, excel_path_long)
 
