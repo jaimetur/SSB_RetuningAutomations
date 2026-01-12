@@ -4,6 +4,26 @@
 
 ---
 
+## Release: v0.5.4
+- ### Release Date: 2026-01-12
+
+- ### Main Changes:
+  
+  - #### 🚨 Breaking Changes:
+  
+  - #### 🚀 Enhancements:
+    - Scope ProfilesAudit's checks to nodes that have completed retuning (nodes_post), when provided.
+    - Added TrStSaNrFreqRelProfileUeCfg to the ProfilesAudit with the same two checks as McpcPCellNrFreqRelProfileUeCfg (missing old→new clone and parameter discrepancies), scoped to post-retuned nodes (nodes_post_scope).
+    - Logging messages now has a timestamp prefix.
+
+  - #### 🐛 Bug fixes:
+    - Minor bug fixing.
+    
+  - #### 📚 Documentation: 
+    - Updated documentation with latest changes.
+
+---
+
 ## Release: v0.5.3
 - ### Release Date: 2026-01-08
 

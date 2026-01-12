@@ -1,8 +1,10 @@
 import os, sys
 import platform
 import zipfile
-from pathlib import Path
 from colorama import Fore
+from datetime import datetime
+from pathlib import Path
+
 
 # TAG and TAGS Colored for messages output (in console and log)
 MSG_TAGS = {
@@ -154,13 +156,35 @@ class LoggerDual:
     Simple dual logger that mirrors stdout prints to both console and a log file.
     Replaces sys.stdout so every print() goes to both outputs automatically.
     """
-    def __init__(self, log_file_path: str):
+    def __init__(self, log_file_path: str, timestamp_format: str = "%Y-%m-%d %H:%M:%S"):
         self.terminal = sys.stdout
         self.log = open(log_file_path, "a", encoding="utf-8")
+        self.timestamp_format = timestamp_format
+        self._at_line_start = True  # True when next write begins a new log line
+
+    def _now_prefix(self) -> str:
+        """Build a timestamp prefix for the log file."""
+        return f"[{datetime.now().strftime(self.timestamp_format)}] "
 
     def write(self, message: str):
+        # Always write raw message to terminal
         self.terminal.write(message)
-        self.log.write(message)
+
+        # Write to file with timestamp at the beginning of each new line
+        if not message:
+            return
+
+        parts = message.splitlines(keepends=True)
+        for part in parts:
+            if self._at_line_start:
+                self.log.write(self._now_prefix())
+                self._at_line_start = False
+
+            self.log.write(part)
+
+            # If this chunk ends with a newline, next write starts a new line
+            if part.endswith("\n"):
+                self._at_line_start = True
 
     def flush(self):
         """Required for compatibility with Python's stdout flush behavior."""

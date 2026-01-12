@@ -310,20 +310,24 @@ def build_summary_audit(
     # Profiles Tables (optional)
     if profiles_audit:
         profiles_tables_work = profiles_tables or {}
-        process_profiles_tables(profiles_tables_work, add_row, n77_ssb_pre, n77_ssb_post)
-        df_mcpc_pcell_nr_freq_rel_profile_uecfg = (profiles_tables or {}).get("McpcPCellNrFreqRelProfileUeCfg", pd.DataFrame())
+
+        # Scope profiles audit to nodes that have completed retuning
+        nodes_post_scope = {str(x).strip() for x in (list(nodes_id_post or []) + list(nodes_name_post or [])) if x is not None and str(x).strip()}
+
+        process_profiles_tables(profiles_tables_work, add_row, n77_ssb_pre, n77_ssb_post, nodes_post=nodes_post_scope)
+
+        df_mcpc_pcell_nr_freq_rel_profile_uecfg = profiles_tables_work.get("McpcPCellNrFreqRelProfileUeCfg", pd.DataFrame())
+        df_trstsa_nr_freq_rel_profile_uecfg = profiles_tables_work.get("TrStSaNrFreqRelProfileUeCfg", pd.DataFrame())
 
         # Consistency Checks Post Step2
-        cc_post_step2(
-            df_nr_cell_cu=df_nr_cell_cu,
-            df_eutran_freq_rel=df_eutran_freq_rel,
-            add_row=add_row,
-            n77_ssb_pre=n77_ssb_pre,
-            n77_ssb_post=n77_ssb_post,
-            nodes_post = nodes_name_post,
-            df_mcpc_pcell_nr_freq_rel_profile_uecfg=df_mcpc_pcell_nr_freq_rel_profile_uecfg
-        )
-
+        cc_post_step2(df_nr_cell_cu=df_nr_cell_cu,
+                      df_eutran_freq_rel=df_eutran_freq_rel,
+                      add_row=add_row,
+                      n77_ssb_pre=n77_ssb_pre,
+                      n77_ssb_post=n77_ssb_post,
+                      nodes_post=nodes_name_post,
+                      df_mcpc_pcell_nr_freq_rel_profile_uecfg=df_mcpc_pcell_nr_freq_rel_profile_uecfg,
+                      df_trstsa_nr_freq_rel_profile_uecfg=df_trstsa_nr_freq_rel_profile_uecfg)
 
     # If nothing was added, return at least an informational row
     if not rows:
@@ -419,6 +423,9 @@ def build_summary_audit(
             ("EUtranFreqRelation", "Profiles Audit"),
 
             # Profiles tables
+            ("TrStSaNrFreqRelProfileUeCfg", "Profiles Inconsistencies"),
+            ("TrStSaNrFreqRelProfileUeCfg", "Profiles Discrepancies"),
+
             ("McpcPCellNrFreqRelProfileUeCfg", "Profiles Inconsistencies"),
             ("McpcPCellNrFreqRelProfileUeCfg", "Profiles Discrepancies"),
 

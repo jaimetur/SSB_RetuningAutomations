@@ -49,11 +49,43 @@ from src.utils.utils_frequency import resolve_column_case_insensitive, parse_int
 #                           PUBLIC ENTRYPOINTS
 # =====================================================================
 
-def process_profiles_tables(dfs_by_table, add_row, n77_ssb_pre, n77_ssb_post) -> None:
+def process_profiles_tables(dfs_by_table, add_row, n77_ssb_pre, n77_ssb_post, nodes_post: Optional[Iterable[object]] = None) -> None:
     """
-    Profiles tables audit (replica + param equality), including UeCfg pairing by (NodeId, UeCfgId) and a special suffix-style
-    check for McpcPCellNrFreqRelProfileUeCfg executed for ALL nodes (not scoped by nodes_pre).
+    Profiles tables audit (replica + param equality)
+    ------------------------------------------------
+
+    This block audits a curated list of "profiles tables" (e.g. McpcPCellProfileUeCfg, UeMCEUtranFreqRelProfileUeCfg, ...):
+
+      - Detect rows referencing the old SSB (pre) and verify a corresponding "replica" row exists for the new SSB (post).
+      - When the replica exists, verify all other parameters match (ignoring `reservedBy`).
+      - For UeCfg tables, pairing is done by (NodeId, <XxxUeCfgId>) so that only the ProfileId changes old->new.
+
+    Node scoping:
+      - When `nodes_post` is provided, ALL "inconsistencies" checks in this function are scoped ONLY to those nodes (NodeId in nodes_post).
+      - If `nodes_post` is empty or None, checks run on ALL nodes.
+
+    Special cases:
+      1) McpcPCellNrFreqRelProfileUeCfg:
+         - Do NOT emit the generic "Profiles with old N77 SSB (...) but not new N77 SSB (...)" inconsistency row.
+         - Emit discrepancies row as usual.
+         - Emit the suffix-style clone check: any profile id ending with `xxxx_<preSSB>` must have its `xxxx_<postSSB>` clone (scoped by nodes_post when provided).
+
+      2) TrStSaNrFreqRelProfileUeCfg:
+         - Do NOT emit the generic "Profiles with old N77 SSB (...) but not new N77 SSB (...)" inconsistency row.
+         - Emit discrepancies row as usual.
+         - Emit the prefix-style clone check: any profile id starting with `<preSSB>_xxxx` must have its `<postSSB>_xxxx` clone (scoped by nodes_post when provided).
+
+    Notes:
+      - No filtering by nRFrequencyRef is performed anywhere in this function.
+      - Helper functions are nested because they are only used locally by this block.
     """
+
+    nodes_post_set: Set[str] = set()
+    if nodes_post:
+        for n in nodes_post:
+            s = "" if n is None else str(n).strip()
+            if s:
+                nodes_post_set.add(s)
 
     def _resolve_uecfg_id_col_for_profile_id(df: pd.DataFrame, profile_id_col_name: str) -> Optional[str]:
         # Given a ProfileId column name, infer its corresponding UeCfgId column name.
@@ -122,12 +154,11 @@ def process_profiles_tables(dfs_by_table, add_row, n77_ssb_pre, n77_ssb_post) ->
             parts.append(f"{node} ({cols_str})" if cols_str else f"{node} (UnknownColumn)")
         return ", ".join(parts)
 
-    def _add_missing_suffix_profiles_check(work: pd.DataFrame, node_col: str, profile_id_col: str, uecfg_col: str, add_row_fn, ssb_pre_int_local: int, ssb_post_int_local: int, metric_text: str) -> None:
+    def _add_missing_suffix_profiles_check(work: pd.DataFrame, node_col: str, profile_id_col: str, uecfg_col: str, add_row_fn, ssb_pre_int_local: int, ssb_post_int_local: int, metric_text: str, category_text: str) -> None:
         """
-        Special check for McpcPCellNrFreqRelProfileUeCfg:
+        Suffix-style clone check:
           - For each (NodeId, UeCfgId) group, if any profile id ends with _<preSSB>,
             ensure the corresponding _<postSSB> clone exists in the same group.
-          - This check is executed for ALL nodes (no nodes_pre scoping).
         """
 
         def _suffix_ssb(value: object) -> Optional[int]:
@@ -153,7 +184,7 @@ def process_profiles_tables(dfs_by_table, add_row, n77_ssb_pre, n77_ssb_post) ->
 
         bad_nodes: Set[str] = set()
         if work is None or work.empty:
-            add_row_fn("McpcPCellNrFreqRelProfileUeCfg", "Profiles Inconsistencies", metric_text, 0, "")
+            add_row_fn(category_text, "Profiles Inconsistencies", metric_text, 0, "")
             return
 
         work2 = work[[node_col, uecfg_col, profile_id_col]].copy()
@@ -173,7 +204,59 @@ def process_profiles_tables(dfs_by_table, add_row, n77_ssb_pre, n77_ssb_post) ->
                         bad_nodes.add(node_str)
                     break
 
-        add_row_fn("McpcPCellNrFreqRelProfileUeCfg", "Profiles Inconsistencies", metric_text, len(bad_nodes), ", ".join(sorted(bad_nodes)))
+        add_row_fn(category_text, "Profiles Inconsistencies", metric_text, len(bad_nodes), ", ".join(sorted(bad_nodes)))
+
+    def _add_missing_prefix_profiles_check(work: pd.DataFrame, node_col: str, profile_id_col: str, uecfg_col: str, add_row_fn, ssb_pre_int_local: int, ssb_post_int_local: int, metric_text: str, category_text: str) -> None:
+        """
+        Prefix-style clone check:
+          - For each (NodeId, UeCfgId) group, if any profile id starts with <preSSB>_,
+            ensure the corresponding <postSSB>_ clone exists in the same group.
+        """
+
+        def _prefix_ssb(value: object) -> Optional[int]:
+            s = "" if value is None else str(value).strip()
+            if "_" not in s:
+                return None
+            token = s.split("_")[0].strip()
+            if not token.isdigit():
+                return None
+            try:
+                return int(token)
+            except Exception:
+                return None
+
+        def _replace_prefix_ssb(profile_id: str, old_ssb: int, new_ssb: int) -> str:
+            s = "" if profile_id is None else str(profile_id).strip()
+            if "_" not in s:
+                return s
+            parts = s.split("_")
+            if parts and parts[0].strip().isdigit() and int(parts[0].strip()) == int(old_ssb):
+                parts[0] = str(new_ssb)
+            return "_".join(parts)
+
+        bad_nodes: Set[str] = set()
+        if work is None or work.empty:
+            add_row_fn(category_text, "Profiles Inconsistencies", metric_text, 0, "")
+            return
+
+        work2 = work[[node_col, uecfg_col, profile_id_col]].copy()
+        work2[node_col] = work2[node_col].astype(str).str.strip()
+        work2[uecfg_col] = work2[uecfg_col].astype(str).str.strip()
+        work2[profile_id_col] = work2[profile_id_col].astype(str).str.strip()
+
+        for (node, uecfg), grp in work2.groupby([node_col, uecfg_col], dropna=False):
+            pids = set(grp[profile_id_col].dropna().astype(str).str.strip().tolist())
+            for pid in pids:
+                if _prefix_ssb(pid) != ssb_pre_int_local:
+                    continue
+                expected = _replace_prefix_ssb(pid, ssb_pre_int_local, ssb_post_int_local)
+                if expected not in pids:
+                    node_str = str(node).strip()
+                    if node_str:
+                        bad_nodes.add(node_str)
+                    break
+
+        add_row_fn(category_text, "Profiles Inconsistencies", metric_text, len(bad_nodes), ", ".join(sorted(bad_nodes)))
 
     def _process_profiles_table_uecfg(work: pd.DataFrame, table_name_local: str, node_col: str, profile_id_col: str, uecfg_col: str, reserved_col: Optional[str], add_row_fn, ssb_pre_int_local: int, ssb_post_int_local: int, metric_missing: str, metric_discr: str, skip_inconsistencies: bool = False) -> None:
         """
@@ -306,21 +389,27 @@ def process_profiles_tables(dfs_by_table, add_row, n77_ssb_pre, n77_ssb_post) ->
     def _process_single_profiles_table(df, table_name: str, moid_col_name: str, add_row_fn, ssb_pre_int_local: Optional[int], ssb_post_int_local: Optional[int]) -> None:
         metric_missing = f"Profiles with old N77 SSB ({ssb_pre_int_local}) but not new N77 SSB ({ssb_post_int_local}) (from {table_name})"
         metric_discr = f"Profiles with old N77 SSB ({ssb_pre_int_local}) and new N77 SSB ({ssb_post_int_local}) but with param discrepancies (from {table_name})"
-        metric_missing_suffix = f"Profiles with old N77 SSB (xxxx_{ssb_pre_int_local}) but not new N77 SSB (xxxx_{ssb_post_int_local}) (from McpcPCellNrFreqRelProfileUeCfg)"
+
+        metric_missing_suffix_mcpc = f"Profiles with old N77 SSB (xxxx_{ssb_pre_int_local}) but not new N77 SSB (xxxx_{ssb_post_int_local}) (from McpcPCellNrFreqRelProfileUeCfg)"
+        metric_missing_prefix_trstsa = f"NR Nodes with the new N77 SSB ({ssb_post_int_local}) and Profiles with old N77 SSB ({ssb_pre_int_local}_xxxx) but not new N77 SSB ({ssb_post_int_local}_xxxx) (from TrStSaNrFreqRelProfileUeCfg)"
 
         try:
             if df is None or df.empty:
                 add_row_fn(table_name, "Profiles Inconsistencies", metric_missing, "Table not found or empty", "")
                 add_row_fn(table_name, "Profiles Discrepancies", metric_discr, "Table not found or empty", "")
                 if table_name == "McpcPCellNrFreqRelProfileUeCfg":
-                    add_row_fn("McpcPCellNrFreqRelProfileUeCfg", "Profiles Inconsistencies", metric_missing_suffix, "Table not found or empty", "")
+                    add_row_fn("McpcPCellNrFreqRelProfileUeCfg", "Profiles Inconsistencies", metric_missing_suffix_mcpc, "Table not found or empty", "")
+                if table_name == "TrStSaNrFreqRelProfileUeCfg":
+                    add_row_fn("TrStSaNrFreqRelProfileUeCfg", "Profiles Inconsistencies", metric_missing_prefix_trstsa, "Table not found or empty", "")
                 return
 
             if ssb_pre_int_local is None or ssb_post_int_local is None:
                 add_row_fn(table_name, "Profiles Inconsistencies", metric_missing, 0, f"ERROR: Invalid SSB values ({ssb_pre_int_local}, {ssb_post_int_local})")
                 add_row_fn(table_name, "Profiles Discrepancies", metric_discr, 0, f"ERROR: Invalid SSB values ({ssb_pre_int_local}, {ssb_post_int_local})")
                 if table_name == "McpcPCellNrFreqRelProfileUeCfg":
-                    add_row_fn("McpcPCellNrFreqRelProfileUeCfg", "Profiles Inconsistencies", metric_missing_suffix, 0, f"ERROR: Invalid SSB values ({ssb_pre_int_local}, {ssb_post_int_local})")
+                    add_row_fn("McpcPCellNrFreqRelProfileUeCfg", "Profiles Inconsistencies", metric_missing_suffix_mcpc, 0, f"ERROR: Invalid SSB values ({ssb_pre_int_local}, {ssb_post_int_local})")
+                if table_name == "TrStSaNrFreqRelProfileUeCfg":
+                    add_row_fn("TrStSaNrFreqRelProfileUeCfg", "Profiles Inconsistencies", metric_missing_prefix_trstsa, 0, f"ERROR: Invalid SSB values ({ssb_pre_int_local}, {ssb_post_int_local})")
                 return
 
             node_col = resolve_column_case_insensitive(df, ["NodeId"])
@@ -331,12 +420,18 @@ def process_profiles_tables(dfs_by_table, add_row, n77_ssb_pre, n77_ssb_post) ->
                 add_row_fn(table_name, "Profiles Inconsistencies", metric_missing, "N/A", "NodeId / MOid column missing")
                 add_row_fn(table_name, "Profiles Discrepancies", metric_discr, "N/A", "NodeId / MOid column missing")
                 if table_name == "McpcPCellNrFreqRelProfileUeCfg":
-                    add_row_fn("McpcPCellNrFreqRelProfileUeCfg", "Profiles Inconsistencies", metric_missing_suffix, "N/A", "NodeId / MOid column missing")
+                    add_row_fn("McpcPCellNrFreqRelProfileUeCfg", "Profiles Inconsistencies", metric_missing_suffix_mcpc, "N/A", "NodeId / MOid column missing")
+                if table_name == "TrStSaNrFreqRelProfileUeCfg":
+                    add_row_fn("TrStSaNrFreqRelProfileUeCfg", "Profiles Inconsistencies", metric_missing_prefix_trstsa, "N/A", "NodeId / MOid column missing")
                 return
 
             work = df.copy()
             work[node_col] = work[node_col].astype(str).str.strip()
             work[moid_col] = work[moid_col].astype(str).str.strip()
+
+            # Scope checks to nodes that have completed retuning (nodes_post), when provided
+            if nodes_post_set:
+                work = work.loc[work[node_col].isin(nodes_post_set)].copy()
 
             uecfg_col = _resolve_uecfg_id_col_for_profile_id(work, moid_col_name)
             if uecfg_col:
@@ -345,10 +440,19 @@ def process_profiles_tables(dfs_by_table, add_row, n77_ssb_pre, n77_ssb_post) ->
                 # Special case: McpcPCellNrFreqRelProfileUeCfg
                 # - Do NOT emit the generic "Profiles with old SSB but not new SSB" inconsistency row.
                 # - Emit discrepancies row as usual.
-                # - Always emit the suffix-style "xxxx_<SSB>" clone-missing inconsistency row for ALL nodes.
+                # - Emit the suffix-style "xxxx_<SSB>" clone-missing inconsistency row (scoped by nodes_post when provided).
                 if table_name == "McpcPCellNrFreqRelProfileUeCfg":
-                    _process_profiles_table_uecfg(work=work, table_name_local=table_name, node_col=node_col, profile_id_col=moid_col, uecfg_col=uecfg_col, reserved_col=reserved_col, add_row_fn=add_row_fn, ssb_pre_int_local=ssb_pre_int_local, ssb_post_int_local=ssb_post_int_local, metric_missing=metric_missing, metric_discr=metric_discr, skip_inconsistencies=True)  # <<< replace generic row with suffix check
-                    _add_missing_suffix_profiles_check(work=work.copy(), node_col=node_col, profile_id_col=moid_col, uecfg_col=uecfg_col, add_row_fn=add_row_fn, ssb_pre_int_local=ssb_pre_int_local, ssb_post_int_local=ssb_post_int_local, metric_text=metric_missing_suffix)
+                    _process_profiles_table_uecfg(work=work, table_name_local=table_name, node_col=node_col, profile_id_col=moid_col, uecfg_col=uecfg_col, reserved_col=reserved_col, add_row_fn=add_row_fn, ssb_pre_int_local=ssb_pre_int_local, ssb_post_int_local=ssb_post_int_local, metric_missing=metric_missing, metric_discr=metric_discr, skip_inconsistencies=True)
+                    _add_missing_suffix_profiles_check(work=work.copy(), node_col=node_col, profile_id_col=moid_col, uecfg_col=uecfg_col, add_row_fn=add_row_fn, ssb_pre_int_local=ssb_pre_int_local, ssb_post_int_local=ssb_post_int_local, metric_text=metric_missing_suffix_mcpc, category_text="McpcPCellNrFreqRelProfileUeCfg")
+                    return
+
+                # Special case: TrStSaNrFreqRelProfileUeCfg
+                # - Do NOT emit the generic "Profiles with old SSB but not new SSB" inconsistency row.
+                # - Emit discrepancies row as usual.
+                # - Emit the prefix-style "<preSSB>_xxxx" clone-missing inconsistency row (scoped by nodes_post when provided).
+                if table_name == "TrStSaNrFreqRelProfileUeCfg":
+                    _process_profiles_table_uecfg(work=work, table_name_local=table_name, node_col=node_col, profile_id_col=moid_col, uecfg_col=uecfg_col, reserved_col=reserved_col, add_row_fn=add_row_fn, ssb_pre_int_local=ssb_pre_int_local, ssb_post_int_local=ssb_post_int_local, metric_missing=metric_missing, metric_discr=metric_discr, skip_inconsistencies=True)
+                    _add_missing_prefix_profiles_check(work=work.copy(), node_col=node_col, profile_id_col=moid_col, uecfg_col=uecfg_col, add_row_fn=add_row_fn, ssb_pre_int_local=ssb_pre_int_local, ssb_post_int_local=ssb_post_int_local, metric_text=metric_missing_prefix_trstsa, category_text="TrStSaNrFreqRelProfileUeCfg")
                     return
 
                 # Default UeCfg logic for other tables
@@ -359,21 +463,30 @@ def process_profiles_tables(dfs_by_table, add_row, n77_ssb_pre, n77_ssb_post) ->
             skip_incons = (table_name == "McpcPCellNrFreqRelProfileUeCfg")
             _process_profiles_table_non_uecfg(work=work, table_name_local=table_name, node_col=node_col, moid_col=moid_col, reserved_col=reserved_col, add_row_fn=add_row_fn, ssb_pre_int_local=ssb_pre_int_local, ssb_post_int_local=ssb_post_int_local, metric_missing=metric_missing, metric_discr=metric_discr, skip_inconsistencies=skip_incons)
 
-            # If this table appears without UeCfgId for any reason, still emit the suffix check row.
+            # If this table appears without UeCfgId for any reason, still emit the special rows best-effort.
             if table_name == "McpcPCellNrFreqRelProfileUeCfg":
-                # Best effort: attempt to resolve a UeCfg column and run the suffix check if possible.
                 uecfg_guess = resolve_column_case_insensitive(work, ["McpcPCellNrFreqRelProfileUeCfgId"])
                 if uecfg_guess:
                     work[uecfg_guess] = work[uecfg_guess].astype(str).str.strip()
-                    _add_missing_suffix_profiles_check(work=work.copy(), node_col=node_col, profile_id_col=moid_col, uecfg_col=uecfg_guess, add_row_fn=add_row_fn, ssb_pre_int_local=ssb_pre_int_local, ssb_post_int_local=ssb_post_int_local, metric_text=metric_missing_suffix)
+                    _add_missing_suffix_profiles_check(work=work.copy(), node_col=node_col, profile_id_col=moid_col, uecfg_col=uecfg_guess, add_row_fn=add_row_fn, ssb_pre_int_local=ssb_pre_int_local, ssb_post_int_local=ssb_post_int_local, metric_text=metric_missing_suffix_mcpc, category_text="McpcPCellNrFreqRelProfileUeCfg")
                 else:
-                    add_row_fn("McpcPCellNrFreqRelProfileUeCfg", "Profiles Inconsistencies", metric_missing_suffix, "N/A", "Missing UeCfgId column for suffix check")
+                    add_row_fn("McpcPCellNrFreqRelProfileUeCfg", "Profiles Inconsistencies", metric_missing_suffix_mcpc, "N/A", "Missing UeCfgId column for suffix check")
+
+            if table_name == "TrStSaNrFreqRelProfileUeCfg":
+                uecfg_guess = resolve_column_case_insensitive(work, ["TrStSaNrFreqRelProfileUeCfgId"])
+                if uecfg_guess:
+                    work[uecfg_guess] = work[uecfg_guess].astype(str).str.strip()
+                    _add_missing_prefix_profiles_check(work=work.copy(), node_col=node_col, profile_id_col=moid_col, uecfg_col=uecfg_guess, add_row_fn=add_row_fn, ssb_pre_int_local=ssb_pre_int_local, ssb_post_int_local=ssb_post_int_local, metric_text=metric_missing_prefix_trstsa, category_text="TrStSaNrFreqRelProfileUeCfg")
+                else:
+                    add_row_fn("TrStSaNrFreqRelProfileUeCfg", "Profiles Inconsistencies", metric_missing_prefix_trstsa, "N/A", "Missing UeCfgId column for prefix check")
 
         except Exception as ex:
             add_row_fn(table_name, "Profiles Inconsistencies", metric_missing, 0, f"ERROR: {ex}")
             add_row_fn(table_name, "Profiles Discrepancies", metric_discr, 0, f"ERROR: {ex}")
             if table_name == "McpcPCellNrFreqRelProfileUeCfg":
-                add_row_fn("McpcPCellNrFreqRelProfileUeCfg", "Profiles Inconsistencies", metric_missing_suffix, 0, f"ERROR: {ex}")
+                add_row_fn("McpcPCellNrFreqRelProfileUeCfg", "Profiles Inconsistencies", metric_missing_suffix_mcpc, 0, f"ERROR: {ex}")
+            if table_name == "TrStSaNrFreqRelProfileUeCfg":
+                add_row_fn("TrStSaNrFreqRelProfileUeCfg", "Profiles Inconsistencies", metric_missing_prefix_trstsa, 0, f"ERROR: {ex}")
 
     profile_tables: List[Tuple[str, str]] = [
         ("McpcPCellNrFreqRelProfileUeCfg", "McpcPCellNrFreqRelProfileId"),
@@ -388,6 +501,7 @@ def process_profiles_tables(dfs_by_table, add_row, n77_ssb_pre, n77_ssb_post) ->
         ("McpcPCellEUtranFreqRelProfileUeCfg", "McpcPCellEUtranFreqRelProfileUeCfgId"),
         ("UeMCEUtranFreqRelProfile", "UeMCEUtranFreqRelProfileId"),
         ("UeMCEUtranFreqRelProfileUeCfg", "UeMCEUtranFreqRelProfileUeCfgId"),
+        ("TrStSaNrFreqRelProfileUeCfg", "TrStSaNrFreqRelProfileId"),
     ]
 
     ssb_pre_int = _safe_parse_int(n77_ssb_pre)
@@ -396,8 +510,7 @@ def process_profiles_tables(dfs_by_table, add_row, n77_ssb_pre, n77_ssb_post) ->
     for table_name, moid_col_name in profile_tables:
         _process_single_profiles_table(dfs_by_table.get(table_name), table_name, moid_col_name, add_row, ssb_pre_int, ssb_post_int)
 
-
-def cc_post_step2(df_nr_cell_cu: Optional[pd.DataFrame], df_eutran_freq_rel: Optional[pd.DataFrame], df_mcpc_pcell_nr_freq_rel_profile_uecfg: Optional[pd.DataFrame], add_row, n77_ssb_pre: object, n77_ssb_post: object, nodes_post: Optional[Iterable[object]] = None) -> None:
+def cc_post_step2(df_nr_cell_cu: Optional[pd.DataFrame], df_eutran_freq_rel: Optional[pd.DataFrame], df_mcpc_pcell_nr_freq_rel_profile_uecfg: Optional[pd.DataFrame], add_row, n77_ssb_pre: object, n77_ssb_post: object, nodes_post: Optional[Iterable[object]] = None, df_trstsa_nr_freq_rel_profile_uecfg: Optional[pd.DataFrame] = None) -> None:
     """
     Post Step2 cleanup checks (scoped ONLY by nodes_post) that flag nodes still referencing old SSB (pre) in ref parameters,
     plus a prefix-style clone existence check for McpcPCellNrFreqRelProfileUeCfg.
@@ -567,6 +680,82 @@ def cc_post_step2(df_nr_cell_cu: Optional[pd.DataFrame], df_eutran_freq_rel: Opt
 
         add_row(category, subcategory, metric_text, len(bad_nodes), _format_nodes(bad_nodes))
 
+
+    def _check_trstsa_nr_freq_rel_profile_uecfg_prefix_profiles(df_local: Optional[pd.DataFrame], ssb_pre_local: int, ssb_post_local: int, nodes_post_local: Set[str], metric_text: str) -> None:
+        category = "TrStSaNrFreqRelProfileUeCfg"
+        subcategory = "Profiles Inconsistencies"
+
+        if df_local is None or df_local.empty:
+            add_row(category, subcategory, metric_text, "Table not found or empty", "")
+            return
+
+        node_col = resolve_column_case_insensitive(df_local, ["NodeId"])
+        pid_col = resolve_column_case_insensitive(df_local, ["TrStSaNrFreqRelProfileId"])
+        uecfg_col = resolve_column_case_insensitive(df_local, ["TrStSaNrFreqRelProfileUeCfgId"])
+        if not node_col or not pid_col:
+            add_row(category, subcategory, metric_text, "N/A", "Missing NodeId / TrStSaNrFreqRelProfileId")
+            return
+
+        work = df_local.copy()
+        work[node_col] = _normalize_node_series(work[node_col])
+        work = work.loc[work[node_col].isin(nodes_post_local)].copy()
+        if work.empty:
+            add_row(category, subcategory, metric_text, 0, "")
+            return
+
+        def _prefix_ssb(value: object) -> Optional[int]:
+            s = "" if value is None else str(value).strip()
+            if "_" not in s:
+                return None
+            token = s.split("_")[0].strip()
+            if not token.isdigit():
+                return None
+            try:
+                return int(token)
+            except Exception:
+                return None
+
+        def _replace_prefix_ssb(profile_id: str, old_ssb: int, new_ssb: int) -> str:
+            s = "" if profile_id is None else str(profile_id).strip()
+            if "_" not in s:
+                return s
+            parts = s.split("_")
+            if parts and parts[0].strip().isdigit() and int(parts[0].strip()) == int(old_ssb):
+                parts[0] = str(new_ssb)
+            return "_".join(parts)
+
+        bad_nodes: Set[str] = set()
+        work[pid_col] = work[pid_col].astype(str).str.strip()
+
+        if uecfg_col and uecfg_col in work.columns:
+            work[uecfg_col] = work[uecfg_col].astype(str).str.strip()
+            for (node, uecfg), grp in work.groupby([node_col, uecfg_col], dropna=False):
+                pids = set(grp[pid_col].dropna().astype(str).str.strip().tolist())
+                for pid in pids:
+                    if _prefix_ssb(pid) != ssb_pre_local:
+                        continue
+                    expected = _replace_prefix_ssb(pid, ssb_pre_local, ssb_post_local)
+                    if expected not in pids:
+                        node_str = str(node).strip()
+                        if node_str:
+                            bad_nodes.add(node_str)
+                        break
+        else:
+            for node, grp in work.groupby(node_col, dropna=False):
+                pids = set(grp[pid_col].dropna().astype(str).str.strip().tolist())
+                for pid in pids:
+                    if _prefix_ssb(pid) != ssb_pre_local:
+                        continue
+                    expected = _replace_prefix_ssb(pid, ssb_pre_local, ssb_post_local)
+                    if expected not in pids:
+                        node_str = str(node).strip()
+                        if node_str:
+                            bad_nodes.add(node_str)
+                        break
+
+        add_row(category, subcategory, metric_text, len(bad_nodes), _format_nodes(bad_nodes))
+
+
     ssb_pre = _safe_parse_int(n77_ssb_pre)
     ssb_post = _safe_parse_int(n77_ssb_post)
 
@@ -580,6 +769,8 @@ def cc_post_step2(df_nr_cell_cu: Optional[pd.DataFrame], df_eutran_freq_rel: Opt
     metric_nrcellcu = f"NR nodes with the new N77 SSB ({ssb_post}) and NRCellCU Ref parameters to Profiles with the old SSB name (from NRCellCU table)"
     metric_eutran = f"NR nodes with the new N77 SSB ({ssb_post}) and EUtranFreqRelation Ref parameters to Profiles with the old SSB name (from EUtranFreqRelation table)"
     metric_profile_uecfg = f"NR Nodes with the new N77 SSB ({ssb_post}) and Profiles with old N77 SSB ({ssb_pre}_xxxx) but not new N77 SSB ({ssb_post}_xxxx) (from McpcPCellNrFreqRelProfileUeCfg)"
+    metric_trstsa_profile_uecfg = f"NR Nodes with the new N77 SSB ({ssb_post}) and Profiles with old N77 SSB ({ssb_pre}_xxxx) but not new N77 SSB ({ssb_post}_xxxx) (from TrStSaNrFreqRelProfileUeCfg)"
+
 
     if ssb_pre is None or ssb_post is None:
         add_row("NRCellCU", "Profiles Inconsistencies", metric_nrcellcu, 0, f"Invalid SSB values ({ssb_pre}, {ssb_post})")
@@ -596,6 +787,8 @@ def cc_post_step2(df_nr_cell_cu: Optional[pd.DataFrame], df_eutran_freq_rel: Opt
     _check_nrcellcu_profile_refs(df_nr_cell_cu, ssb_pre, nodes_post_set, metric_nrcellcu)
     _check_eutranfreqrelation_profile_refs(df_eutran_freq_rel, ssb_pre, nodes_post_set, metric_eutran)
     _check_mcpc_pcell_nr_freq_rel_profile_uecfg_prefix_profiles(df_mcpc_pcell_nr_freq_rel_profile_uecfg, ssb_pre, ssb_post, nodes_post_set, metric_profile_uecfg)
+    _check_trstsa_nr_freq_rel_profile_uecfg_prefix_profiles(df_trstsa_nr_freq_rel_profile_uecfg, ssb_pre, ssb_post, nodes_post_set, metric_trstsa_profile_uecfg)
+
 
 
 # =====================================================================
