@@ -4,6 +4,23 @@
 
 ---
 
+## Release: v0.5.5
+- ### Release Date: 2026-01-14
+
+- ### Main Changes:
+  
+  - #### 🚨 Breaking Changes:
+  
+  - #### 🚀 Enhancements:
+
+  - #### 🐛 Bug fixes:
+   - Minor bug fixing.
+    
+  - #### 📚 Documentation: 
+    - Updated documentation with latest changes.
+
+---
+
 ## Release: v0.5.4
 - ### Release Date: 2026-01-13
 

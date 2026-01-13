@@ -41,14 +41,14 @@ from src.modules.CleanUp.FinalCleanUp import FinalCleanUp
 # ================================ VERSIONING ================================ #
 
 TOOL_NAME           = "SSB_RetuningAutomations"
-TOOL_VERSION        = "0.5.4"
-TOOL_DATE           = "2026-01-13"
+TOOL_VERSION        = "0.5.5"
+TOOL_DATE           = "2026-01-14"
 TOOL_NAME_VERSION   = f"{TOOL_NAME}_v{TOOL_VERSION}"
-COPYRIGHT_TEXT      = "(c) 2025-2026 - Jaime Tur (jaime.tur@ericsson.com)"
+COPYRIGHT_TEXT      = "©️ 2025-2026 - Jaime Tur (jaime.tur@ericsson.com)"
 TOOL_DESCRIPTION    = textwrap.dedent(f"""
 {TOOL_NAME_VERSION} - {TOOL_DATE}
 Multi-Platform/Multi-Arch tool designed to Automate some process during SSB Retuning
-©️ 2025-2026 by Jaime Tur (jaime.tur@ericsson.com)
+{COPYRIGHT_TEXT}
 """)
 
 # ================================ DEFAULTS ================================= #
