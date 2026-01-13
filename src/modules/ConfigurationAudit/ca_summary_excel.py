@@ -316,18 +316,15 @@ def build_summary_audit(
 
         process_profiles_tables(profiles_tables_work, add_row, n77_ssb_pre, n77_ssb_post, nodes_post=nodes_post_scope)
 
-        df_mcpc_pcell_nr_freq_rel_profile_uecfg = profiles_tables_work.get("McpcPCellNrFreqRelProfileUeCfg", pd.DataFrame())
-        df_trstsa_nr_freq_rel_profile_uecfg = profiles_tables_work.get("TrStSaNrFreqRelProfileUeCfg", pd.DataFrame())
+        # NEW: pass ALL required Post-Step2 tables via a single dict argument (in-memory tables)
+        post_step2_tables = {
+            "NRCellCU": df_nr_cell_cu,
+            "EUtranFreqRelation": df_eutran_freq_rel,
+            "McpcPCellNrFreqRelProfileUeCfg": profiles_tables_work.get("McpcPCellNrFreqRelProfileUeCfg", pd.DataFrame()),
+            "TrStSaNrFreqRelProfileUeCfg": profiles_tables_work.get("TrStSaNrFreqRelProfileUeCfg", pd.DataFrame()),
+        }
 
-        # Consistency Checks Post Step2
-        cc_post_step2(df_nr_cell_cu=df_nr_cell_cu,
-                      df_eutran_freq_rel=df_eutran_freq_rel,
-                      add_row=add_row,
-                      n77_ssb_pre=n77_ssb_pre,
-                      n77_ssb_post=n77_ssb_post,
-                      nodes_post=nodes_name_post,
-                      df_mcpc_pcell_nr_freq_rel_profile_uecfg=df_mcpc_pcell_nr_freq_rel_profile_uecfg,
-                      df_trstsa_nr_freq_rel_profile_uecfg=df_trstsa_nr_freq_rel_profile_uecfg)
+        cc_post_step2(post_step2_tables, add_row, n77_ssb_pre, n77_ssb_post, nodes_post=nodes_post_scope)
 
     # If nothing was added, return at least an informational row
     if not rows:
@@ -423,14 +420,14 @@ def build_summary_audit(
             ("EUtranFreqRelation", "Profiles Audit"),
 
             # Profiles tables
-            ("TrStSaNrFreqRelProfileUeCfg", "Profiles Inconsistencies"),
-            ("TrStSaNrFreqRelProfileUeCfg", "Profiles Discrepancies"),
+            ("McpcPCellProfileUeCfg", "Profiles Inconsistencies"),
+            ("McpcPCellProfileUeCfg", "Profiles Discrepancies"),
 
             ("McpcPCellNrFreqRelProfileUeCfg", "Profiles Inconsistencies"),
             ("McpcPCellNrFreqRelProfileUeCfg", "Profiles Discrepancies"),
 
-            ("McpcPCellProfileUeCfg", "Profiles Inconsistencies"),
-            ("McpcPCellProfileUeCfg", "Profiles Discrepancies"),
+            ("TrStSaNrFreqRelProfileUeCfg", "Profiles Inconsistencies"),
+            ("TrStSaNrFreqRelProfileUeCfg", "Profiles Discrepancies"),
 
             ("UlQualMcpcMeasCfg", "Profiles Inconsistencies"),
             ("UlQualMcpcMeasCfg", "Profiles Discrepancies"),

@@ -21,6 +21,9 @@
     - `ConfigurationAudit` module now shows details of time per phase to see which phases are more time-consuming.
 
   - #### 🐛 Bug fixes:
+    - Fixed bug with table `TrStSaNrFreqRelProfileUeCfg` that was not being collected properly.
+    - Exclude any `Id` field from Profiles Discrepancies checks.
+    - Avoid filter by nodes that have already been retuned the following check: `Profiles with old N77 SSB (xxxx_648672) but not new N77 SSB (xxxx_647328) (from McpcPCellNrFreqRelProfileUeCfg)`.
     - Minor bug fixing.
     
   - #### 📚 Documentation: 

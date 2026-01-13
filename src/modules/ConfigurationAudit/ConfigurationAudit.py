@@ -420,6 +420,7 @@ class ConfigurationAudit:
                     "McfbCellProfileUeCfg": [],
                     "TrStSaCellProfile": [],
                     "TrStSaCellProfileUeCfg": [],
+                    "TrStSaNrFreqRelProfileUeCfg": [],
                     "McpcPCellEUtranFreqRelProfile": [],
                     "McpcPCellEUtranFreqRelProfileUeCfg": [],
                     "UeMCEUtranFreqRelProfile": [],
@@ -475,18 +476,19 @@ class ConfigurationAudit:
 
                 # <<< NEW: Build profiles tables dict (only used when profiles_audit=True) >>>
                 profile_table_names = [
-                    "McpcPCellNrFreqRelProfileUeCfg",
                     "McpcPCellProfileUeCfg",
+                    "McpcPCellNrFreqRelProfileUeCfg",
                     "UlQualMcpcMeasCfg",
                     "McpcPSCellProfileUeCfg",
                     "McfbCellProfile",
                     "McfbCellProfileUeCfg",
-                    "TrStSaCellProfile",
-                    "TrStSaCellProfileUeCfg",
                     "McpcPCellEUtranFreqRelProfile",
                     "McpcPCellEUtranFreqRelProfileUeCfg",
                     "UeMCEUtranFreqRelProfile",
                     "UeMCEUtranFreqRelProfileUeCfg",
+                    "TrStSaCellProfile",
+                    "TrStSaCellProfileUeCfg",
+                    "TrStSaNrFreqRelProfileUeCfg",
                 ]
                 profiles_tables: Dict[str, pd.DataFrame] = {}
                 if profiles_audit:
