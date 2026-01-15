@@ -365,3 +365,72 @@ def build_expected_profile_ref_clone(old_profile_ref: object, old_ssb: int, new_
         return ""
 
     return re.sub(rf"(?<!\d){int(old_ssb)}(?!\d)", str(int(new_ssb)), s)
+
+
+def infer_parent_timestamp_and_market(start_path: str, max_levels: int = 6) -> tuple[Optional[str], Optional[str]]:
+    """
+    Walk up from start_path and try to infer:
+      - timestamp in format YYYYMMDD_HHMM from any parent folder name
+      - standardized market token from any parent folder name: substring after 'Step0_' until next '_'
+
+    Rules:
+    - Timestamp candidates accepted: YYYYMMDD_HHMM or YYYYMMDD-HHMM (seconds ignored if present elsewhere).
+    - Returned timestamp is normalized to YYYYMMDD_HHMM (no seconds).
+    - Market detection is case-insensitive for 'Step0_' marker, but returns the original token as found.
+
+    Returns:
+        (timestamp_yyyymmdd_hhmm_or_none, market_token_or_none)
+    """
+    import os
+    import re
+    from datetime import datetime
+
+    def _extract_ts(name: str) -> Optional[str]:
+        m = re.search(r"(?<!\d)(?P<date>\d{8})[_-](?P<hhmm>\d{4})(?!\d)", name)
+        if not m:
+            return None
+        date_str = m.group("date")
+        hhmm = m.group("hhmm")
+        try:
+            datetime.strptime(date_str + hhmm, "%Y%m%d%H%M")
+        except Exception:
+            return None
+        return f"{date_str}_{hhmm}"
+
+    def _extract_market(name: str) -> Optional[str]:
+        m = re.search(r"(?i)step0_(?P<mkt>[^_]+)_", name)
+        market = m.group("mkt") if m else None
+        market_norm = (market or "").strip()
+        market_low = market_norm.lower()
+        if market_low == "pre" or market_low.startswith("pre") or market_low == "post" or market_low.startswith("post"):
+            return None
+        return market_norm or None
+
+    ts: Optional[str] = None
+    market: Optional[str] = None
+
+    cur = os.path.abspath(start_path) if start_path else ""
+    for _ in range(max_levels):
+        if not cur:
+            break
+        base = os.path.basename(cur.rstrip("\\/"))
+        if not base:
+            break
+
+        if ts is None:
+            ts = _extract_ts(base)
+
+        if market is None:
+            market = _extract_market(base)
+
+        if ts is not None and market is not None:
+            break
+
+        parent = os.path.dirname(cur.rstrip("\\/"))
+        if not parent or parent == cur:
+            break
+        cur = parent
+
+    return ts, market
+
+

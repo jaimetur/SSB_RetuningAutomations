@@ -43,13 +43,27 @@ def ask_yes_no_dialog(title: str, message: str, default: bool = False) -> bool:
     """
     Ask a Yes/No question using Tkinter (if available) or console as a fallback.
     """
-    if messagebox is not None:
+    if tk is not None and messagebox is not None:
         try:
-            # Ensure there is a Tk root before showing the dialog (optional, if you need it)
-            if tk is not None and tk._default_root is None:
-                root = tk.Tk()
-                root.withdraw()
-            return bool(messagebox.askyesno(title, message))
+            # Create a *temporary* hidden root for this dialog and destroy it afterwards.
+            root = tk.Tk()
+            root.withdraw()
+
+            # Try to bring dialog to front (avoid hidden dialogs behind other windows)
+            try:
+                root.lift()
+                root.attributes("-topmost", True)
+                root.after(200, lambda: root.attributes("-topmost", False))
+            except Exception:
+                pass
+
+            try:
+                answer = messagebox.askyesno(title, message, parent=root)
+                return bool(answer)
+            finally:
+                # MUY IMPORTANTE: destruir el root temporal (avoid "blank Tk window" at the end)
+                root.destroy()
+
         except Exception:
             # If something goes wrong with Tkinter, fall back to console
             pass
@@ -59,6 +73,7 @@ def ask_yes_no_dialog(title: str, message: str, default: bool = False) -> bool:
         return answer in ("y", "yes", "s", "si", "sí")
     except Exception:
         return default
+
 
 
 def ask_yes_no_dialog_custom(title: str, message: str, default: bool = True) -> bool:

@@ -32,7 +32,8 @@ from src.utils.utils_dialog import tk, ttk, filedialog, messagebox, ask_reopen_l
 from src.utils.utils_infrastructure import LoggerDual
 from src.utils.utils_io import load_cfg_values, save_cfg_values, log_module_exception, to_long_path, pretty_path, folder_or_zip_has_valid_logs, detect_pre_post_subfolders, write_compared_folders_file, ensure_logs_available
 
-from src.utils.utils_parsing import normalize_csv_list, parse_arfcn_csv_to_set
+from src.utils.utils_parsing import normalize_csv_list, parse_arfcn_csv_to_set, infer_parent_timestamp_and_market
+
 
 from src.modules.ConsistencyChecks.ConsistencyChecks import ConsistencyChecks
 from src.modules.ConfigurationAudit import ConfigurationAudit
@@ -661,31 +662,15 @@ def run_configuration_audit(
     default_n77_ssb_pre_list = [local_n77_ssb_post, 653952]
     default_n77_pre_list = [654652, 655324, 655984, 656656]
 
-    allowed_n77_ssb_pre = parse_arfcn_csv_to_set(
-        csv_text=allowed_n77_ssb_pre_csv,
-        default_values=default_n77_ssb_pre_list,
-        label="Allowed N77 SSB (Pre)",
-    )
-    allowed_n77_arfcn_pre = parse_arfcn_csv_to_set(
-        csv_text=allowed_n77_arfcn_pre_csv,
-        default_values=default_n77_pre_list,
-        label="Allowed N77 ARFCN (Pre)",
-    )
+    allowed_n77_ssb_pre = parse_arfcn_csv_to_set(csv_text=allowed_n77_ssb_pre_csv, default_values=default_n77_ssb_pre_list, label="Allowed N77 SSB (Pre)")
+    allowed_n77_arfcn_pre = parse_arfcn_csv_to_set(csv_text=allowed_n77_arfcn_pre_csv, default_values=default_n77_pre_list, label="Allowed N77 ARFCN (Pre)")
 
     # Allowed sets (POST) – by default same values, but independent set
     default_n77_ssb_post_list = [local_n77_ssb_post, 653952]
     default_n77_post_list = [654652, 655324, 655984, 656656]
 
-    allowed_n77_ssb_post = parse_arfcn_csv_to_set(
-        csv_text=allowed_n77_ssb_post_csv,
-        default_values=default_n77_ssb_post_list,
-        label="Allowed N77 SSB (Post)",
-    )
-    allowed_n77_arfcn_post = parse_arfcn_csv_to_set(
-        csv_text=allowed_n77_arfcn_post_csv,
-        default_values=default_n77_post_list,
-        label="Allowed N77 ARFCN (Post)",
-    )
+    allowed_n77_ssb_post = parse_arfcn_csv_to_set(csv_text=allowed_n77_ssb_post_csv, default_values=default_n77_ssb_post_list, label="Allowed N77 SSB (Post)")
+    allowed_n77_arfcn_post = parse_arfcn_csv_to_set(csv_text=allowed_n77_arfcn_post_csv, default_values=default_n77_post_list, label="Allowed N77 ARFCN (Post)")
 
     # Print ConfigurationAudit Settings:
     print(f"{module_name} [INFO] Configuration Audit Settings:")
@@ -700,9 +685,8 @@ def run_configuration_audit(
     print(f"{module_name} [INFO] Allowed N77 SSB set (Post)   = {sorted(allowed_n77_ssb_post)}")
     print(f"{module_name} [INFO] Allowed N77 ARFCN set (Post) = {sorted(allowed_n77_arfcn_post)}")
 
-    if not versioned_suffix:
-        timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-        versioned_suffix = f"{timestamp}_v{TOOL_VERSION}"
+    exec_timestamp = datetime.now().strftime("%Y%m%d_%H%M")
+    folder_versioned_suffix = f"{exec_timestamp}_v{TOOL_VERSION}"
 
     def run_for_folder(folder: str) -> Optional[str]:
         """
@@ -717,13 +701,24 @@ def run_configuration_audit(
         # Use long-path version for filesystem operations
         folder_fs = to_long_path(folder) if folder else folder
 
+        # Use timestamp (and optional standardized market) from parent folder for FILE names only
+        parent_ts, parent_market = infer_parent_timestamp_and_market(folder_fs)
+        file_ts = parent_ts or exec_timestamp
+
+        # Caller-provided suffix keeps backward compatibility (but by default we now use parent timestamp)
+        if versioned_suffix:
+            file_versioned_suffix = versioned_suffix
+        else:
+            base_file_suffix = f"{file_ts}_v{TOOL_VERSION}"
+            file_versioned_suffix = f"{parent_market}_{base_file_suffix}" if parent_market else base_file_suffix
+
         # NEW: If folder only contains ZIP logs, extract and process the extracted folder
         resolved = ensure_logs_available(folder_fs)
         folder_to_process_fs = resolved.process_dir
         if pretty_path(folder_to_process_fs) != pretty_path(folder_fs):
             print(f"{module_name} [INFO] ZIP logs detected. Using extracted logs folder: '{pretty_path(folder_to_process_fs)}'")
 
-        # If market_label is provided and not GLOBAL, append it as suffix
+        # If market_label is provided and not GLOBAL, append it as suffix (ONLY affects output folder name)
         suffix = ""
         if market_label:
             ml = str(market_label).strip()
@@ -737,33 +732,18 @@ def run_configuration_audit(
         else:
             # folder_prefix = "ProfilesAudit" if profiles_audit else "ConfigurationAudit"
             folder_prefix = "ConfigurationAudit"  # keep output naming stable even when profiles_audit=True
-            output_dir = os.path.join(folder_fs, f"{folder_prefix}_{versioned_suffix}{suffix}")
+            output_dir = os.path.join(folder_fs, f"{folder_prefix}_{folder_versioned_suffix}{suffix}")
 
         os.makedirs(output_dir, exist_ok=True)
         print(f"{module_name} [INFO] Output folder: '{pretty_path(output_dir)}'")
 
         # Progressive fallback in case the installed ConfigurationAudit has an older signature
         try:
-            app = ConfigurationAudit(
-                n77_ssb_pre=local_n77_ssb_pre,
-                n77_ssb_post=local_n77_ssb_post,
-                n77b_ssb_arfcn=local_n77b_ssb,
-                allowed_n77_ssb_pre=allowed_n77_ssb_pre,
-                allowed_n77_arfcn_pre=allowed_n77_arfcn_pre,
-                allowed_n77_ssb_post=allowed_n77_ssb_post,
-                allowed_n77_arfcn_post=allowed_n77_arfcn_post,
-            )
+            app = ConfigurationAudit(n77_ssb_pre=local_n77_ssb_pre, n77_ssb_post=local_n77_ssb_post, n77b_ssb_arfcn=local_n77b_ssb, allowed_n77_ssb_pre=allowed_n77_ssb_pre, allowed_n77_arfcn_pre=allowed_n77_arfcn_pre, allowed_n77_ssb_post=allowed_n77_ssb_post, allowed_n77_arfcn_post=allowed_n77_arfcn_post)
         except TypeError:
             print(f"{module_name} [WARNING] Installed ConfigurationAudit does not support full PRE/POST + N77B parameters.")
             try:
-                app = ConfigurationAudit(
-                    n77_ssb_pre=local_n77_ssb_pre,
-                    n77_ssb_post=local_n77_ssb_post,
-                    allowed_n77_ssb_pre=allowed_n77_ssb_pre,
-                    allowed_n77_arfcn_pre=allowed_n77_arfcn_pre,
-                    allowed_n77_ssb_post=allowed_n77_ssb_post,
-                    allowed_n77_arfcn_post=allowed_n77_arfcn_post,
-                )
+                app = ConfigurationAudit(n77_ssb_pre=local_n77_ssb_pre, n77_ssb_post=local_n77_ssb_post, allowed_n77_ssb_pre=allowed_n77_ssb_pre, allowed_n77_arfcn_pre=allowed_n77_arfcn_pre, allowed_n77_ssb_post=allowed_n77_ssb_post, allowed_n77_arfcn_post=allowed_n77_arfcn_post)
             except TypeError:
                 print(f"{module_name} [WARNING] Installed ConfigurationAudit does not support PRE/POST allowed sets.")
                 try:
@@ -773,11 +753,12 @@ def run_configuration_audit(
                     app = ConfigurationAudit(n77_ssb_pre=local_n77_ssb_pre, n77_ssb_post=local_n77_ssb_post)
 
         # Include output_dir in kwargs passed to ConfigurationAudit.run
-        kwargs = dict(module_name=module_name, versioned_suffix=versioned_suffix, tables_order=TABLES_ORDER, output_dir=output_dir, profiles_audit=profiles_audit)
+        kwargs = dict(module_name=module_name, versioned_suffix=file_versioned_suffix, tables_order=TABLES_ORDER, output_dir=output_dir, profiles_audit=profiles_audit)
 
         if ca_freq_filters_csv:
             kwargs["filter_frequencies"] = [x.strip() for x in ca_freq_filters_csv.split(",") if x.strip()]
 
+        out = None
         try:
             try:
                 out = app.run(folder_to_process_fs, **kwargs)
@@ -788,7 +769,7 @@ def run_configuration_audit(
                 # Legacy fallback: ConfigurationAudit without output_dir / filters
                 if "unexpected keyword argument" in msg:
                     print(f"{module_name} [WARNING] Installed ConfigurationAudit does not support 'output_dir' and/or 'filter_frequencies'. Running with legacy signature.")
-                    out = app.run(folder_to_process_fs, module_name=module_name, versioned_suffix=versioned_suffix, tables_order=TABLES_ORDER)
+                    out = app.run(folder_to_process_fs, module_name=module_name, versioned_suffix=file_versioned_suffix, tables_order=TABLES_ORDER)
                 else:
                     raise
         finally:
@@ -850,6 +831,7 @@ def run_configuration_audit(
     return last_excel
 
 
+
 # ----------------------------- NEW: Unified Consistency Checks runner ----------------------------- #
 def run_consistency_checks(
     input_dir: Optional[str],
@@ -890,8 +872,8 @@ def run_consistency_checks(
     module_name = "[Consistency Checks (Bulk Pre/Post Auto-Detection)]" if is_bulk else "[Consistency Checks (Pre/Post Comparison)]"
     print(f"{module_name} [INFO] Running Consistency Check ({'bulk mode' if is_bulk else 'manual mode'})…")
 
-    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    versioned_suffix = f"{timestamp}_v{TOOL_VERSION}"
+    exec_timestamp = datetime.now().strftime("%Y%m%d_%H%M")
+    folder_versioned_suffix = f"{exec_timestamp}_v{TOOL_VERSION}"
 
     # Normalize filters once here so they are reused for all markets
     ca_freq_filters_csv = normalize_csv_list(ca_freq_filters_csv or "")
@@ -918,10 +900,7 @@ def run_consistency_checks(
 
         # Strict requirement: both PRE and POST must be provided
         if not pre_dir or not post_dir:
-            msg = (
-                "Both PRE and POST folders are required for manual Consistency Check.\n\n"
-                "Please select both folders in the launcher dialog."
-            )
+            msg = ("Both PRE and POST folders are required for manual Consistency Check.\n\nPlease select both folders in the launcher dialog.")
             print(f"{module_name} [WARNING] {msg}")
             if messagebox is not None:
                 try:
@@ -1071,6 +1050,12 @@ def run_consistency_checks(
             pre_dir_fs = to_long_path(pre_dir)
             post_dir_fs = to_long_path(post_dir)
 
+            # Timestamp/Market inference for FILE names (folder remains execution timestamp)
+            parent_ts, parent_market = infer_parent_timestamp_and_market(post_dir_fs)
+            file_ts = parent_ts or exec_timestamp
+            base_file_suffix = f"{file_ts}_v{TOOL_VERSION}"
+            file_versioned_suffix = f"{parent_market}_{base_file_suffix}" if parent_market else base_file_suffix
+
             pre_resolved = ensure_logs_available(pre_dir_fs)
             post_resolved = ensure_logs_available(post_dir_fs)
 
@@ -1083,11 +1068,11 @@ def run_consistency_checks(
                 print(f"{module_name} {market_tag} [INFO] POST ZIP logs detected. Using extracted folder: '{pretty_path(post_dir_process_fs)}'")
 
             try:
-                # NEW: compute output_dir upfront so both audits and consistency outputs land together
+                # NEW: compute output_dir upfront so both audits and consistency outputs land together (folder uses execution timestamp)
                 if market_label != "GLOBAL":
-                    output_dir = os.path.join(post_dir_fs, f"ConsistencyChecks_{versioned_suffix}_{market_label}")
+                    output_dir = os.path.join(post_dir_fs, f"ConsistencyChecks_{folder_versioned_suffix}_{market_label}")
                 else:
-                    output_dir = os.path.join(post_dir_fs, f"ConsistencyChecks_{versioned_suffix}")
+                    output_dir = os.path.join(post_dir_fs, f"ConsistencyChecks_{folder_versioned_suffix}")
                 os.makedirs(output_dir, exist_ok=True)
 
                 # NEW: write FoldersCompared.txt with the exact PRE/POST folders used
@@ -1098,15 +1083,18 @@ def run_consistency_checks(
                 except Exception as ex:
                     print(f"{module_name} {market_tag} [WARNING] Failed to write FoldersCompared.txt: {ex}")
 
-                audit_pre_suffix = f"Pre_{versioned_suffix}"
-                audit_post_suffix = f"Post_{versioned_suffix}"
+                # Ensure PRE/POST audit files do not overwrite each other inside shared output_dir
+                if parent_market:
+                    audit_pre_suffix = f"{parent_market}_Pre_{base_file_suffix}"
+                    audit_post_suffix = f"{parent_market}_Post_{base_file_suffix}"
+                else:
+                    audit_pre_suffix = f"Pre_{base_file_suffix}"
+                    audit_post_suffix = f"Post_{base_file_suffix}"
 
                 # --- Run Configuration Audit for PRE and POST ---
                 print(f"{module_name} {market_tag} [INFO] Running Configuration Audit for PRE folder before consistency checks...")
                 print("-" * 80)
-                pre_audit_excel = run_configuration_audit(input_dir=pre_dir_process_fs, ca_freq_filters_csv=ca_freq_filters_csv, n77_ssb_pre=n77_ssb_pre, n77_ssb_post=n77_ssb_post, n77b_ssb=n77b_ssb, allowed_n77_ssb_pre_csv=allowed_n77_ssb_pre_csv,
-                                                          allowed_n77_arfcn_pre_csv=allowed_n77_arfcn_pre_csv, allowed_n77_ssb_post_csv=allowed_n77_ssb_post_csv, allowed_n77_arfcn_post_csv=allowed_n77_arfcn_post_csv,
-                                                          versioned_suffix=audit_pre_suffix, market_label=market_label, external_output_dir=output_dir)
+                pre_audit_excel = run_configuration_audit(input_dir=pre_dir_process_fs, ca_freq_filters_csv=ca_freq_filters_csv, n77_ssb_pre=n77_ssb_pre, n77_ssb_post=n77_ssb_post, n77b_ssb=n77b_ssb, allowed_n77_ssb_pre_csv=allowed_n77_ssb_pre_csv, allowed_n77_arfcn_pre_csv=allowed_n77_arfcn_pre_csv, allowed_n77_ssb_post_csv=allowed_n77_ssb_post_csv, allowed_n77_arfcn_post_csv=allowed_n77_arfcn_post_csv, versioned_suffix=audit_pre_suffix, market_label=market_label, external_output_dir=output_dir)
                 print("-" * 80)
                 if pre_audit_excel:
                     print(f"{module_name} {market_tag} [INFO] PRE Configuration Audit output: '{pretty_path(pre_audit_excel)}'")
@@ -1115,9 +1103,7 @@ def run_consistency_checks(
 
                 print(f"{module_name} {market_tag} [INFO] Running Configuration Audit for POST folder before consistency checks...")
                 print("-" * 80)
-                post_audit_excel = run_configuration_audit(input_dir=post_dir_process_fs, ca_freq_filters_csv=ca_freq_filters_csv, n77_ssb_pre=n77_ssb_pre, n77_ssb_post=n77_ssb_post, n77b_ssb=n77b_ssb, allowed_n77_ssb_pre_csv=allowed_n77_ssb_pre_csv,
-                                                           allowed_n77_arfcn_pre_csv=allowed_n77_arfcn_pre_csv, allowed_n77_ssb_post_csv=allowed_n77_ssb_post_csv, allowed_n77_arfcn_post_csv=allowed_n77_arfcn_post_csv,
-                                                           versioned_suffix=audit_post_suffix, market_label=market_label, external_output_dir=output_dir)
+                post_audit_excel = run_configuration_audit(input_dir=post_dir_process_fs, ca_freq_filters_csv=ca_freq_filters_csv, n77_ssb_pre=n77_ssb_pre, n77_ssb_post=n77_ssb_post, n77b_ssb=n77b_ssb, allowed_n77_ssb_pre_csv=allowed_n77_ssb_pre_csv, allowed_n77_arfcn_pre_csv=allowed_n77_arfcn_pre_csv, allowed_n77_ssb_post_csv=allowed_n77_ssb_post_csv, allowed_n77_arfcn_post_csv=allowed_n77_arfcn_post_csv, versioned_suffix=audit_post_suffix, market_label=market_label, external_output_dir=output_dir)
                 print("-" * 80)
                 if post_audit_excel:
                     print(f"{module_name} {market_tag} [INFO] POST Configuration Audit output: '{pretty_path(post_audit_excel)}'")
@@ -1157,7 +1143,7 @@ def run_consistency_checks(
                 else:
                     print(f"{module_name} {market_tag} [INFO] Frequencies not provided. Comparison will be skipped; only tables will be saved.")
 
-                app.save_outputs_excel(output_dir, results, versioned_suffix=versioned_suffix)
+                app.save_outputs_excel(output_dir, results, versioned_suffix=file_versioned_suffix)
 
                 print(f"\n{module_name} {market_tag} [INFO] Outputs saved to: '{pretty_path(output_dir)}'")
                 if results:
@@ -1217,7 +1203,7 @@ def run_final_cleanup(input_dir: str, *_args) -> None:
     print(f"{module_name} [INFO] Running Final Clean-up…")
     print(f"{module_name} [INFO] Input folder: '{pretty_path(input_dir_fs)}'")
 
-    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M")
     versioned_suffix = f"{timestamp}_v{TOOL_VERSION}"
 
     app = FinalCleanUp()
@@ -1227,6 +1213,7 @@ def run_final_cleanup(input_dir: str, *_args) -> None:
         print(f"{module_name} [INFO] Done → '{pretty_path(out)}'")
     else:
         print(f"{module_name} [INFO] Module logic not yet implemented (under development). Exiting...")
+
 
 
 def resolve_module_callable(name: str):
@@ -1324,7 +1311,7 @@ def main():
     os.system('cls' if os.name == 'nt' else 'clear')
 
     # --- Initialize log file inside ./Logs folder ---
-    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M")
     log_filename = f"RetuningAutomation_{timestamp}_v{TOOL_VERSION}.log"
 
     # Detect base directory
@@ -1354,10 +1341,7 @@ def main():
     # Remove Splash image from Nuitka
     if "NUITKA_ONEFILE_PARENT" in os.environ:
         import tempfile
-        splash_filename = os.path.join(
-            tempfile.gettempdir(),
-            "onefile_%d_splash_feedback.tmp" % int(os.environ["NUITKA_ONEFILE_PARENT"]),
-        )
+        splash_filename = os.path.join(tempfile.gettempdir(), "onefile_%d_splash_feedback.tmp" % int(os.environ["NUITKA_ONEFILE_PARENT"]))
         with open(splash_filename, "wb") as f:
             f.write(b"READY")
         if os.path.exists(splash_filename):

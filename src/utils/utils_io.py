@@ -1,8 +1,10 @@
 # -*- coding: utf-8 -*-
 import configparser
 import os
+import hashlib
 import re
 import shutil
+import tempfile
 import traceback
 import zipfile
 from dataclasses import dataclass
@@ -255,6 +257,16 @@ def detect_pre_post_subfolders(base_folder: str, BLACKLIST: tuple) -> Tuple[Opti
             for e in os.scandir(root):
                 if not e.is_dir():
                     continue
+
+                # Skip tool output folders and other non-market folders
+                name_low = e.name.lower()
+                if any(tok in name_low for tok in BLACKLIST):
+                    continue
+                if name_low.startswith(("configurationaudit_", "profilesaudit_", "consistencychecks_", "retuningautomation_", "logs")):
+                    continue
+                if name_low in ("__pycache__",):
+                    continue
+
                 tokens = extract_tokens_dynamic(e.name)
                 for tok in tokens:
                     mapping.setdefault(tok, []).append(e.path)
@@ -644,10 +656,13 @@ def ensure_logs_available(folder: str, extraction_parent_dirname: str = "__unzip
     Behavior:
     - If 'folder' already has valid logs (plain), return LogsExtractionResult(process_dir=folder, is_extracted=False).
     - Else, if it contains a .zip with valid logs:
-        * Extract it into: <folder>/<extraction_parent_dirname>/<zip_stem>/
+        * Extract it into: <SYSTEM_TMP>/<extraction_parent_dirname>/<zip_stem>_<hash8>/
         * Return LogsExtractionResult(process_dir=<dir_with_logs>, extracted_root=<extract_root>, is_extracted=True, zip_path=<zip>).
     - If nothing is found, return LogsExtractionResult(process_dir=folder, is_extracted=False).
     """
+    import tempfile
+    import hashlib
+
     folder_fs = to_long_path(folder)
 
     # 1) Direct logs
@@ -680,7 +695,12 @@ def ensure_logs_available(folder: str, extraction_parent_dirname: str = "__unzip
         return LogsExtractionResult(process_dir=folder_fs, is_extracted=False)
 
     zip_stem = os.path.splitext(os.path.basename(chosen_zip))[0]
-    extract_root = os.path.join(folder_fs, extraction_parent_dirname, zip_stem)
+
+    # Extract to SYSTEM temp folder to avoid huge extractions inside the user-selected logs folder
+    chosen_zip_abs = os.path.abspath(pretty_path(to_long_path(chosen_zip)))
+    zip_hash8 = hashlib.sha1(chosen_zip_abs.encode("utf-8", errors="ignore")).hexdigest()[:8]
+    tmp_root = tempfile.gettempdir()
+    extract_root = os.path.join(tmp_root, extraction_parent_dirname, f"{zip_stem}_{zip_hash8}")
     extract_root_fs = to_long_path(extract_root)
 
     # Reuse previous extraction if present and looks valid
@@ -699,6 +719,7 @@ def ensure_logs_available(folder: str, extraction_parent_dirname: str = "__unzip
 
     found = _find_first_dir_with_valid_logs(extract_root_fs)
     return LogsExtractionResult(process_dir=(found or extract_root_fs), extracted_root=extract_root_fs, is_extracted=True, zip_path=chosen_zip)
+
 
 
 def write_compared_folders_file(output_dir: str, pre_dir: str, post_dir: str, filename: str = "FoldersCompared.txt") -> Optional[str]:

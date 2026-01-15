@@ -14,9 +14,16 @@
   - #### 🚀 Enhancements:
     - Added a post-processing cleanup step that deletes the extracted ZIP logs folder after processing, while leaving the original ZIP file untouched.
     - Kept cleanup failure-safe (best-effort): any deletion errors are swallowed to avoid breaking the main execution flow.
+    - Output files now use parent-folder timestamp (if present); otherwise they use the execution timestamp.
+    - Output folders still use the execution timestamp (always).
+    - ZIP logs are unzipped to the system temp folder, processed from there, then cleaned up.
+    - Timestamps are normalized (no seconds, - → _, format YYYYMMDD_HHMM).
+    - Market is extracted from Step0_<Market>_... and added to filenames; Pre* / Post* are ignored as markets.
 
   - #### 🐛 Bug fixes:
-   - Minor bug fixing.
+    - Bulk market detection now skips tool output folders so they’re not treated as markets.
+    - Tk dialogs now use temporary hidden roots + parent= + destroy() to avoid the blank GUI window hang.
+    - Minor bug fixing.
     
   - #### 📚 Documentation: 
     - Updated documentation with latest changes.
