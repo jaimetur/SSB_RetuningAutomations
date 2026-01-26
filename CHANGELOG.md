@@ -4,6 +4,27 @@
 
 ---
 
+## Release: v0.5.7
+- ### Release Date: 2026-01-26
+
+- ### Main Changes:
+  
+  - #### 🚨 Breaking Changes:
+
+  - #### 🌟 New Features:
+
+  - #### 🚀 Enhancements:
+
+  - #### 🐛 Bug fixes:
+   - Fixed duplicates entries in Excel sheets of `ConfigurationAudit` module when one MO is splitted in different log files. Now the tool merge all the logs files and creates only one sheet per MO.
+   - Minor bug fixing.
+    
+  - #### 📚 Documentation: 
+    - Updated documentation with latest changes.
+
+
+---
+
 ## Release: v0.5.6
 - ### Release Date: 2026-01-16
 

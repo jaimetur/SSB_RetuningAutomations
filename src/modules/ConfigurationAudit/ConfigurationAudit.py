@@ -535,7 +535,7 @@ class ConfigurationAudit:
             with log_phase_timer("PHASE 4.3: Re-inject modified tables", log_fn=_log_info, show_start=show_phase_starts, show_end=False, show_timing=show_phase_timings, line_prefix="", start_level="INFO", end_level="INFO", timing_level="INFO"):
                 reinject_map = {
                     "NRCellDU": df_nr_cell_du,
-                    "NRFreq": df_nr_freq,
+                    "NRFrequency": df_nr_freq,
                     "NRFreqRelation": df_nr_freq_rel,
                     "NRCellRelation": df_nr_cell_rel,
                     "FreqPrioNR": df_freq_prio_nr,
@@ -552,10 +552,22 @@ class ConfigurationAudit:
                     "TermPointToGNB": df_term_point_to_gnb,
                     "TermPointToENodeB": df_term_point_to_enodeb,
                 }
+
+                # IMPORTANT: Some MOs can appear multiple times across multiple logs/slices.
+                # The aggregated dataframe (concat_or_empty) must be written only once, otherwise we duplicate full content in multiple sheets.
+                reinjected_once: set[str] = set()
+
                 for entry in table_entries:
                     sheet_name = str(entry.get("sheet_candidate", "")).strip()
+                    entry["skip_write"] = False
+
                     if sheet_name in reinject_map:
+                        if sheet_name in reinjected_once:
+                            entry["skip_write"] = True
+                            continue
+
                         entry["df"] = reinject_map[sheet_name]
+                        reinjected_once.add(sheet_name)
 
             # =====================================================================
             #                PHASE 5: Write the Excel file
@@ -619,13 +631,24 @@ class ConfigurationAudit:
                         # ------------------------------------------------------------------
                         with log_phase_timer("PHASE 5.3: Write parsed MO tables", log_fn=_log_info, show_start=show_phase_starts, show_end=False, show_timing=show_phase_timings, line_prefix="", start_level="INFO", end_level="INFO", timing_level="INFO"):
                             # Then write each table in the final determined order
-                            for si, entry in enumerate(table_entries, start=1):
+                            written = 0
+                            total_to_write = sum(1 for e in table_entries if not bool(e.get("skip_write", False)))
+
+                            for entry in table_entries:
+                                if bool(entry.get("skip_write", False)):
+                                    continue
+
+                                written += 1
                                 sheet_start = time.perf_counter()
                                 entry["df"].to_excel(writer, sheet_name=entry["final_sheet"], index=False)
                                 sheet_elapsed = time.perf_counter() - sheet_start
 
                                 if show_phase_timings and sheet_elapsed >= float(slow_sheet_seconds_threshold):
-                                    _log_info(f"PHASE 5.3: Write parsed MO tables - Slow sheet write {si}/{len(table_entries) }(>{slow_sheet_seconds_threshold}s): '{entry['final_sheet']}' ({entry.get('log_file', '')}) took {sheet_elapsed:.3f}s")
+                                    _log_info(
+                                        f"PHASE 5.3: Write parsed MO tables - Slow sheet write {written}/{total_to_write} "
+                                        f"(>{slow_sheet_seconds_threshold}s): '{entry['final_sheet']}' ({entry.get('log_file', '')}) "
+                                        f"took {sheet_elapsed:.3f}s"
+                                    )
 
                         # ------------------------------------------------------------------
                         # PHASE 5.4: Style sheets (tabs, headers, autofit, hyperlinks)

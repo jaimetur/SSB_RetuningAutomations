@@ -15,18 +15,34 @@ def load_nodes_names_and_id_from_summary_audit(
     module_name: Optional[str] = "",
 ) -> tuple[set[str], set[str]]:
     """
-    Read SummaryAudit sheet from POST Configuration Audit and extract:
-      - nodes_id: numeric identifiers (leading digits of node name)
-      - nodes_names: full node names as they appear in ExtraInfo
+    Read a ConfigurationAudit SummaryAudit dataset (from a DataFrame, list of rows, or an Excel path)
+    and extract:
+      - nodes_id: numeric identifiers (leading digits of the node name)
+      - nodes_names: full node names as they appear in ExtraInfo.
 
-    It looks for rows with:
+    The function looks for SummaryAudit rows matching:
       - Category == 'NRCellDU'
-      - Metric containing 'NR nodes with N77 SSB in <stage>-Retune allowed list'
-    and then parses the ExtraInfo field assuming it contains a comma-separated list of node names.
+      - Metric contains: 'NR nodes with N77 SSB in <stage>-Retune allowed list'
 
-    From each node name it extracts the leading numeric identifier (digits at the beginning).
-    Additionally, it prints the full node names and numeric identifiers detected.
+    Then it parses the 'ExtraInfo' field assuming it contains a comma-separated list of node names.
+
+    For each node name token, it:
+      - stores the full token in nodes_names
+      - extracts the leading numeric identifier (digits at the beginning) and stores it in nodes_id
+
+    The function also prints the detected full node names and numeric identifiers for visibility.
+
+    Parameters:
+      audit_excel:
+        - pd.DataFrame: already loaded SummaryAudit-like table
+        - list: list of rows/dicts convertible to DataFrame (e.g. generated via add_row)
+        - str: path to an Excel file containing a 'SummaryAudit' sheet
+      stage:
+        label used to match the Metric string (e.g. 'Pre' or 'Post')
+      module_name:
+        optional prefix used in log/print messages
     """
+
     nodes_id: set[str] = set()
     nodes_names: set[str] = set()
 

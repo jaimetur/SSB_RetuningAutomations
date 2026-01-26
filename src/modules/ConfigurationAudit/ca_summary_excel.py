@@ -7,12 +7,13 @@ This module coordinates:
   - NR audit logic
   - LTE audit logic
   - External / TermPoint enrichment
-  - Other functions to build Excel Summary Table
+  - Other functions to build the SummaryAudit table
 
 IMPORTANT:
-- This function explicitly RETURNS modified audit tables
-  to avoid relying on side-effects.
+- build_summary_audit() returns only the SummaryAudit dataframe plus the NR/LTE parameter mismatching dataframes.
+- Input dataframes may be modified in-place by the underlying process_* functions (side-effects), depending on their implementation.
 """
+
 
 import pandas as pd
 from typing import List, Dict
