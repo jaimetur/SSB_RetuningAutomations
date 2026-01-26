@@ -16,6 +16,7 @@ from src.utils.utils_sorting import natural_logfile_key
 from src.utils.utils_pivot import safe_pivot_count, safe_crosstab_count, apply_frequency_column_filter
 from src.utils.utils_dataframe import concat_or_empty
 from src.utils.utils_datetime import log_phase_timer, format_duration_hms
+from src.modules.Common.correction_commands_exporter import export_correction_cmd_texts, export_external_and_termpoint_commands
 from .ca_summary_excel import build_summary_audit
 from .ca_summary_ppt import generate_ppt_summary
 
@@ -737,6 +738,20 @@ class ConfigurationAudit:
                     shutil.rmtree(tmp_dir, ignore_errors=True)
 
             _log_info(f"Wrote Excel with {len(table_entries)} sheet(s) in: '{pretty_path(excel_path)}'")
+
+            # =====================================================================
+            #                PHASE 5.8: Export Correction Commands (ConfigurationAudit)
+            # =====================================================================
+            with log_phase_timer("PHASE 5.8: Export Correction Commands", log_fn=_log_info, show_start=show_phase_starts, show_end=False, show_timing=show_phase_timings, line_prefix="", start_level="INFO", end_level="INFO", timing_level="INFO"):
+                correction_cmd_sources = {}
+                if df_nr_cell_rel is not None and not df_nr_cell_rel.empty:
+                    correction_cmd_sources["NR_disc"] = df_nr_cell_rel
+                if df_gu_cell_rel is not None and not df_gu_cell_rel.empty:
+                    correction_cmd_sources["GU_disc"] = df_gu_cell_rel
+                if correction_cmd_sources:
+                    export_correction_cmd_texts(base_output_dir_long, correction_cmd_sources, base_folder_name="Correction_Cmd")
+                export_external_and_termpoint_commands(excel_path_long, base_output_dir_long, base_folder_name="Correction_Cmd")
+
 
             # =====================================================================
             #                PHASE 6: Generate PPT textual summary

@@ -6,7 +6,6 @@ from typing import Dict, Optional, List
 
 import pandas as pd
 
-from src.modules.Common.correction_commands_exporter import export_correction_cmd_texts
 from src.modules.Common.correction_commands_builder import build_correction_command_gu_new_relations, build_correction_command_gu_missing_relations, build_correction_command_gu_discrepancies, build_correction_command_nr_new_relations, build_correction_command_nr_missing_relations, build_correction_command_nr_discrepancies
 from src.utils.utils_dataframe import select_latest_by_date, normalize_df, make_index_by_keys
 from src.utils.utils_datetime import extract_date
@@ -928,11 +927,7 @@ class ConsistencyChecks:
 
             # Export text files (outside GU/NR blocks)
             if correction_cmd_sources:
-                cmd_files = export_correction_cmd_texts(output_dir, correction_cmd_sources)
-
-            # Export Correction Commands for Externals and Termpoints in txt
-            if self.audit_post_excel:
-                export_external_and_termpoint_commands(self.audit_post_excel, output_dir)
+                cmd_files = export_correction_cmd_texts(output_dir, correction_cmd_sources, base_folder_name="Correction_Cmd_CC")
 
             # -------------------------------------------------------------------
             #  APPLY HEADER STYLING + AUTO-FIT COLUMNS FOR ALL SHEETS

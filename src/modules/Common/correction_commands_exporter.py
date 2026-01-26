@@ -190,7 +190,7 @@ def _reorder_cmds_del_first(cmds: List[object]) -> List[str]:
 # ----------------------------------------------------------------------
 #  EXPORT CORRECTION COMMNANDS TO TEXT FILES
 # ----------------------------------------------------------------------
-def export_correction_cmd_texts(output_dir: str, dfs_by_category: Dict[str, pd.DataFrame]) -> int:
+def export_correction_cmd_texts(output_dir: str, dfs_by_category: Dict[str, pd.DataFrame], base_folder_name: str = "Correction_Cmd") -> int:
     """
     Export Correction_Cmd values to text files grouped by NodeId and category.
 
@@ -215,7 +215,7 @@ def export_correction_cmd_texts(output_dir: str, dfs_by_category: Dict[str, pd.D
             return "GU"
         return ""
 
-    base_dir = os.path.join(output_dir, "Correction_Cmd")
+    base_dir = os.path.join(output_dir, base_folder_name)
     os.makedirs(base_dir, exist_ok=True)
 
     # Renamed folders
@@ -303,15 +303,12 @@ def export_correction_cmd_texts(output_dir: str, dfs_by_category: Dict[str, pd.D
 
             total_files += 1
 
-    print(f"\n[Consistency Checks (Pre/Post Comparison)] Generated {total_files} Correction_Cmd files in: '{pretty_path(base_dir)}'")
+    print(f"\n[Correction Commands] Generated {total_files} Correction_Cmd files in: '{pretty_path(base_dir)}'")
     return total_files
 
 
 # ----------------------------- EXTERNAL/TERMPOINTS COMMANDS ----------------------------- #
-def export_external_and_termpoint_commands(
-    audit_post_excel: str,
-    output_dir: str,
-) -> int:
+def export_external_and_termpoint_commands(audit_post_excel: str, output_dir: str, base_folder_name: str = "Correction_Cmd") -> int:
     """
     Export correction commands coming from POST Configuration Audit Excel:
       - ExternalNRCellCU (SSB-Post)
@@ -458,7 +455,7 @@ def export_external_and_termpoint_commands(
     if not audit_post_excel or not os.path.isfile(audit_post_excel):
         return 0
 
-    base_dir = os.path.join(output_dir, "Correction_Cmd")
+    base_dir = os.path.join(output_dir, base_folder_name)
 
     ext_nr_base = os.path.join(base_dir, "ExternalNRCellCU")
     ext_gu_base = os.path.join(base_dir, "ExternalGUtranCell")
@@ -564,6 +561,6 @@ def export_external_and_termpoint_commands(
     )
 
     if generated:
-        print(f"[Consistency Checks (Pre/Post Comparison)] Generated {generated} extra Correction_Cmd files from POST Configuration Audit in: '{pretty_path(base_dir)}'")
+        print(f"[Correction Commands] Generated {generated} extra Correction_Cmd files from POST Configuration Audit in: '{pretty_path(base_dir)}'")
 
     return generated

@@ -395,48 +395,87 @@ def process_gu_cell_relation(df_gu_cell_rel, n77_ssb_pre, n77_ssb_post, add_row,
     try:
         if df_gu_cell_rel is not None and not df_gu_cell_rel.empty:
             node_col = resolve_column_case_insensitive(df_gu_cell_rel, ["NodeId"])
-            freq_col = resolve_column_case_insensitive(df_gu_cell_rel, ["GUtranFreqRelationId"])
+            eutrancell_col = resolve_column_case_insensitive(df_gu_cell_rel, ["EUtranCellFDDId", "EUtranCellFDD"])
+            gfreqrel_col = resolve_column_case_insensitive(df_gu_cell_rel, ["GUtranFreqRelationId"])
+            relid_col = resolve_column_case_insensitive(df_gu_cell_rel, ["GUtranCellRelationId"])
+            ncellref_col = resolve_column_case_insensitive(df_gu_cell_rel, ["nCellRef", "neighborCellRef", "NeighborCellRef"])
 
-            if node_col and freq_col:
-                work = df_gu_cell_rel[[node_col, freq_col]].copy()
+            if node_col and gfreqrel_col:
+                work = df_gu_cell_rel.copy()
                 work[node_col] = work[node_col].astype(str).str.strip()
 
-                # Extract numeric frequency from GUtranFreqRelationId (part before first '-')
-                work["GNodeB_SSB_Source"] = work[freq_col].map(lambda v: parse_int_frequency(str(v).split("-", 1)[0]) if pd.notna(v) else None)
+                old_ssb = int(n77_ssb_pre)
+                new_ssb = int(n77_ssb_post)
 
-                count_old = int((work["GNodeB_SSB_Source"] == n77_ssb_pre).sum())
-                count_new = int((work["GNodeB_SSB_Source"] == n77_ssb_post).sum())
+                # -------------------------------------------------
+                # Frequency (extract from GUtranFreqRelationId, base frequency before first '-')
+                # -------------------------------------------------
+                work["Frequency"] = work[gfreqrel_col].map(lambda v: parse_int_frequency(str(v).split("-")[0]) if v is not None and str(v).strip() else "")
+                freq_as_int = pd.to_numeric(work["Frequency"], errors="coerce")
 
-                add_row(
-                    "GUtranCellRelation",
-                    "LTE Frequency Audit",
-                    f"LTE cellRelations to old N77 SSB ({n77_ssb_pre}) (from GUtranCellRelation table)",
-                    count_old,
-                )
-                add_row(
-                    "GUtranCellRelation",
-                    "LTE Frequency Audit",
-                    f"LTE cellRelations to new N77 SSB ({n77_ssb_post}) (from GUtranCellRelation table)",
-                    count_new,
-                )
+                count_old = int((freq_as_int == old_ssb).sum())
+                count_new = int((freq_as_int == new_ssb).sum())
+
+                add_row("GUtranCellRelation", "GU Frequency Audit", f"GU cellRelations to old N77 SSB ({old_ssb}) (from GUtranCellRelation table)", count_old)
+                add_row("GUtranCellRelation", "GU Frequency Audit", f"GU cellRelations to new N77 SSB ({new_ssb}) (from GUtranCellRelation table)", count_new)
+
+                # -------------------------------------------------
+                # ExternalGNodeBFunction / ExternalGUtranCell (extract from nCellRef / neighborCellRef)
+                # -------------------------------------------------
+                def _extract_kv_from_ref(ref_value: object, key: str) -> str:
+                    """Extract 'key=value' from a comma-separated reference string like '...,ExternalGUtranCell=...,ExternalGNodeBFunction=..., ...'."""
+                    text = str(ref_value or "")
+                    m = re.search(rf"{re.escape(key)}=([^,]+)", text)
+                    return m.group(1).strip() if m else ""
+
+                if ncellref_col:
+                    work["ExternalGNodeBFunction"] = work[ncellref_col].map(lambda v: _extract_kv_from_ref(v, "ExternalGNodeBFunction"))
+                    work["ExternalGUtranCell"] = work[ncellref_col].map(lambda v: _extract_kv_from_ref(v, "ExternalGUtranCell"))
+                else:
+                    if "ExternalGNodeBFunction" not in work.columns:
+                        work["ExternalGNodeBFunction"] = ""
+                    if "ExternalGUtranCell" not in work.columns:
+                        work["ExternalGUtranCell"] = ""
+
+                # -------------------------------------------------
+                # GNodeB_SSB_Target (same logic as ExternalGUtranCell / ExternalNRCellCU)
+                # -------------------------------------------------
+                nodes_without_retune_ids = {str(v) for v in (nodes_pre or [])}
+                nodes_with_retune_ids = {str(v) for v in (nodes_post or [])}
+
+                def _detect_gnodeb_target(ext_gnb: object) -> str:
+                    val = str(ext_gnb) if ext_gnb is not None else ""
+                    if any(n in val for n in nodes_without_retune_ids):
+                        return "SSB-Pre"
+                    if any(n in val for n in nodes_with_retune_ids):
+                        return "SSB-Post"
+                    return "Unknown"
+
+                work["GNodeB_SSB_Target"] = work["ExternalGNodeBFunction"].map(_detect_gnodeb_target)
+
+                # -------------------------------------------------
+                # Correction_Cmd (frequency-based only, same format as ConsistencyChecks.*_disc)
+                #   - Generate commands ONLY for rows pointing to Old SSB but targeting retuned gNodeB (SSB-Post)
+                # -------------------------------------------------
+                from src.modules.Common.correction_commands_builder import build_correction_command_gu_discrepancies
+
+                if "Correction_Cmd" not in work.columns:
+                    work["Correction_Cmd"] = ""
+
+                mask_disc = (freq_as_int == old_ssb) & (work["GNodeB_SSB_Target"].astype(str).str.strip() == "SSB-Post")
+                if int(mask_disc.sum()) > 0 and eutrancell_col and relid_col:
+                    disc_df = work.loc[mask_disc].copy()
+                    disc_cmd_df = build_correction_command_gu_discrepancies(disc_df, work, str(old_ssb), str(new_ssb))
+                    if disc_cmd_df is not None and not disc_cmd_df.empty and "Correction_Cmd" in disc_cmd_df.columns:
+                        work.loc[disc_cmd_df.index, "Correction_Cmd"] = disc_cmd_df["Correction_Cmd"].astype(str)
+
+                # -------------------------------------------------
+                # Write back preserving original columns + new ones
+                # -------------------------------------------------
+                df_gu_cell_rel.loc[:, work.columns] = work
             else:
-                add_row(
-                    "GUtranCellRelation",
-                    "LTE Frequency Audit",
-                    "GUtranCellRelation table present but NodeId / GUtranFreqRelationId column missing",
-                    "N/A",
-                )
+                add_row("GUtranCellRelation", "GU Frequency Audit", "GUtranCellRelation table present but NodeId / GUtranFreqRelationId column missing", "N/A")
         else:
-            add_row(
-                "GUtranCellRelation",
-                "LTE Frequency Audit",
-                "GUtranCellRelation table",
-                "Table not found or empty",
-            )
+            add_row("GUtranCellRelation", "GU Frequency Audit", "GUtranCellRelation table", "Table not found or empty")
     except Exception as ex:
-        add_row(
-            "GUtranCellRelation",
-            "LTE Frequency Audit",
-            "Error while checking GUtranCellRelation",
-            f"ERROR: {ex}",
-        )
+        add_row("GUtranCellRelation", "GU Frequency Audit", "Error while checking GUtranCellRelation", f"ERROR: {ex}")

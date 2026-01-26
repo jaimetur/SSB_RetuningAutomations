@@ -2,6 +2,7 @@
 import re
 import pandas as pd
 
+from src.modules.Common.correction_commands_builder import build_correction_command_nr_discrepancies
 from src.utils.utils_frequency import resolve_column_case_insensitive, parse_int_frequency, is_n77_from_string
 from src.utils.utils_frequency import extract_ssb_from_profile_ref, detect_profile_ref_ssb_side, build_expected_profile_ref_clone_by_side
 
@@ -604,6 +605,21 @@ def process_nr_cell_relation(df_nr_cell_rel, _extract_freq_from_nrfreqrelationre
                     return "Unknown"
 
                 work["GNodeB_SSB_Target"] = work["ExternalGNBCUCPFunction"].map(_detect_gnodeb_target)
+
+                # -------------------------------------------------
+                # Correction_Cmd (frequency-based only, same format as ConsistencyChecks.*_disc)
+                #   - Generate commands ONLY for rows pointing to Old SSB but targeting retuned gNodeB (SSB-Post)
+                # -------------------------------------------------
+                if "Correction_Cmd" not in work.columns:
+                    work["Correction_Cmd"] = ""
+
+                mask_disc = (freq_as_int == old_ssb) & (work["GNodeB_SSB_Target"].astype(str).str.strip() == "SSB-Post")
+                if int(mask_disc.sum()) > 0:
+                    disc_df = work.loc[mask_disc].copy()
+                    disc_cmd_df = build_correction_command_nr_discrepancies(disc_df, work, str(old_ssb), str(new_ssb))
+                    if disc_cmd_df is not None and not disc_cmd_df.empty and "Correction_Cmd" in disc_cmd_df.columns:
+                        work.loc[disc_cmd_df.index, "Correction_Cmd"] = disc_cmd_df["Correction_Cmd"].astype(str)
+
 
                 # -------------------------------------------------
                 # Write back preserving original columns + new ones
