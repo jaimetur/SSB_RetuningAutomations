@@ -4,6 +4,45 @@
 
 ---
 
+## Release: v0.6.0
+- ### Release Date: 2026-01-26
+
+- ### Main Changes:
+  
+  - #### 🚨 Breaking Changes:
+
+  - #### 🌟 New Features:
+
+  - #### 🚀 Enhancements:
+    - ConsistencyChecks:
+      - ConsistencyChecks must export to Correction_Cmd_CC instead of Correction_Cmd. 
+      - In ConsistencyChecks, export ONLY neighbor-relation commands (because they require comparing 2 audits):
+        - NR_new / NR_missing / NR_disc
+        - GU_new / GU_missing / GU_disc 
+      - Those CC neighbor commands must be exported under Correction_Cmd_CC/ (not under Correction_Cmd/). 
+      - Stop exporting External/Termpoints from ConsistencyChecks (to prevent duplicates). External/Termpoints move to ConfigurationAudit export. 
+    - ConfigurationAudit:
+      - ConfigurationAudit must keep using the normal export (Correction_Cmd). 
+      - Avoid printing “Consistency Checks …” messages when the export is executed by ConfigurationAudit. Keep CC logging focused on what CC actually exports. 
+      - In ConfigurationAudit, the NRCellRelation sheet must generate Correction_Cmd ONLY based on frequency (not parameter-comparison mismatches). 
+      - In ConfigurationAudit, the GUtranCellRelation sheet must include these extra columns:
+        - Frequency (from GUtranFreqRelationId).
+        - ExternalGNodeBFunction (extracted from the ref like neighborCellRef / nCellRef).
+        - GNodeB_SSB_Target (same logic as ExternalGUtranCell).
+      - In ConfigurationAudit, GUtranCellRelation must generate Correction_Cmd ONLY based on frequency, using the SAME logic as GU_disc in ConsistencyChecks.
+      - ConfigurationAudit must export ALL commands that do NOT require 2 audits, into Correction_Cmd/ (not _CC):
+        - NR_disc (frequency-based) from NRCellRelation.
+        - GU_disc (frequency-based) from GUtranCellRelation.
+        - External/Termpoints commands (they already come from the single Audit Excel)
+
+  - #### 🐛 Bug fixes:
+    - Minor bug fixing.
+    
+  - #### 📚 Documentation: 
+    - Updated documentation with latest changes.
+
+---
+
 ## Release: v0.5.7
 - ### Release Date: 2026-01-26
 
@@ -25,7 +64,6 @@
     
   - #### 📚 Documentation: 
     - Updated documentation with latest changes.
-
 
 ---
 
