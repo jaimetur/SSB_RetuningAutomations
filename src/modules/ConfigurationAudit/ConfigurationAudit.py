@@ -97,6 +97,8 @@ class ConfigurationAudit:
             slow_sheet_seconds_threshold: float = 10.0, # <<< NEW: report per-sheet when a sheet is slow
             source_zip_path: Optional[str] = None,  # <<< NEW: original ZIP path containing the logs (if input was a ZIP)
             extracted_root: Optional[str] = None,  # <<< NEW: temp extraction root folder (used to rebuild ZIP-based LogPath)
+            export_correction_cmd: bool = True,
+            correction_cmd_folder_name: str = "Correction_Cmd_CA"
     ) -> str:
 
         """
@@ -819,12 +821,15 @@ class ConfigurationAudit:
             # =====================================================================
             #                PHASE 6: Export Correction Commands (ConfigurationAudit)
             # =====================================================================
-            with log_phase_timer("PHASE 6: Export Correction Commands", log_fn=_log_info, show_start=show_phase_starts, show_end=False, show_timing=show_phase_timings, line_prefix="", start_level="INFO", end_level="INFO", timing_level="INFO"):
-                # Export External / TermPoint commands (keeps existing folder structure)
-                export_external_and_termpoint_commands(excel_path_long, base_output_dir_long, base_folder_name="Correction_Cmd")
+            if export_correction_cmd:
+                with log_phase_timer("PHASE 6: Export Correction Commands", log_fn=_log_info, show_start=show_phase_starts, show_end=False, show_timing=show_phase_timings, line_prefix="", start_level="INFO", end_level="INFO", timing_level="INFO"):
+                    # Export External / TermPoint commands (keeps existing folder structure)
+                    export_external_and_termpoint_commands(excel_path_long, base_output_dir_long, base_folder_name=correction_cmd_folder_name)
 
-                # Export any other sheet containing a 'Correction_Cmd' column (NRCellRelation, GUtranCellRelation, etc.)
-                export_all_sheets_with_correction_cmd(excel_path_long, base_output_dir_long, base_folder_name="Correction_Cmd", exclude_sheets={"Summary", "SummaryAudit", "Summary Param Mismatch NR", "Summary Param Mismatch GU"})
+                    # Export any other sheet containing a 'Correction_Cmd' column (NRCellRelation, GUtranCellRelation, etc.)
+                    export_all_sheets_with_correction_cmd(excel_path_long, base_output_dir_long, base_folder_name=correction_cmd_folder_name, exclude_sheets={"Summary", "SummaryAudit", "Summary Param Mismatch NR", "Summary Param Mismatch GU", "ExternalNRCellCU", "ExternalGUtranCell", "TermPointToGNodeB", "TermPointToGNB"})
+            else:
+                _log_info("PHASE 6: Export Correction Commands skipped (export_correction_cmd=False).")
 
             # =====================================================================
             #                PHASE 7: Generate PPT textual summary

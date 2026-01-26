@@ -18,6 +18,38 @@ from src.utils.utils_io import to_long_path, pretty_path
 # ----------------------------------------------------------------------
 _DEL_LINE_RE = re.compile(r"^\s*del\b", re.IGNORECASE)
 
+def _safe_filename_component(value: object, fallback: str = "item", max_len: int = 120) -> str:
+    """
+    Convert any value into a Windows-safe filename component:
+      - remove invalid characters <>:"/\\|?*
+      - remove ASCII control chars
+      - strip trailing dots/spaces
+      - avoid reserved device names (CON, PRN, AUX, NUL, COM1.., LPT1..)
+    """
+    s = str(value) if value is not None else ""
+    s = s.strip()
+
+    if not s:
+        s = fallback
+
+    invalid = '<>:"/\\|?*'
+    s = "".join("_" if (ch in invalid or ord(ch) < 32) else ch for ch in s)
+    s = s.rstrip(" .")
+
+    reserved = {
+        "con", "prn", "aux", "nul",
+        "com1", "com2", "com3", "com4", "com5", "com6", "com7", "com8", "com9",
+        "lpt1", "lpt2", "lpt3", "lpt4", "lpt5", "lpt6", "lpt7", "lpt8", "lpt9",
+    }
+    if s.lower() in reserved:
+        s = f"_{s}_"
+
+    if len(s) > max_len:
+        s = s[:max_len].rstrip(" .")
+
+    return s or fallback
+
+
 def _merge_blocks_hoist_header_footer(blocks: List[str], header_lines: int = 3, footer_lines: int = 1) -> str:
     """
     Merge multiple multi-line command blocks into a single script.
@@ -304,7 +336,10 @@ def export_cc_correction_cmd_texts(output_dir: str, dfs_by_category: Dict[str, p
             if not final_text:
                 continue
 
-            file_name = f"{node_str}_{category}.txt"
+            node_str_safe = _safe_filename_component(node_str, fallback="node")
+            cat_safe = _safe_filename_component(category, fallback="cmd")
+            file_name = f"{node_str_safe}_{cat_safe}.txt"
+
             file_path = os.path.join(target_dir, file_name)
             file_path_long = to_long_path(file_path)
 
@@ -340,20 +375,26 @@ def export_external_and_termpoint_commands(audit_post_excel: str, output_dir: st
       - All 'del ...' commands are moved to the top of each node file.
     """
 
+    try:
+        xl_cached = pd.ExcelFile(audit_post_excel) if audit_post_excel and os.path.isfile(audit_post_excel) else None
+        sheet_map_cached = {s.lower(): s for s in (xl_cached.sheet_names if xl_cached else [])}
+    except Exception:
+        xl_cached = None
+        sheet_map_cached = {}
+
     def _read_sheet_case_insensitive(audit_excel: str, sheet_name: str) -> Optional[pd.DataFrame]:
         """
         Read a sheet using case-insensitive matching. Returns None if not found or on error.
+        Uses a cached ExcelFile to avoid reopening/parsing the XLSX multiple times (major speedup).
         """
-        if not audit_excel or not os.path.isfile(audit_excel):
+        if xl_cached is None:
             return None
 
         try:
-            xl = pd.ExcelFile(audit_excel)
-            sheet_map = {s.lower(): s for s in xl.sheet_names}
-            real_sheet = sheet_map.get(str(sheet_name).lower())
+            real_sheet = sheet_map_cached.get(str(sheet_name).lower())
             if not real_sheet:
                 return None
-            return xl.parse(real_sheet)
+            return xl_cached.parse(real_sheet)
         except Exception:
             return None
 
@@ -450,7 +491,10 @@ def export_external_and_termpoint_commands(audit_post_excel: str, output_dir: st
             if not merged_script:
                 continue
 
-            file_name = f"{node_str}_{suffix}.txt"
+            node_str_safe = _safe_filename_component(node_str, fallback="node")
+            suffix_safe = _safe_filename_component(suffix, fallback="cmd")
+            file_name = f"{node_str_safe}_{suffix_safe}.txt"
+
             out_path = os.path.join(output_dir, file_name)
             out_path_long = to_long_path(out_path)
 
@@ -476,7 +520,7 @@ def export_external_and_termpoint_commands(audit_post_excel: str, output_dir: st
     ext_gu_unknown_dir = os.path.join(ext_gu_base, "Unknown")
 
     tp_gnb_dir = os.path.join(base_dir, "TermPointToGNB")
-    tp_gnb_ssbpost_dir = os.path.join(tp_gnb_dir, "SSBPost")
+    tp_gnb_ssbpost_dir = os.path.join(tp_gnb_dir, "SSB-Post")
     tp_gnb_unknown_dir = os.path.join(tp_gnb_dir, "Unknown")
 
     tp_gnodeb_base = os.path.join(base_dir, "TermPointToGNodeB")
@@ -592,7 +636,7 @@ def export_external_and_termpoint_commands(audit_post_excel: str, output_dir: st
         filename_suffix="TermPointToGNB")
 
     if generated:
-        print(f"[Correction Commands] Generated {generated} extra Correction_Cmd files from POST Configuration Audit in: '{pretty_path(base_dir)}'")
+        print(f"[Correction Commands] Generated {generated} Termpoints/Externals Correction_Cmd files from Configuration Audit in: '{pretty_path(base_dir)}'")
 
     return generated
 
@@ -673,7 +717,10 @@ def export_all_sheets_with_correction_cmd(audit_post_excel: str, output_dir: str
             if not final_text:
                 continue
 
-            file_name = f"{node_str}_{str(sheet).strip()}.txt"
+            node_str_safe = _safe_filename_component(node_str, fallback="node")
+            sheet_safe = _safe_filename_component(str(sheet).strip(), fallback="sheet")
+            file_name = f"{node_str_safe}_{sheet_safe}.txt"
+
             file_path = to_long_path(os.path.join(sheet_dir, file_name))
 
             with open(file_path, "w", encoding="utf-8") as f:
@@ -681,6 +728,6 @@ def export_all_sheets_with_correction_cmd(audit_post_excel: str, output_dir: str
 
             total_files += 1
 
-    print(f"\n[Correction Commands] Generated {total_files} sheet-based Correction_Cmd files in: '{pretty_path(base_dir)}'")
+    print(f"\n[Correction Commands] Generated {total_files} sheet-based Correction_Cmd files from Configuration Audit in: '{pretty_path(base_dir)}'")
     return total_files
 

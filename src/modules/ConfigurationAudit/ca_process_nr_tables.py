@@ -550,7 +550,7 @@ def process_nr_cell_relation(df_nr_cell_rel, _extract_freq_from_nrfreqrelationre
     try:
         if df_nr_cell_rel is not None and not df_nr_cell_rel.empty:
             node_col = resolve_column_case_insensitive(df_nr_cell_rel, ["NodeId"])
-            freq_ref_col = resolve_column_case_insensitive(df_nr_cell_rel, ["nRFreqRelationRef", "NRFreqRelationRef"])
+            freq_col = resolve_column_case_insensitive(df_nr_cell_rel, ["nRFreqRelationRef", "NRFreqRelationRef"])
             cell_ref_col = resolve_column_case_insensitive(df_nr_cell_rel, ["nRCellRef", "NRCellRef"])
             nrcellcu_col = resolve_column_case_insensitive(df_nr_cell_rel, ["NRCellCUId", "NRCellCuId"])
             relid_col = resolve_column_case_insensitive(df_nr_cell_rel, ["NRCellRelationId", "NRCellRelId"])

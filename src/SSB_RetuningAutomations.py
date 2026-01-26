@@ -600,6 +600,7 @@ def run_configuration_audit(
     external_output_dir: Optional[str] = None,
     profiles_audit: bool = True,                # <<< NEW (default now True because module 4 was removed and the logic have been incorporated to Default Configuration Audit)
     # profiles_audit: bool = True,                 # <<< NEW
+    export_correction_cmd: bool = True,           # <<< NEW: when called from ConsistencyChecks, disable for PRE and enable for POST
     module_name_override: Optional[str] = None,    # <<< NEW
 ) -> Optional[str]:
     """
@@ -753,7 +754,8 @@ def run_configuration_audit(
                     app = ConfigurationAudit(n77_ssb_pre=local_n77_ssb_pre, n77_ssb_post=local_n77_ssb_post)
 
         # Include output_dir in kwargs passed to ConfigurationAudit.run
-        kwargs = dict(module_name=module_name, versioned_suffix=file_versioned_suffix, tables_order=TABLES_ORDER, output_dir=output_dir, profiles_audit=profiles_audit)
+        kwargs = dict(module_name=module_name, versioned_suffix=file_versioned_suffix, tables_order=TABLES_ORDER, output_dir=output_dir, profiles_audit=profiles_audit, export_correction_cmd=export_correction_cmd, correction_cmd_folder_name="Correction_Cmd_CA")
+
 
         # Provide ZIP context to ConfigurationAudit so Summary.LogPath can point to "<zip>/<log>"
         if resolved and resolved.zip_path:
@@ -1097,7 +1099,7 @@ def run_consistency_checks(
                 # --- Run Configuration Audit for PRE and POST ---
                 print(f"{module_name} {market_tag} [INFO] Running Configuration Audit for PRE folder before consistency checks...")
                 print("-" * 80)
-                pre_audit_excel = run_configuration_audit(input_dir=pre_dir_process_fs, ca_freq_filters_csv=ca_freq_filters_csv, n77_ssb_pre=n77_ssb_pre, n77_ssb_post=n77_ssb_post, n77b_ssb=n77b_ssb, allowed_n77_ssb_pre_csv=allowed_n77_ssb_pre_csv, allowed_n77_arfcn_pre_csv=allowed_n77_arfcn_pre_csv, allowed_n77_ssb_post_csv=allowed_n77_ssb_post_csv, allowed_n77_arfcn_post_csv=allowed_n77_arfcn_post_csv, versioned_suffix=audit_pre_suffix, market_label=market_label, external_output_dir=output_dir)
+                pre_audit_excel = run_configuration_audit(input_dir=pre_dir_process_fs, ca_freq_filters_csv=ca_freq_filters_csv, n77_ssb_pre=n77_ssb_pre, n77_ssb_post=n77_ssb_post, n77b_ssb=n77b_ssb, allowed_n77_ssb_pre_csv=allowed_n77_ssb_pre_csv, allowed_n77_arfcn_pre_csv=allowed_n77_arfcn_pre_csv, allowed_n77_ssb_post_csv=allowed_n77_ssb_post_csv, allowed_n77_arfcn_post_csv=allowed_n77_arfcn_post_csv, versioned_suffix=audit_pre_suffix, market_label=market_label, external_output_dir=output_dir, export_correction_cmd=False)
                 print("-" * 80)
                 if pre_audit_excel:
                     print(f"{module_name} {market_tag} [INFO] PRE Configuration Audit output: '{pretty_path(pre_audit_excel)}'")
@@ -1106,7 +1108,7 @@ def run_consistency_checks(
 
                 print(f"{module_name} {market_tag} [INFO] Running Configuration Audit for POST folder before consistency checks...")
                 print("-" * 80)
-                post_audit_excel = run_configuration_audit(input_dir=post_dir_process_fs, ca_freq_filters_csv=ca_freq_filters_csv, n77_ssb_pre=n77_ssb_pre, n77_ssb_post=n77_ssb_post, n77b_ssb=n77b_ssb, allowed_n77_ssb_pre_csv=allowed_n77_ssb_pre_csv, allowed_n77_arfcn_pre_csv=allowed_n77_arfcn_pre_csv, allowed_n77_ssb_post_csv=allowed_n77_ssb_post_csv, allowed_n77_arfcn_post_csv=allowed_n77_arfcn_post_csv, versioned_suffix=audit_post_suffix, market_label=market_label, external_output_dir=output_dir)
+                post_audit_excel = run_configuration_audit(input_dir=post_dir_process_fs, ca_freq_filters_csv=ca_freq_filters_csv, n77_ssb_pre=n77_ssb_pre, n77_ssb_post=n77_ssb_post, n77b_ssb=n77b_ssb, allowed_n77_ssb_pre_csv=allowed_n77_ssb_pre_csv, allowed_n77_arfcn_pre_csv=allowed_n77_arfcn_pre_csv, allowed_n77_ssb_post_csv=allowed_n77_ssb_post_csv, allowed_n77_arfcn_post_csv=allowed_n77_arfcn_post_csv, versioned_suffix=audit_post_suffix, market_label=market_label, external_output_dir=output_dir, export_correction_cmd=True)
                 print("-" * 80)
                 if post_audit_excel:
                     print(f"{module_name} {market_tag} [INFO] POST Configuration Audit output: '{pretty_path(post_audit_excel)}'")

@@ -138,7 +138,7 @@ def process_external_nr_cell_cu(df_external_nr_cell_cu, n77_ssb_pre, n77_ssb_pos
                     mask_final = mask_pre & mask_target
 
                     # Safely extract NR network tail
-                    nr_tail_series = work[freq_col].map(lambda v: extract_nrnetwork_tail(v) if isinstance(v, str) and v.strip() else "")
+                    nr_tail_series = work[freq_ref_col].map(lambda v: extract_nrnetwork_tail(v) if isinstance(v, str) and v.strip() else "")
 
                     if "Correction_Cmd" not in work.columns:
                         work["Correction_Cmd"] = ""
