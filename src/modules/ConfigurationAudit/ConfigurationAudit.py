@@ -16,7 +16,7 @@ from src.utils.utils_sorting import natural_logfile_key
 from src.utils.utils_pivot import safe_pivot_count, safe_crosstab_count, apply_frequency_column_filter
 from src.utils.utils_dataframe import concat_or_empty
 from src.utils.utils_datetime import log_phase_timer, format_duration_hms
-from src.modules.Common.correction_commands_exporter import export_correction_cmd_texts, export_external_and_termpoint_commands
+from src.modules.Common.correction_commands_exporter import export_all_sheets_with_correction_cmd, export_external_and_termpoint_commands
 from .ca_summary_excel import build_summary_audit
 from .ca_summary_ppt import generate_ppt_summary
 
@@ -95,7 +95,10 @@ class ConfigurationAudit:
             show_phase_timings: bool = True,  # <<< NEW: show timings as [INFO]
             slow_file_seconds_threshold: float = 10.0,  # <<< NEW: report per-file parsing when a file is slow
             slow_sheet_seconds_threshold: float = 10.0, # <<< NEW: report per-sheet when a sheet is slow
+            source_zip_path: Optional[str] = None,  # <<< NEW: original ZIP path containing the logs (if input was a ZIP)
+            extracted_root: Optional[str] = None,  # <<< NEW: temp extraction root folder (used to rebuild ZIP-based LogPath)
     ) -> str:
+
         """
         Main entry point: creates an Excel file with one sheet per detected table.
         Sheets are ordered according to TABLES_ORDER if provided; otherwise,
@@ -328,7 +331,8 @@ class ConfigurationAudit:
                     lf = str(entry.get("log_file", "")).strip()
                     if lf:
                         base.setdefault("log_files", [])
-                        base["log_files"].append(lf)
+                        if lf not in base["log_files"]:
+                            base["log_files"].append(lf)
 
                     note = str(entry.get("note", "")).strip()
                     if note:
@@ -380,18 +384,27 @@ class ConfigurationAudit:
                                 encoding_str = part.replace("encoding=", "")
 
                     df: pd.DataFrame = entry["df"]
+
+                    logs_list = entry.get("log_files", [entry.get("log_file", "")])
+                    logs_list = [str(x).strip() for x in logs_list if str(x).strip()]
+                    logs_list = list(dict.fromkeys(logs_list))  # unique, preserve order
+
+                    if source_zip_path:
+                        zip_disp = pretty_path(source_zip_path)
+                        logpath_disp = ", ".join([f"{zip_disp}/{lf}" for lf in logs_list]) if logs_list else zip_disp
+                    else:
+                        logpath_disp = pretty_path(input_dir)
+
                     summary_rows.append(
                         {
-                            # "File": entry["log_file"],
-                            "File": ", ".join(entry.get("log_files", [entry["log_file"]])),
+                            "File": ", ".join(logs_list),
                             "Sheet": entry["final_sheet"],
                             "Rows": int(len(df)),
                             "Columns": int(df.shape[1]),
                             "Separator": separator_str,
                             "Encoding": encoding_str,
-                            # "LogFile": entry["log_file"],
-                            "LogFile": ", ".join(entry.get("log_files", [entry["log_file"]])),
-                            "LogPath": pretty_path(input_dir),
+                            "LogFile": ", ".join(logs_list),
+                            "LogPath": logpath_disp,
                             "TablesInLog": entry["tables_in_log"],
                         }
                     )
@@ -712,6 +725,22 @@ class ConfigurationAudit:
                             style_headers_autofilter_and_autofit(writer, freeze_header=True, align="left")
 
                             # ------------------------------------------------------------------
+                            # Add A1 hyperlink to SummaryAudit in ALL sheets (keep cell value)
+                            # ------------------------------------------------------------------
+                            try:
+                                wb = writer.book
+                                if "SummaryAudit" in wb.sheetnames:
+                                    for ws in wb.worksheets:
+                                        if ws.title == "SummaryAudit":
+                                            continue
+                                        cell = ws["A1"]
+                                        cell.hyperlink = "#SummaryAudit!A1"
+                                        cell.font = Font(color="0563C1", underline="single")
+                            except Exception:
+                                pass
+
+
+                            # ------------------------------------------------------------------
                             # Add hyperlinks from SummaryAudit.Category to corresponding sheets
                             # ------------------------------------------------------------------
                             ws_summary_audit = writer.sheets.get("SummaryAudit")
@@ -791,15 +820,11 @@ class ConfigurationAudit:
             #                PHASE 6: Export Correction Commands (ConfigurationAudit)
             # =====================================================================
             with log_phase_timer("PHASE 6: Export Correction Commands", log_fn=_log_info, show_start=show_phase_starts, show_end=False, show_timing=show_phase_timings, line_prefix="", start_level="INFO", end_level="INFO", timing_level="INFO"):
-                correction_cmd_sources = {}
-                if df_nr_cell_rel is not None and not df_nr_cell_rel.empty:
-                    correction_cmd_sources["NR_disc"] = df_nr_cell_rel
-                if df_gu_cell_rel is not None and not df_gu_cell_rel.empty:
-                    correction_cmd_sources["GU_disc"] = df_gu_cell_rel
-                if correction_cmd_sources:
-                    export_correction_cmd_texts(base_output_dir_long, correction_cmd_sources, base_folder_name="Correction_Cmd")
+                # Export External / TermPoint commands (keeps existing folder structure)
                 export_external_and_termpoint_commands(excel_path_long, base_output_dir_long, base_folder_name="Correction_Cmd")
 
+                # Export any other sheet containing a 'Correction_Cmd' column (NRCellRelation, GUtranCellRelation, etc.)
+                export_all_sheets_with_correction_cmd(excel_path_long, base_output_dir_long, base_folder_name="Correction_Cmd", exclude_sheets={"Summary", "SummaryAudit", "Summary Param Mismatch NR", "Summary Param Mismatch GU"})
 
             # =====================================================================
             #                PHASE 7: Generate PPT textual summary

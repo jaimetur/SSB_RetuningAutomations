@@ -200,7 +200,7 @@ def _reorder_cmds_del_first(cmds: List[object]) -> List[str]:
 # ----------------------------------------------------------------------
 #  EXPORT CORRECTION COMMNANDS TO TEXT FILES
 # ----------------------------------------------------------------------
-def export_correction_cmd_texts(output_dir: str, dfs_by_category: Dict[str, pd.DataFrame], base_folder_name: str = "Correction_Cmd") -> int:
+def export_cc_correction_cmd_texts(output_dir: str, dfs_by_category: Dict[str, pd.DataFrame], base_folder_name: str = "Correction_Cmd") -> int:
     """
     Export Correction_Cmd values to text files grouped by NodeId and category.
 
@@ -595,3 +595,92 @@ def export_external_and_termpoint_commands(audit_post_excel: str, output_dir: st
         print(f"[Correction Commands] Generated {generated} extra Correction_Cmd files from POST Configuration Audit in: '{pretty_path(base_dir)}'")
 
     return generated
+
+
+def export_all_sheets_with_correction_cmd(audit_post_excel: str, output_dir: str, base_folder_name: str = "Correction_Cmd", exclude_sheets: Optional[set[str]] = None) -> int:
+    """
+    Export Correction_Cmd values from ANY sheet in the Excel containing a 'Correction_Cmd' column.
+    This is intended for ConfigurationAudit (NRCellRelation, GUtranCellRelation, etc.).
+
+    Folder layout:
+      <output_dir>/Correction_Cmd/<SheetName>/<NodeId>_<SheetName>.txt
+    """
+    if not audit_post_excel or not os.path.isfile(audit_post_excel):
+        return 0
+
+    exclude = {s.strip().lower() for s in (exclude_sheets or set())}
+
+    try:
+        xl = pd.ExcelFile(audit_post_excel)
+        sheet_names = list(xl.sheet_names)
+    except Exception:
+        return 0
+
+    base_dir = os.path.join(output_dir, base_folder_name)
+    os.makedirs(base_dir, exist_ok=True)
+
+    total_files = 0
+
+    for sheet in sheet_names:
+        if str(sheet).strip().lower() in exclude:
+            continue
+
+        try:
+            df = xl.parse(sheet)
+        except Exception:
+            continue
+
+        if df is None or df.empty:
+            continue
+        if "Correction_Cmd" not in df.columns or "NodeId" not in df.columns:
+            continue
+
+        work = df.copy()
+        work["NodeId"] = work["NodeId"].astype(str).str.strip()
+
+        raw_series = work["Correction_Cmd"]
+        raw_series = raw_series[raw_series.notna()]
+
+        if raw_series.empty:
+            continue
+
+        sheet_dir = os.path.join(base_dir, str(sheet).strip())
+        os.makedirs(sheet_dir, exist_ok=True)
+
+        for node_id, group in work.groupby("NodeId"):
+            node_str = str(node_id).strip()
+            if not node_str:
+                continue
+
+            raw_cmds = [cmd for cmd in group["Correction_Cmd"] if str(cmd).strip()]
+            if not raw_cmds:
+                continue
+
+            ordered_blocks = _reorder_cmds_del_first(raw_cmds)
+            if not ordered_blocks:
+                continue
+
+            del_lines = [b for b in ordered_blocks if _DEL_LINE_RE.match(b)]
+            rest_blocks = [b for b in ordered_blocks if not _DEL_LINE_RE.match(b)]
+
+            pieces: List[str] = []
+            if del_lines:
+                pieces.append("\n".join(del_lines).strip())
+            if rest_blocks:
+                pieces.append("\n\n".join(rest_blocks).strip())
+
+            final_text = "\n\n".join([p for p in pieces if p.strip()]).strip()
+            if not final_text:
+                continue
+
+            file_name = f"{node_str}_{str(sheet).strip()}.txt"
+            file_path = to_long_path(os.path.join(sheet_dir, file_name))
+
+            with open(file_path, "w", encoding="utf-8") as f:
+                f.write(final_text)
+
+            total_files += 1
+
+    print(f"\n[Correction Commands] Generated {total_files} sheet-based Correction_Cmd files in: '{pretty_path(base_dir)}'")
+    return total_files
+

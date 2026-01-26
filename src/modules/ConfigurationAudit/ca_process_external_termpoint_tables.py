@@ -429,6 +429,11 @@ def process_termpoint_to_gnb(df_term_point_to_gnb, normalize_state, normalize_ip
         ip_col = None
         avail_col = None
 
+        if df_term_point_to_gnb is not None and not isinstance(df_term_point_to_gnb, pd.DataFrame):
+            add_row("TermPointToGNB", "External / TermPoint Audit", "Error while checking TermPointToGNB", f"ERROR: Expected DataFrame, got {type(df_term_point_to_gnb).__name__}")
+            return
+
+
         if df_term_point_to_gnb is not None and not df_term_point_to_gnb.empty:
             # NEW: Always work on a full copy (same pattern as NR)
             work = df_term_point_to_gnb.copy()

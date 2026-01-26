@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import pandas as pd
+import re
 
 from src.utils.utils_frequency import resolve_column_case_insensitive, parse_int_frequency
 
@@ -416,8 +417,8 @@ def process_gu_cell_relation(df_gu_cell_rel, n77_ssb_pre, n77_ssb_post, add_row,
                 count_old = int((freq_as_int == old_ssb).sum())
                 count_new = int((freq_as_int == new_ssb).sum())
 
-                add_row("GUtranCellRelation", "GU Frequency Audit", f"GU cellRelations to old N77 SSB ({old_ssb}) (from GUtranCellRelation table)", count_old)
-                add_row("GUtranCellRelation", "GU Frequency Audit", f"GU cellRelations to new N77 SSB ({new_ssb}) (from GUtranCellRelation table)", count_new)
+                add_row("GUtranCellRelation", "LTE Frequency Audit", f"LTE cellRelations to old N77 SSB ({old_ssb}) (from GUtranCellRelation table)", count_old)
+                add_row("GUtranCellRelation", "LTE Frequency Audit", f"LTE cellRelations to new N77 SSB ({new_ssb}) (from GUtranCellRelation table)", count_new)
 
                 # -------------------------------------------------
                 # ExternalGNodeBFunction / ExternalGUtranCell (extract from nCellRef / neighborCellRef)
@@ -474,8 +475,8 @@ def process_gu_cell_relation(df_gu_cell_rel, n77_ssb_pre, n77_ssb_post, add_row,
                 # -------------------------------------------------
                 df_gu_cell_rel.loc[:, work.columns] = work
             else:
-                add_row("GUtranCellRelation", "GU Frequency Audit", "GUtranCellRelation table present but NodeId / GUtranFreqRelationId column missing", "N/A")
+                add_row("GUtranCellRelation", "LTE Frequency Audit", "GUtranCellRelation table present but NodeId / GUtranFreqRelationId column missing", "N/A")
         else:
-            add_row("GUtranCellRelation", "GU Frequency Audit", "GUtranCellRelation table", "Table not found or empty")
+            add_row("GUtranCellRelation", "LTE Frequency Audit", "GUtranCellRelation table", "Table not found or empty")
     except Exception as ex:
-        add_row("GUtranCellRelation", "GU Frequency Audit", "Error while checking GUtranCellRelation", f"ERROR: {ex}")
+        add_row("GUtranCellRelation", "LTE Frequency Audit", "Error while checking GUtranCellRelation", f"ERROR: {ex}")

@@ -14,8 +14,7 @@ from src.utils.utils_frequency import detect_freq_column, detect_key_columns, ex
 from src.utils.utils_io import read_text_lines, to_long_path, pretty_path
 from src.utils.utils_parsing import find_all_subnetwork_headers, extract_mo_from_subnetwork_line, parse_table_slice_from_subnetwork
 from src.modules.Common.common_functions import load_nodes_names_and_id_from_summary_audit
-from src.modules.Common.correction_commands_exporter import export_external_and_termpoint_commands
-
+from src.modules.Common.correction_commands_exporter import export_cc_correction_cmd_texts
 
 
 class ConsistencyChecks:
@@ -999,7 +998,7 @@ class ConsistencyChecks:
 
             # Export text files (outside GU/NR blocks)
             if correction_cmd_sources:
-                cmd_files = export_correction_cmd_texts(output_dir, correction_cmd_sources, base_folder_name="Correction_Cmd_CC")
+                cmd_files = export_cc_correction_cmd_texts(output_dir, correction_cmd_sources, base_folder_name="Correction_Cmd_CC")
 
             # -------------------------------------------------------------------
             #  APPLY HEADER STYLING + AUTO-FIT COLUMNS FOR ALL SHEETS

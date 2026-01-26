@@ -755,6 +755,11 @@ def run_configuration_audit(
         # Include output_dir in kwargs passed to ConfigurationAudit.run
         kwargs = dict(module_name=module_name, versioned_suffix=file_versioned_suffix, tables_order=TABLES_ORDER, output_dir=output_dir, profiles_audit=profiles_audit)
 
+        # Provide ZIP context to ConfigurationAudit so Summary.LogPath can point to "<zip>/<log>"
+        if resolved and resolved.zip_path:
+            kwargs["source_zip_path"] = resolved.zip_path
+            kwargs["extracted_root"] = resolved.extracted_root
+
         if ca_freq_filters_csv:
             kwargs["filter_frequencies"] = [x.strip() for x in ca_freq_filters_csv.split(",") if x.strip()]
 
