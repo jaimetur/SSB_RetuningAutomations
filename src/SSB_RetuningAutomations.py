@@ -599,7 +599,6 @@ def run_configuration_audit(
     market_label: Optional[str] = None,
     external_output_dir: Optional[str] = None,
     profiles_audit: bool = True,                # <<< NEW (default now True because module 4 was removed and the logic have been incorporated to Default Configuration Audit)
-    # profiles_audit: bool = True,                 # <<< NEW
     export_correction_cmd: bool = True,           # <<< NEW: when called from ConsistencyChecks, disable for PRE and enable for POST
     module_name_override: Optional[str] = None,    # <<< NEW
 ) -> Optional[str]:
