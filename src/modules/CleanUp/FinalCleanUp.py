@@ -15,4 +15,4 @@ class FinalCleanUp:
         if not os.path.isdir(input_dir):
             raise NotADirectoryError(f"Invalid directory: {input_dir}")
         print(f"{module_name} Working on folder: '{input_dir}'")
-        # TODO: Implementar la lógica real
+        # TODO: Implement real logic
