@@ -213,24 +213,33 @@ def build_summary_audit(
         """Extract NRFreqRelation integer from NRCellRelation-like reference string."""
         if value is None:
             return None
-        s = str(value)
+        s = str(value).strip()
+        if not s:
+            return None
+
+        # Preferred: explicit key inside the reference
         key = "NRFreqRelation="
         idx = s.rfind(key)
-        if idx == -1:
-            return None
-        substr = s[idx + len(key):]
-        digits = []
-        for ch in substr:
-            if ch.isdigit():
-                digits.append(ch)
-            else:
-                break
-        if not digits:
-            return None
-        try:
-            return int("".join(digits))
-        except Exception:
-            return None
+        if idx != -1:
+            tail = s[idx + len(key):].strip()
+            freq = parse_int_frequency(tail)
+            return int(freq) if freq is not None else None
+
+        # Fallback 1: take the last '=' chunk and try to parse leading digits
+        if "=" in s:
+            tail = s.split("=")[-1].strip()
+            freq = parse_int_frequency(tail)
+            if freq is not None:
+                return int(freq)
+
+        # Fallback 2: scan comma-separated tokens and pick the last token that starts with digits
+        parts = [p.strip() for p in s.split(",") if p.strip()]
+        for token in reversed(parts):
+            freq = parse_int_frequency(token)
+            if freq is not None:
+                return int(freq)
+
+        return None
 
     def extract_ssb_from_gutran_sync_ref(value: object) -> int | None:
         """

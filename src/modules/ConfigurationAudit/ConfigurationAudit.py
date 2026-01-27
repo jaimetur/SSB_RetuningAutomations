@@ -16,7 +16,7 @@ from src.utils.utils_sorting import natural_logfile_key
 from src.utils.utils_pivot import safe_pivot_count, safe_crosstab_count, apply_frequency_column_filter
 from src.utils.utils_dataframe import concat_or_empty
 from src.utils.utils_datetime import log_phase_timer, format_duration_hms
-from src.modules.Common.correction_commands_exporter import export_all_sheets_with_correction_cmd, export_external_and_termpoint_commands
+from src.modules.Common.correction_commands_exporter import export_all_sheets_with_correction_commands, export_external_and_termpoint_commands
 from .ca_summary_excel import build_summary_audit
 from .ca_summary_ppt import generate_ppt_summary
 
@@ -593,6 +593,11 @@ class ConfigurationAudit:
                     profiles_audit=profiles_audit,
                 )
 
+                # Cache in-memory outputs for callers that want to avoid re-reading the Excel from disk (e.g., ConsistencyChecks)
+                self._last_summary_audit_df = summary_audit_df
+                self._last_param_mismatch_nr_df = param_mismatch_nr_df
+                self._last_param_mismatch_gu_df = param_mismatch_gu_df
+
             # ------------------------------------------------------------------
             # Re-inject modified audit tables back into table_entries
             # ------------------------------------------------------------------
@@ -831,8 +836,8 @@ class ConfigurationAudit:
                     export_external_and_termpoint_commands(excel_path_long, base_output_dir_long, base_folder_name=correction_cmd_folder_name, sheet_dfs=sheet_dfs_map, export_to_zip=True)
 
                     # Export any other sheet containing a 'Correction_Cmd' column (NRCellRelation, GUtranCellRelation, etc.)
-                    export_all_sheets_with_correction_cmd(excel_path_long, base_output_dir_long, base_folder_name=correction_cmd_folder_name, sheet_dfs=sheet_dfs_map, export_to_zip=True,
-                                                          exclude_sheets={"Summary", "SummaryAudit", "Summary Param Mismatch NR", "Summary Param Mismatch GU", "ExternalNRCellCU", "ExternalGUtranCell", "TermPointToGNodeB", "TermPointToGNB"})
+                    export_all_sheets_with_correction_commands(excel_path_long, base_output_dir_long, base_folder_name=correction_cmd_folder_name, sheet_dfs=sheet_dfs_map, export_to_zip=True,
+                                                               exclude_sheets={"Summary", "SummaryAudit", "Summary Param Mismatch NR", "Summary Param Mismatch GU", "ExternalNRCellCU", "ExternalGUtranCell", "TermPointToGNodeB", "TermPointToGNB"})
             else:
                 _log_info("PHASE 6: Export Correction Commands skipped (export_correction_cmd=False or is a Pre-Audit).")
 

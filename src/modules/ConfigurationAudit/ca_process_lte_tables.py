@@ -409,9 +409,29 @@ def process_gu_cell_relation(df_gu_cell_rel, n77_ssb_pre, n77_ssb_post, add_row,
                 new_ssb = int(n77_ssb_post)
 
                 # -------------------------------------------------
-                # Frequency (extract from GUtranFreqRelationId, base frequency before first '-')
+                # Ensure canonical column names expected by correction command builders
                 # -------------------------------------------------
-                work["Frequency"] = work[gfreqrel_col].map(lambda v: parse_int_frequency(str(v).split("-")[0]) if v is not None and str(v).strip() else "")
+                if eutrancell_col and "EUtranCellFDDId" not in work.columns:
+                    work["EUtranCellFDDId"] = work[eutrancell_col]
+                if gfreqrel_col and "GUtranFreqRelationId" not in work.columns:
+                    work["GUtranFreqRelationId"] = work[gfreqrel_col]
+                if relid_col and "GUtranCellRelationId" not in work.columns:
+                    work["GUtranCellRelationId"] = work[relid_col]
+
+                # -------------------------------------------------
+                # Frequency (extract base frequency from GUtranFreqRelationId)
+                #   - Supports both '647328-30-...' and 'GUtranFreqRelation=647328-30-...'
+                # -------------------------------------------------
+                def _extract_gutran_freq(value: object) -> int | None:
+                    text = str(value or "").strip()
+                    if not text:
+                        return None
+                    if "GUtranFreqRelation=" in text:
+                        text = text.split("GUtranFreqRelation=", 1)[1].strip()
+                    text = text.split("-", 1)[0].strip()
+                    return parse_int_frequency(text)
+
+                work["Frequency"] = work["GUtranFreqRelationId"].map(_extract_gutran_freq)
                 freq_as_int = pd.to_numeric(work["Frequency"], errors="coerce")
 
                 count_old = int((freq_as_int == old_ssb).sum())

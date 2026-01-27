@@ -14,7 +14,7 @@ from src.utils.utils_frequency import detect_freq_column, detect_key_columns, ex
 from src.utils.utils_io import read_text_lines, to_long_path, pretty_path
 from src.utils.utils_parsing import find_all_subnetwork_headers, extract_mo_from_subnetwork_line, parse_table_slice_from_subnetwork
 from src.modules.Common.common_functions import load_nodes_names_and_id_from_summary_audit
-from src.modules.Common.correction_commands_exporter import export_cc_correction_cmd_texts
+from src.modules.Common.correction_commands_exporter import export_relations_commands
 
 
 class ConsistencyChecks:
@@ -221,14 +221,7 @@ class ConsistencyChecks:
         return self.tables
 
     # ----------------------------- COMPARISON ----------------------------- #
-    def comparePrePost(
-        self,
-        freq_before: str,
-        freq_after: str,
-        module_name: Optional[str] = "",
-        audit_pre_excel: Optional[str] = None,
-        audit_post_excel: Optional[str] = None,
-    ) -> Dict[str, Dict[str, pd.DataFrame]]:
+    def comparePrePost(self, freq_before: str, freq_after: str, module_name: Optional[str] = "", audit_pre_excel: Optional[str] = None, audit_post_excel: Optional[str] = None, audit_pre_summary_audit_df: Optional[pd.DataFrame] = None, audit_post_summary_audit_df: Optional[pd.DataFrame] = None) -> Dict[str, Dict[str, pd.DataFrame]]:
         """
         Compare Pre/Post relations for GUtranCellRelation and NRCellRelation.
 
@@ -253,9 +246,10 @@ class ConsistencyChecks:
             print(f"{module_name} [WARNING] No tables loaded. Skipping comparison (likely missing Pre/Post folders).")
             return {}
 
-        # NEW: load node numeric identifiers from POST Configuration Audit (SummaryAudit sheet)
-        nodes_id_pre, nodes_name_pre = load_nodes_names_and_id_from_summary_audit(audit_post_excel, stage="Pre", module_name=module_name)
-        nodes_id_post, nodes_name_post = load_nodes_names_and_id_from_summary_audit(audit_post_excel, stage="Post", module_name=module_name)
+        # NEW: load node numeric identifiers from nodes with Retuning frpm POST Configuration Audit (SummaryAudit sheet)
+        nodes_id_pre, nodes_name_pre = load_nodes_names_and_id_from_summary_audit(audit_post_summary_audit_df if audit_post_summary_audit_df is not None else audit_post_excel, stage="Pre", module_name=module_name)
+        nodes_id_post, nodes_name_post = load_nodes_names_and_id_from_summary_audit(audit_post_summary_audit_df if audit_post_summary_audit_df is not None else audit_post_excel, stage="Post", module_name=module_name)
+
 
 
         results: Dict[str, Dict[str, pd.DataFrame]] = {}
@@ -998,7 +992,7 @@ class ConsistencyChecks:
 
             # Export text files (outside GU/NR blocks)
             if correction_cmd_sources:
-                cmd_files = export_cc_correction_cmd_texts(output_dir, correction_cmd_sources, base_folder_name="Correction_Cmd_CC")
+                cmd_files = export_relations_commands(output_dir, correction_cmd_sources, base_folder_name="Correction_Cmd_CC")
 
             # -------------------------------------------------------------------
             #  APPLY HEADER STYLING + AUTO-FIT COLUMNS FOR ALL SHEETS

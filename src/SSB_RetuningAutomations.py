@@ -17,6 +17,8 @@ Behavior:
 
 import argparse
 import os
+import re
+import shutil
 import sys
 import time  # high-resolution timing for module execution
 from datetime import datetime
@@ -52,6 +54,10 @@ TOOL_DESCRIPTION    = textwrap.dedent(f"""
 Multi-Platform/Multi-Arch tool designed to Automate some process during SSB Retuning
 {COPYRIGHT_TEXT}
 """)
+
+# ================================ CACHE ================================= #
+# Cache SummaryAudit (in-memory) per generated ConfigurationAudit Excel path (used to avoid re-reading from disk in ConsistencyChecks)
+CONFIG_AUDIT_SUMMARY_CACHE: Dict[str, object] = {}
 
 # ================================ DEFAULTS ================================= #
 # Input Folder(s)
@@ -817,10 +823,19 @@ def run_configuration_audit(
                     out = app.run(folder_to_process_fs, module_name=module_name, versioned_suffix=file_versioned_suffix, tables_order=TABLES_ORDER)
                 else:
                     raise
+
+            if out and hasattr(app, "_last_summary_audit_df"):
+                try:
+                    CONFIG_AUDIT_SUMMARY_CACHE[out] = getattr(app, "_last_summary_audit_df")
+                except Exception:
+                    pass
+
+            return out
+
         finally:
             resolved.cleanup()
 
-        return out
+
 
     # ---- MAIN LOGIC: decide where to run ----
 
@@ -1138,23 +1153,141 @@ def run_consistency_checks(
                 audit_post_suffix = f"{market_for_files}_Post_{base_file_suffix}" if market_for_files else f"Post_{base_file_suffix}"
 
                 # --- Run Configuration Audit for PRE and POST ---
+                def _try_parse_audit_folder_ts(folder_name: str) -> Optional[datetime]:
+                    # Expected patterns (examples):
+                    #   ConfigurationAudit_20260127_1530_vX.Y.Z
+                    #   ConfigurationAudit_20260127_1530_vX.Y.Z_MARKET
+                    if not folder_name:
+                        return None
+                    m = re.search(r"_(\d{8}_\d{4})_v", folder_name)
+                    if not m:
+                        return None
+                    try:
+                        return datetime.strptime(m.group(1), "%Y%m%d_%H%M")
+                    except Exception:
+                        return None
+
+                def _find_latest_audit_folder(search_root: str) -> Optional[str]:
+                    # Search for previous audit folders inside PRE/POST root folder and pick the newest one.
+                    try:
+                        if not search_root or not os.path.isdir(search_root):
+                            return None
+                        candidates: List[Tuple[datetime, float, str]] = []
+                        for name in os.listdir(search_root):
+                            full = os.path.join(search_root, name)
+                            if not os.path.isdir(full):
+                                continue
+                            if not (str(name).startswith("ConfigurationAudit_") or str(name).startswith("ProfilesAudit_")):
+                                continue
+                            ts = _try_parse_audit_folder_ts(str(name)) or datetime.min
+                            try:
+                                mt = os.path.getmtime(full)
+                            except Exception:
+                                mt = 0.0
+                            candidates.append((ts, mt, full))
+                        if not candidates:
+                            return None
+                        candidates.sort(key=lambda x: (x[0], x[1]), reverse=True)
+                        return candidates[0][2]
+                    except Exception:
+                        return None
+
+                def _pick_latest_file_by_ext(folder: str, ext: str, preferred_prefixes: Optional[List[str]] = None) -> Optional[str]:
+                    try:
+                        if not folder or not os.path.isdir(folder):
+                            return None
+                        preferred_prefixes = preferred_prefixes or []
+                        files = []
+                        for name in os.listdir(folder):
+                            p = os.path.join(folder, name)
+                            if not os.path.isfile(p):
+                                continue
+                            if not str(name).lower().endswith(ext.lower()):
+                                continue
+                            files.append(p)
+                        if not files:
+                            return None
+
+                        # Prefer files with expected prefixes (ConfigurationAudit_ / ProfilesAudit_) when available
+                        preferred = []
+                        if preferred_prefixes:
+                            for p in files:
+                                bn = os.path.basename(p)
+                                if any(bn.startswith(pref) for pref in preferred_prefixes):
+                                    preferred.append(p)
+                        target_list = preferred if preferred else files
+                        target_list.sort(key=lambda p: os.path.getmtime(p) if os.path.exists(p) else 0.0, reverse=True)
+                        return target_list[0]
+                    except Exception:
+                        return None
+
+                def _copy_audit_artifacts_to_current_output(src_audit_dir: str, dst_output_dir: str, dst_versioned_suffix: str, copy_cmd_folders: bool) -> Optional[str]:
+                    # Copy Excel + PPT from previous audit folder into current output_dir with current execution naming.
+                    try:
+                        if not src_audit_dir or not os.path.isdir(src_audit_dir):
+                            return None
+                        os.makedirs(dst_output_dir, exist_ok=True)
+
+                        src_excel = _pick_latest_file_by_ext(src_audit_dir, ".xlsx", preferred_prefixes=["ConfigurationAudit_", "ProfilesAudit_"])
+                        if not src_excel:
+                            return None
+
+                        dst_excel = os.path.join(dst_output_dir, f"ConfigurationAudit_{dst_versioned_suffix}.xlsx")
+                        shutil.copy2(to_long_path(src_excel), to_long_path(dst_excel))
+
+                        # Try to find matching PPT (same basename), otherwise pick newest PPT in folder
+                        paired_ppt = os.path.splitext(src_excel)[0] + ".pptx"
+                        src_ppt = paired_ppt if os.path.isfile(paired_ppt) else _pick_latest_file_by_ext(src_audit_dir, ".pptx", preferred_prefixes=["ConfigurationAudit_", "ProfilesAudit_"])
+                        if src_ppt and os.path.isfile(src_ppt):
+                            dst_ppt = os.path.join(dst_output_dir, f"ConfigurationAudit_{dst_versioned_suffix}.pptx")
+                            shutil.copy2(to_long_path(src_ppt), to_long_path(dst_ppt))
+
+                        # Copy command folders only for POST (if exist)
+                        if copy_cmd_folders:
+                            for cmd_folder in ["Correction_Cmd_CA", "Correction_Cmd"]:
+                                src_cmd = os.path.join(src_audit_dir, cmd_folder)
+                                dst_cmd = os.path.join(dst_output_dir, cmd_folder)
+                                if os.path.isdir(src_cmd):
+                                    if os.path.isdir(dst_cmd):
+                                        shutil.rmtree(to_long_path(dst_cmd), ignore_errors=True)
+                                    shutil.copytree(to_long_path(src_cmd), to_long_path(dst_cmd), dirs_exist_ok=True)
+
+                        return dst_excel
+                    except Exception:
+                        return None
+
+                print("-" * 80)
                 print(f"{module_name} {market_tag} [INFO] Running Configuration Audit for PRE folder before consistency checks...")
-                print("-" * 80)
-                pre_audit_excel = run_configuration_audit(input_dir=pre_dir_process_fs, ca_freq_filters_csv=ca_freq_filters_csv, n77_ssb_pre=n77_ssb_pre, n77_ssb_post=n77_ssb_post, n77b_ssb=n77b_ssb, allowed_n77_ssb_pre_csv=allowed_n77_ssb_pre_csv, allowed_n77_arfcn_pre_csv=allowed_n77_arfcn_pre_csv, allowed_n77_ssb_post_csv=allowed_n77_ssb_post_csv, allowed_n77_arfcn_post_csv=allowed_n77_arfcn_post_csv, versioned_suffix=audit_pre_suffix, market_label=market_label, external_output_dir=output_dir, export_correction_cmd=False)
-                print("-" * 80)
+                pre_existing_audit_dir = _find_latest_audit_folder(pre_dir_fs)
+                if pre_existing_audit_dir:
+                    print(f"{module_name} {market_tag} [INFO] Reusing existing PRE Audit folder: '{pretty_path(pre_existing_audit_dir)}'")
+                    pre_audit_excel = _copy_audit_artifacts_to_current_output(pre_existing_audit_dir, output_dir, audit_pre_suffix, copy_cmd_folders=False)
+                else:
+                    pre_audit_excel = run_configuration_audit(input_dir=pre_dir_process_fs, ca_freq_filters_csv=ca_freq_filters_csv, n77_ssb_pre=n77_ssb_pre, n77_ssb_post=n77_ssb_post, n77b_ssb=n77b_ssb,
+                                                              allowed_n77_ssb_pre_csv=allowed_n77_ssb_pre_csv, allowed_n77_arfcn_pre_csv=allowed_n77_arfcn_pre_csv, allowed_n77_ssb_post_csv=allowed_n77_ssb_post_csv,
+                                                              allowed_n77_arfcn_post_csv=allowed_n77_arfcn_post_csv, versioned_suffix=audit_pre_suffix, market_label=market_label, external_output_dir=output_dir, export_correction_cmd=False)
                 if pre_audit_excel:
                     print(f"{module_name} {market_tag} [INFO] PRE Configuration Audit output: '{pretty_path(pre_audit_excel)}'")
                 else:
                     print(f"{module_name} {market_tag} [INFO] PRE Configuration Audit did not generate an output Excel file.")
 
+                print("-" * 80)
                 print(f"{module_name} {market_tag} [INFO] Running Configuration Audit for POST folder before consistency checks...")
-                print("-" * 80)
-                post_audit_excel = run_configuration_audit(input_dir=post_dir_process_fs, ca_freq_filters_csv=ca_freq_filters_csv, n77_ssb_pre=n77_ssb_pre, n77_ssb_post=n77_ssb_post, n77b_ssb=n77b_ssb, allowed_n77_ssb_pre_csv=allowed_n77_ssb_pre_csv, allowed_n77_arfcn_pre_csv=allowed_n77_arfcn_pre_csv, allowed_n77_ssb_post_csv=allowed_n77_ssb_post_csv, allowed_n77_arfcn_post_csv=allowed_n77_arfcn_post_csv, versioned_suffix=audit_post_suffix, market_label=market_label, external_output_dir=output_dir, export_correction_cmd=export_correction_cmd_post)
-                print("-" * 80)
+                post_existing_audit_dir = _find_latest_audit_folder(post_dir_fs)
+                if post_existing_audit_dir:
+                    print(f"{module_name} {market_tag} [INFO] Reusing existing POST Audit folder: '{pretty_path(post_existing_audit_dir)}'")
+                    post_audit_excel = _copy_audit_artifacts_to_current_output(post_existing_audit_dir, output_dir, audit_post_suffix, copy_cmd_folders=True)
+                else:
+                    post_audit_excel = run_configuration_audit(input_dir=post_dir_process_fs, ca_freq_filters_csv=ca_freq_filters_csv, n77_ssb_pre=n77_ssb_pre, n77_ssb_post=n77_ssb_post, n77b_ssb=n77b_ssb,
+                                                               allowed_n77_ssb_pre_csv=allowed_n77_ssb_pre_csv, allowed_n77_arfcn_pre_csv=allowed_n77_arfcn_pre_csv, allowed_n77_ssb_post_csv=allowed_n77_ssb_post_csv,
+                                                               allowed_n77_arfcn_post_csv=allowed_n77_arfcn_post_csv, versioned_suffix=audit_post_suffix, market_label=market_label, external_output_dir=output_dir,
+                                                               export_correction_cmd=export_correction_cmd_post)
+
                 if post_audit_excel:
                     print(f"{module_name} {market_tag} [INFO] POST Configuration Audit output: '{pretty_path(post_audit_excel)}'")
                 else:
                     print(f"{module_name} {market_tag} [INFO] POST Configuration Audit did not generate an output Excel file.")
+                print("-" * 80)
 
                 # --- Run ConsistencyChecks for this market ---
                 try:
@@ -1176,16 +1309,21 @@ def run_consistency_checks(
 
                 results = None
                 if n77_ssb_pre and n77_ssb_post:
+                    pre_summary_df = CONFIG_AUDIT_SUMMARY_CACHE.get(pre_audit_excel) if pre_audit_excel and "CONFIG_AUDIT_SUMMARY_CACHE" in globals() else None
+                    post_summary_df = CONFIG_AUDIT_SUMMARY_CACHE.get(post_audit_excel) if post_audit_excel and "CONFIG_AUDIT_SUMMARY_CACHE" in globals() else None
                     try:
-                        results = app.comparePrePost(n77_ssb_pre, n77_ssb_post, module_name, pre_audit_excel, post_audit_excel)
+                        results = app.comparePrePost(n77_ssb_pre, n77_ssb_post, module_name, pre_audit_excel, post_audit_excel, audit_pre_summary_audit_df=pre_summary_df, audit_post_summary_audit_df=post_summary_df)
                     except TypeError:
                         try:
-                            results = app.comparePrePost(n77_ssb_pre, n77_ssb_post, module_name, post_audit_excel)
+                            results = app.comparePrePost(n77_ssb_pre, n77_ssb_post, module_name, pre_audit_excel, post_audit_excel)
                         except TypeError:
                             try:
-                                results = app.comparePrePost(n77_ssb_pre, n77_ssb_post, module_name)
+                                results = app.comparePrePost(n77_ssb_pre, n77_ssb_post, module_name, post_audit_excel)
                             except TypeError:
-                                results = app.comparePrePost(n77_ssb_pre, n77_ssb_post)
+                                try:
+                                    results = app.comparePrePost(n77_ssb_pre, n77_ssb_post, module_name)
+                                except TypeError:
+                                    results = app.comparePrePost(n77_ssb_pre, n77_ssb_post)
                 else:
                     print(f"{module_name} {market_tag} [INFO] Frequencies not provided. Comparison will be skipped; only tables will be saved.")
 

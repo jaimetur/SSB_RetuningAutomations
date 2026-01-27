@@ -232,15 +232,14 @@ def _reorder_cmds_del_first(cmds: List[object]) -> List[str]:
 # ----------------------------------------------------------------------
 #  EXPORT CORRECTION COMMNANDS TO TEXT FILES
 # ----------------------------------------------------------------------
-def export_cc_correction_cmd_texts(output_dir: str, dfs_by_category: Dict[str, pd.DataFrame], base_folder_name: str = "Correction_Cmd") -> int:
+def export_relations_commands(output_dir: str, dfs_by_category: Dict[str, pd.DataFrame], base_folder_name: str = "Correction_Cmd", export_to_zip: bool = True) -> int:
     """
     Export Correction_Cmd values to text files grouped by NodeId and category.
 
-    For each category (e.g. GU_missing, NR_new), one file per NodeId is created in:
-      <output_dir>/Correction_Cmd/<GroupFolder>/<NR|GU>/<NodeId>_<Category>.txt
+    For each category (e.g. GU_missing, NR_new), one file per NodeId is created under:
+      <output_dir>/<base_folder_name>/(NewRelations|MissingRelations|RelationsDiscrepancies)/(NR|GU)/<NodeId>_<Category>.txt
 
-    Additionally:
-      - All 'del ...' commands are moved to the top of each node file.
+    By default, outputs are written into a ZIP (same behavior as ConfigurationAudit exporters).
     """
 
     def _detect_layer_from_category(category: str) -> str:
@@ -249,8 +248,6 @@ def export_cc_correction_cmd_texts(output_dir: str, dfs_by_category: Dict[str, p
             return "NR"
         if s.startswith("GU"):
             return "GU"
-
-        # Fallbacks if naming is not strictly prefix-based
         if "NR_" in s or "_NR" in s or "NR-" in s:
             return "NR"
         if "GU_" in s or "_GU" in s or "GU-" in s:
@@ -260,96 +257,110 @@ def export_cc_correction_cmd_texts(output_dir: str, dfs_by_category: Dict[str, p
     base_dir = os.path.join(output_dir, base_folder_name)
     os.makedirs(base_dir, exist_ok=True)
 
-    # Renamed folders
-    new_dir = os.path.join(base_dir, "NewRelations")
-    missing_dir = os.path.join(base_dir, "MissingRelations")
-    discrepancies_dir = os.path.join(base_dir, "RelationsDiscrepancies")
-    os.makedirs(new_dir, exist_ok=True)
-    os.makedirs(missing_dir, exist_ok=True)
-    os.makedirs(discrepancies_dir, exist_ok=True)
+    zip_file = None
+    zip_path = None
 
-    # Subfolders to distinguish NR vs GU
-    for parent in (new_dir, missing_dir, discrepancies_dir):
-        os.makedirs(os.path.join(parent, "NR"), exist_ok=True)
-        os.makedirs(os.path.join(parent, "GU"), exist_ok=True)
+    try:
+        if export_to_zip:
+            zip_path = os.path.join(base_dir, "Relations_CorrectionCmds.zip")
+            zip_path_long = to_long_path(zip_path)
+            zip_file = zipfile.ZipFile(zip_path_long, "w", compression=zipfile.ZIP_DEFLATED)
 
-    total_files = 0
+        def _write_text(target_dir: str, file_name: str, text: str) -> None:
+            if export_to_zip and zip_file is not None:
+                arcname = f"{base_folder_name}/{target_dir.strip('/').strip('\\\\')}/{file_name}"
+                zip_file.writestr(arcname.replace("\\", "/"), text)
+                return
 
-    for category, df in dfs_by_category.items():
-        if df is None or df.empty:
-            continue
-        if "NodeId" not in df.columns or "Correction_Cmd" not in df.columns:
-            continue
-
-        work = df.copy()
-        work["NodeId"] = work["NodeId"].astype(str).str.strip()
-        work["Correction_Cmd"] = work["Correction_Cmd"].astype(str)
-
-        category_lower = str(category).lower()
-
-        # Choose the "group" folder (New/Missing/Discrepancies/Other)
-        if "new" in category_lower:
-            parent_dir = new_dir
-        elif "missing" in category_lower:
-            parent_dir = missing_dir
-        elif "disc" in category_lower:
-            parent_dir = discrepancies_dir
-        else:
-            parent_dir = base_dir
-
-        # If it's one of the 3 main folders, route into NR/GU subfolder when possible
-        target_dir = parent_dir
-        if parent_dir in (new_dir, missing_dir, discrepancies_dir):
-            layer = _detect_layer_from_category(category)
-            if layer in ("NR", "GU"):
-                target_dir = os.path.join(parent_dir, layer)
-
-        os.makedirs(target_dir, exist_ok=True)
-
-        for node_id, group in work.groupby("NodeId"):
-            node_str = str(node_id).strip()
-            if not node_str:
-                continue
-
-            raw_cmds = [cmd for cmd in group["Correction_Cmd"] if str(cmd).strip()]
-            if not raw_cmds:
-                continue
-
-            # NEW: put all del first
-            ordered_blocks = _reorder_cmds_del_first(raw_cmds)
-            if not ordered_blocks:
-                continue
-
-            # Write:
-            # - del lines as single lines
-            # - rest blocks separated by blank line
-            del_lines = [b for b in ordered_blocks if _DEL_LINE_RE.match(b)]
-            rest_blocks = [b for b in ordered_blocks if not _DEL_LINE_RE.match(b)]
-
-            pieces: List[str] = []
-            if del_lines:
-                pieces.append("\n".join(del_lines).strip())
-            if rest_blocks:
-                pieces.append("\n\n".join(rest_blocks).strip())
-
-            final_text = "\n\n".join([p for p in pieces if p.strip()]).strip()
-            if not final_text:
-                continue
-
-            node_str_safe = _safe_filename_component(node_str, fallback="node")
-            cat_safe = _safe_filename_component(category, fallback="cmd")
-            file_name = f"{node_str_safe}_{cat_safe}.txt"
-
-            file_path = os.path.join(target_dir, file_name)
+            disk_dir = os.path.join(base_dir, target_dir)
+            os.makedirs(disk_dir, exist_ok=True)
+            file_path = os.path.join(disk_dir, file_name)
             file_path_long = to_long_path(file_path)
-
             with open(file_path_long, "w", encoding="utf-8") as f:
-                f.write(final_text)
+                f.write(text)
 
-            total_files += 1
+        total_files = 0
 
-    print(f"\n[Correction Commands] Generated {total_files} Correction_Cmd files in: '{pretty_path(base_dir)}'")
-    return total_files
+        for category, df in dfs_by_category.items():
+            if df is None or df.empty:
+                continue
+            if "NodeId" not in df.columns or "Correction_Cmd" not in df.columns:
+                continue
+
+            work = df.copy()
+            work["NodeId"] = work["NodeId"].astype(str).str.strip()
+            work["Correction_Cmd"] = work["Correction_Cmd"].astype(str)
+
+            category_lower = str(category).lower()
+
+            if "new" in category_lower:
+                group_folder = "NewRelations"
+            elif "missing" in category_lower:
+                group_folder = "MissingRelations"
+            elif "disc" in category_lower:
+                group_folder = "RelationsDiscrepancies"
+            else:
+                group_folder = ""
+
+            layer = _detect_layer_from_category(category)
+            if group_folder and layer in ("NR", "GU"):
+                rel_dir = f"{group_folder}/{layer}"
+            elif group_folder:
+                rel_dir = f"{group_folder}"
+            else:
+                rel_dir = ""
+
+            for node_id, group in work.groupby("NodeId"):
+                node_str = str(node_id).strip()
+                if not node_str:
+                    continue
+
+                raw_cmds = [cmd for cmd in group["Correction_Cmd"] if str(cmd).strip()]
+                if not raw_cmds:
+                    continue
+
+                ordered_blocks = _reorder_cmds_del_first(raw_cmds)
+                if not ordered_blocks:
+                    continue
+
+                del_lines = [b for b in ordered_blocks if _DEL_LINE_RE.match(b)]
+                rest_blocks = [b for b in ordered_blocks if not _DEL_LINE_RE.match(b)]
+
+                pieces: List[str] = []
+                if del_lines:
+                    pieces.append("\n".join(del_lines).strip())
+                if rest_blocks:
+                    pieces.append("\n\n".join(rest_blocks).strip())
+
+                final_text = "\n\n".join([p for p in pieces if p.strip()]).strip()
+                if not final_text:
+                    continue
+
+                node_str_safe = _safe_filename_component(node_str, fallback="node")
+                cat_safe = _safe_filename_component(category, fallback="cmd")
+                file_name = f"{node_str_safe}_{cat_safe}.txt"
+
+                target_dir = rel_dir if rel_dir else ""
+                _write_text(target_dir, file_name, final_text)
+                total_files += 1
+
+        if total_files > 0:
+            if export_to_zip and zip_file is not None:
+                print(f"\n[Correction Commands] Generated {total_files} Correction_Cmd files in ZIP: '{pretty_path(zip_path or '')}'")
+            else:
+                print(f"\n[Correction Commands] Generated {total_files} Correction_Cmd files in: '{pretty_path(base_dir)}'")
+        else:
+            print(f"\n[Correction Commands] No relations Correction_Cmd files generated.")
+
+        return total_files
+
+    finally:
+        try:
+            if zip_file is not None:
+                zip_file.close()
+        except Exception:
+            pass
+
 
 
 # ----------------------------- EXTERNAL/TERMPOINTS COMMANDS ----------------------------- #
@@ -601,7 +612,7 @@ def export_external_and_termpoint_commands(audit_post_excel: str, output_dir: st
 
 
 
-def export_all_sheets_with_correction_cmd(audit_post_excel: str, output_dir: str, base_folder_name: str = "Correction_Cmd", exclude_sheets: Optional[set[str]] = None, sheet_dfs: Optional[dict[str, pd.DataFrame]] = None, export_to_zip: bool = True) -> int:
+def export_all_sheets_with_correction_commands(audit_post_excel: str, output_dir: str, base_folder_name: str = "Correction_Cmd", exclude_sheets: Optional[set[str]] = None, sheet_dfs: Optional[dict[str, pd.DataFrame]] = None, export_to_zip: bool = True) -> int:
     """
     Export Correction_Cmd values from ANY sheet containing a 'Correction_Cmd' column.
     Intended for ConfigurationAudit (NRCellRelation, GUtranCellRelation, etc.).

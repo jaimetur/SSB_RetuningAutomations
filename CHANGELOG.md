@@ -27,6 +27,8 @@
         - NR_new / NR_missing / NR_disc
         - GU_new / GU_missing / GU_disc 
       - Stop exporting External/Termpoints from ConsistencyChecks (to prevent duplicates). External/Termpoints moved to ConfigurationAudit export. 
+      - Avoid to execute `ConfigurationAudit` module if any previous Configuration Audit have been found on the selected folder (applies for both, PRE and POST folders).
+      - If no previous Configuration Audit is found on input folders, then execute it but pass the dataframe generated in memory to `ConsistencyCheck` module instead of forze it to read the Excel file from disk (slow). 
     - ConfigurationAudit module:
       - ConfigurationAudit must keep using the normal export folder (`Correction_Cmd`). 
       - Avoid printing “Consistency Checks …” messages when the export is executed by ConfigurationAudit. 
