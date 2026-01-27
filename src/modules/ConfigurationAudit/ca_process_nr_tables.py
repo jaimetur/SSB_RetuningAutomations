@@ -551,19 +551,19 @@ def process_nr_cell_relation(df_nr_cell_rel, _extract_freq_from_nrfreqrelationre
         if df_nr_cell_rel is not None and not df_nr_cell_rel.empty:
             node_col = resolve_column_case_insensitive(df_nr_cell_rel, ["NodeId"])
             freq_col = resolve_column_case_insensitive(df_nr_cell_rel, ["nRFreqRelationRef", "NRFreqRelationRef"])
+            rel_col = resolve_column_case_insensitive(df_nr_cell_rel, ["NRCellRelationId", "NRCellRelId"])
+            cell_col = resolve_column_case_insensitive(df_nr_cell_rel, ["NRCellCUId", "NRCellCuId"])
             cell_ref_col = resolve_column_case_insensitive(df_nr_cell_rel, ["nRCellRef", "NRCellRef"])
-            nrcellcu_col = resolve_column_case_insensitive(df_nr_cell_rel, ["NRCellCUId", "NRCellCuId"])
-            relid_col = resolve_column_case_insensitive(df_nr_cell_rel, ["NRCellRelationId", "NRCellRelId"])
 
 
             if node_col and freq_col:
                 work = df_nr_cell_rel.copy()
 
                 # Ensure canonical column names expected by correction command builders
-                if nrcellcu_col and "NRCellCUId" not in work.columns:
-                    work["NRCellCUId"] = work[nrcellcu_col]
-                if relid_col and "NRCellRelationId" not in work.columns:
-                    work["NRCellRelationId"] = work[relid_col]
+                if rel_col and "NRCellRelationId" not in work.columns:
+                    work["NRCellRelationId"] = work[rel_col]
+                if cell_col and "NRCellCUId" not in work.columns:
+                    work["NRCellCUId"] = work[cell_col]
                 if cell_ref_col and "nRCellRef" not in work.columns:
                     work["nRCellRef"] = work[cell_ref_col]
 
@@ -593,9 +593,9 @@ def process_nr_cell_relation(df_nr_cell_rel, _extract_freq_from_nrfreqrelationre
                     m = re.search(rf"{re.escape(key)}=([^,]+)", text)
                     return m.group(1).strip() if m else ""
 
-                if nrcellref_col:
-                    work["ExternalGNBCUCPFunction"] = work[nrcellref_col].map(lambda v: _extract_kv_from_ref(v, "ExternalGNBCUCPFunction"))
-                    work["ExternalNRCellCU"] = work[nrcellref_col].map(lambda v: _extract_kv_from_ref(v, "ExternalNRCellCU"))
+                if cell_ref_col:
+                    work["ExternalGNBCUCPFunction"] = work[cell_ref_col].map(lambda v: _extract_kv_from_ref(v, "ExternalGNBCUCPFunction"))
+                    work["ExternalNRCellCU"] = work[cell_ref_col].map(lambda v: _extract_kv_from_ref(v, "ExternalNRCellCU"))
                 else:
                     if "ExternalGNBCUCPFunction" not in work.columns:
                         work["ExternalGNBCUCPFunction"] = ""

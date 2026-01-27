@@ -20,8 +20,8 @@ def process_external_nr_cell_cu(df_external_nr_cell_cu, n77_ssb_pre, n77_ssb_pos
         if df_external_nr_cell_cu is not None and not df_external_nr_cell_cu.empty:
             node_col = resolve_column_case_insensitive(df_external_nr_cell_cu, ["NodeId"])
             freq_col = resolve_column_case_insensitive(df_external_nr_cell_cu, ["nRFrequencyRef", "NRFrequencyRef", "nRFreqRelationRef", "NRFreqRelationRef"])
-            ext_gnb_col = resolve_column_case_insensitive(df_external_nr_cell_cu, ["ExternalGNBCUCPFunctionId"])
             cell_col = resolve_column_case_insensitive(df_external_nr_cell_cu, ["ExternalNRCellCUId"])
+            ext_gnb_col = resolve_column_case_insensitive(df_external_nr_cell_cu, ["ExternalGNBCUCPFunctionId"])
 
             # Load node identifiers from SummaryAudit (Pre / Post)
             nodes_without_retune_ids = nodes_pre
@@ -35,10 +35,10 @@ def process_external_nr_cell_cu(df_external_nr_cell_cu, n77_ssb_pre, n77_ssb_pos
 
                 # Normalize base columns to string to avoid mixed-type issues
                 work[node_col] = work[node_col].astype(str).str.strip()
-                if ext_gnb_col:
-                    work[ext_gnb_col] = work[ext_gnb_col].astype(str).str.strip()
                 if cell_col:
                     work[cell_col] = work[cell_col].astype(str).str.strip()
+                if ext_gnb_col:
+                    work[ext_gnb_col] = work[ext_gnb_col].astype(str).str.strip()
 
                 # -------------------------------------------------
                 # Frequency (was: GNodeB_SSB_Source)
@@ -138,7 +138,7 @@ def process_external_nr_cell_cu(df_external_nr_cell_cu, n77_ssb_pre, n77_ssb_pos
                     mask_final = mask_pre & mask_target
 
                     # Safely extract NR network tail
-                    nr_tail_series = work[freq_ref_col].map(lambda v: extract_nrnetwork_tail(v) if isinstance(v, str) and v.strip() else "")
+                    nr_tail_series = work[freq_col].map(lambda v: extract_nrnetwork_tail(v) if isinstance(v, str) and v.strip() else "")
 
                     if "Correction_Cmd" not in work.columns:
                         work["Correction_Cmd"] = ""
