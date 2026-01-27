@@ -582,11 +582,13 @@ def export_external_and_termpoint_commands(audit_post_excel: str, output_dir: st
         generated += _export_grouped_commands_from_sheet(audit_excel=audit_post_excel, sheet_name="TermPointToGNB", output_dir=tp_gnb_ssbpost_dir, command_column="Correction_Cmd", filter_column="GNodeB_SSB_Target", filter_values=["SSB-Post"], filename_suffix="TermPointToGNB")
         generated += _export_grouped_commands_from_sheet(audit_excel=audit_post_excel, sheet_name="TermPointToGNB", output_dir=tp_gnb_unknown_dir, command_column="Correction_Cmd", filter_column="GNodeB_SSB_Target", filter_values=["Unknown", "Unkwnow"], filename_suffix="TermPointToGNB")
 
-        if generated:
+        if generated >0:
             if export_to_zip and zip_file is not None:
                 print(f"[Correction Commands] Generated {generated} Termpoints/Externals Correction_Cmd files from Configuration Audit in ZIP: '{pretty_path(zip_path or '')}'")
             else:
                 print(f"[Correction Commands] Generated {generated} Termpoints/Externals Correction_Cmd files from Configuration Audit in: '{pretty_path(base_dir)}'")
+        else:
+            print(f"[Correction Commands] No Termpoints/Externals Correction_Cmd files generated from Configuration Audit.")
 
         return generated
 
@@ -623,8 +625,8 @@ def export_all_sheets_with_correction_cmd(audit_post_excel: str, output_dir: str
     os.makedirs(base_dir, exist_ok=True)
 
     total_files = 0
-    zip_file = None
     zip_path = None
+    zip_file = None
 
     # Determine sheet sources
     dfs_source: dict[str, pd.DataFrame] = {}
@@ -649,7 +651,7 @@ def export_all_sheets_with_correction_cmd(audit_post_excel: str, output_dir: str
     try:
         if export_to_zip:
             import zipfile
-            zip_path = to_long_path(os.path.join(base_dir, f"{base_folder_name}.zip"))
+            zip_path = to_long_path(os.path.join(base_dir, "Other_MOs.zip"))
             zip_file = zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED)
 
         for sheet, df in dfs_source.items():
@@ -722,11 +724,15 @@ def export_all_sheets_with_correction_cmd(audit_post_excel: str, output_dir: str
         except Exception:
             pass
 
-    if export_to_zip and zip_path:
-        print(f"[Correction Commands] Generated {total_files} others sheet-based Correction_Cmd files from Configuration Audit in ZIP: '{pretty_path(zip_path)}'")
+    if total_files>0:
+        if export_to_zip and zip_path:
+            print(f"[Correction Commands] Generated {total_files} Other_MOs (sheet-based) Correction_Cmd files from Configuration Audit in ZIP: '{pretty_path(zip_path)}'")
+        else:
+            print(f"[Correction Commands] Generated {total_files} Other_MOs (sheet-based) Correction_Cmd files from Configuration Audit in: '{pretty_path(base_dir)}'")
     else:
-        print(f"[Correction Commands] Generated {total_files} others sheet-based Correction_Cmd files from Configuration Audit in: '{pretty_path(base_dir)}'")
+        print(f"[Correction Commands] No Other_MOs (sheet-based) Correction_Cmd files generated from Configuration Audit.")
 
     return total_files
+
 
 
