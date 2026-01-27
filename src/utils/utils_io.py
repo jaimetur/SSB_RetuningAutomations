@@ -1,10 +1,9 @@
 # -*- coding: utf-8 -*-
 import configparser
 import os
-import hashlib
+import sys
 import re
 import shutil
-import tempfile
 import traceback
 import zipfile
 from dataclasses import dataclass
@@ -631,6 +630,30 @@ def pretty_path(path: str) -> str:
         return path[4:]
     return path
 
+def attach_output_log_mirror(output_dir: str) -> None:
+    """
+    If sys.stdout is LoggerDual, mirror the current log file into the given output folder.
+    This allows having the same live-updating log inside Logs/ and also inside the output folder.
+    """
+    try:
+        out_dir_fs = to_long_path(output_dir) if output_dir else output_dir
+        if not out_dir_fs:
+            return
+
+        logger_obj = sys.stdout
+        add_fn = getattr(logger_obj, "add_mirror_file", None)
+        log_path = getattr(logger_obj, "log_path", "")
+        if not callable(add_fn) or not log_path:
+            return
+
+        base_name = os.path.basename(str(log_path))
+        if not base_name:
+            return
+
+        mirror_path = os.path.join(out_dir_fs, base_name)
+        add_fn(mirror_path)
+    except Exception:
+        return
 
 def _find_first_dir_with_valid_logs(root_folder: str) -> Optional[str]:
     """

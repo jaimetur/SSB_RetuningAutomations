@@ -30,7 +30,7 @@ from pathlib import Path
 from src.utils.utils_datetime import format_duration_hms
 from src.utils.utils_dialog import tk, ttk, filedialog, messagebox, ask_reopen_launcher, ask_yes_no_dialog, ask_yes_no_dialog_custom
 from src.utils.utils_infrastructure import LoggerDual
-from src.utils.utils_io import load_cfg_values, save_cfg_values, log_module_exception, to_long_path, pretty_path, folder_or_zip_has_valid_logs, detect_pre_post_subfolders, write_compared_folders_file, ensure_logs_available
+from src.utils.utils_io import load_cfg_values, save_cfg_values, log_module_exception, to_long_path, pretty_path, folder_or_zip_has_valid_logs, detect_pre_post_subfolders, write_compared_folders_file, ensure_logs_available, attach_output_log_mirror
 
 from src.utils.utils_parsing import normalize_csv_list, parse_arfcn_csv_to_set, infer_parent_timestamp_and_market
 
@@ -120,6 +120,7 @@ CONFIG_KEY_ALLOWED_N77_SSB_PRE          = "allowed_n77_ssb_pre_csv"
 CONFIG_KEY_ALLOWED_N77_ARFCN_PRE        = "allowed_n77_arfcn_pre_csv"
 CONFIG_KEY_ALLOWED_N77_SSB_POST         = "allowed_n77_ssb_post_csv"
 CONFIG_KEY_ALLOWED_N77_ARFCN_POST       = "allowed_n77_arfcn_post_csv"
+CONFIG_KEY_EXPORT_CORRECTION_CMD        = "export_correction_cmd"
 
 # Logic Map -> Key in config
 CFG_FIELD_MAP = {
@@ -137,34 +138,41 @@ CFG_FIELD_MAP = {
     "cc_freq_filters":            CONFIG_KEY_CC_FREQ_FILTERS,
     "allowed_n77_ssb_pre":        CONFIG_KEY_ALLOWED_N77_SSB_PRE,
     "allowed_n77_arfcn_pre":      CONFIG_KEY_ALLOWED_N77_ARFCN_PRE,
-    "allowed_n77_ssb_post":       CONFIG_KEY_ALLOWED_N77_SSB_POST,
-    "allowed_n77_arfcn_post":     CONFIG_KEY_ALLOWED_N77_ARFCN_POST,
+    "allowed_n77_ssb_post": CONFIG_KEY_ALLOWED_N77_SSB_POST,
+    "allowed_n77_arfcn_post": CONFIG_KEY_ALLOWED_N77_ARFCN_POST,
+    "export_correction_cmd": CONFIG_KEY_EXPORT_CORRECTION_CMD,
 }
 
 
 @dataclass
 class GuiResult:
     module: str
-    # Single-input mode
+
+    # Inputs (single or dual mode)
     input_dir: str
-    # Dual-input mode
     input_pre_dir: str
     input_post_dir: str
-    # Common frequencies
+
+    # Frequencies
     n77_ssb_pre: str
     n77_ssb_post: str
-    # N77B SSB frequency
     n77b_ssb: str
-    # Configuration Audit filters
+
+    # Filters (CSV)
     ca_freq_filters_csv: str
-    # Consistency Checks filters
     cc_freq_filters_csv: str
+
     # SSB/ARFCN lists for ConfigurationAudit (PRE)
     allowed_n77_ssb_pre_csv: str
     allowed_n77_arfcn_pre_csv: str
+
     # SSB/ARFCN lists for ConfigurationAudit (POST)
     allowed_n77_ssb_post_csv: str
     allowed_n77_arfcn_post_csv: str
+
+    # ConfigurationAudit: export correction command files (slow)
+    export_correction_cmd: bool
+
 
 
 def is_consistency_module(selected_text: str) -> bool:
@@ -195,6 +203,7 @@ def gui_config_dialog(
     default_allowed_n77_arfcn_csv: str = DEFAULT_ALLOWED_N77_ARFCN_PRE_CSV,
     default_allowed_n77_ssb_post_csv: str = DEFAULT_ALLOWED_N77_SSB_POST_CSV,
     default_allowed_n77_arfcn_post_csv: str = DEFAULT_ALLOWED_N77_ARFCN_POST_CSV,
+    default_export_correction_cmd: bool = True,
 ) -> Optional[GuiResult]:
     """
     Single window with:
@@ -249,6 +258,7 @@ def gui_config_dialog(
     allowed_n77_arfcn_pre_var = tk.StringVar(value=normalize_csv_list(default_allowed_n77_arfcn_csv))
     allowed_n77_ssb_post_var = tk.StringVar(value=normalize_csv_list(default_allowed_n77_ssb_post_csv))
     allowed_n77_arfcn_post_var = tk.StringVar(value=normalize_csv_list(default_allowed_n77_arfcn_post_csv))
+    export_correction_cmd_var = tk.BooleanVar(value=bool(default_export_correction_cmd))
     result: Optional[GuiResult] = None
 
     pad = {'padx': 10, 'pady': 6}
@@ -387,6 +397,27 @@ def gui_config_dialog(
     ttk.Label(right_frame, text="Consistency Checks Filters (Empty = No Filter):").grid(row=3, column=0, sticky="w")
     ttk.Entry(right_frame, textvariable=cc_filters_csv_var, width=40).grid(row=4, column=0, sticky="ew")
 
+    # ConfigurationAudit Options
+    export_correction_cmd_label = ttk.Label(right_frame, text="Configuration Audit Options:")
+    export_correction_cmd_chk = ttk.Checkbutton(right_frame, text="Export Correction Cmd text files (slow)", variable=export_correction_cmd_var)
+    export_correction_cmd_label.grid(row=6, column=0, sticky="w", pady=(10, 0))
+    export_correction_cmd_chk.grid(row=7, column=0, sticky="w")
+
+    def refresh_export_correction_cmd_option(*_e):
+        """Show the export option only when it is relevant (ConfigurationAudit / ConsistencyChecks)."""
+        sel_module = (module_var.get() or "").strip()
+        needs_export_option = (sel_module == MODULE_NAMES[0]) or is_consistency_module(sel_module) or (sel_module == MODULE_NAMES[2])
+
+        if needs_export_option:
+            export_correction_cmd_label.grid()
+            export_correction_cmd_chk.grid()
+        else:
+            export_correction_cmd_label.grid_remove()
+            export_correction_cmd_chk.grid_remove()
+
+    cmb.bind("<<ComboboxSelected>>", refresh_export_correction_cmd_option, add="+")
+    refresh_export_correction_cmd_option()
+
     def current_selected_set_summary() -> List[str]:
         return [s.strip() for s in normalize_csv_list(ca_filters_csv_var.get()).split(",") if s.strip()]
 
@@ -490,6 +521,7 @@ def gui_config_dialog(
                 allowed_n77_arfcn_pre_csv=normalized_allowed_n77_arfcn_pre,
                 allowed_n77_ssb_post_csv=normalized_allowed_n77_ssb_post,
                 allowed_n77_arfcn_post_csv=normalized_allowed_n77_arfcn_post,
+                export_correction_cmd=bool(export_correction_cmd_var.get()),
             )
         else:
             sel_input = input_var.get().strip()
@@ -514,6 +546,7 @@ def gui_config_dialog(
                 allowed_n77_arfcn_pre_csv=normalized_allowed_n77_arfcn_pre,
                 allowed_n77_ssb_post_csv=normalized_allowed_n77_ssb_post,
                 allowed_n77_arfcn_post_csv=normalized_allowed_n77_arfcn_post,
+                export_correction_cmd=bool(export_correction_cmd_var.get()),
             )
         root.destroy()
 
@@ -577,11 +610,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--ca-freq-filters", help="Comma-separated list of frequencies to filter Configuration Audit results (pivot tables).")
     parser.add_argument("--cc-freq-filters", help="Comma-separated list of frequencies to filter Consistency Checks results.")
 
+    # ConfigurationAudit: export correction commands (text files)
+    parser.add_argument("--export-correction-cmd", dest="export_correction_cmd", action=argparse.BooleanOptionalAction, default=True, help="Enable/disable exporting correction command text files during ConfigurationAudit (slow). For ConsistencyChecks, this controls the POST ConfigurationAudit export (PRE is always skipped).")
+
     parser.add_argument("--no-gui", action="store_true", help="Disable GUI usage (only CLI).")
 
     args = parser.parse_args()
     setattr(args, "_parser", parser)
     return args
+
 
 
 # ============================== RUNNERS (TASKS) ============================= #
@@ -737,6 +774,8 @@ def run_configuration_audit(
         os.makedirs(output_dir, exist_ok=True)
         print(f"{module_name} [INFO] Output folder: '{pretty_path(output_dir)}'")
 
+        attach_output_log_mirror(output_dir)
+
         # Progressive fallback in case the installed ConfigurationAudit has an older signature
         try:
             app = ConfigurationAudit(n77_ssb_pre=local_n77_ssb_pre, n77_ssb_post=local_n77_ssb_post, n77b_ssb_arfcn=local_n77b_ssb, allowed_n77_ssb_pre=allowed_n77_ssb_pre, allowed_n77_arfcn_pre=allowed_n77_arfcn_pre, allowed_n77_ssb_post=allowed_n77_ssb_post, allowed_n77_arfcn_post=allowed_n77_arfcn_post)
@@ -852,6 +891,7 @@ def run_consistency_checks(
     allowed_n77_arfcn_pre_csv: Optional[str] = None,
     allowed_n77_ssb_post_csv: Optional[str] = None,
     allowed_n77_arfcn_post_csv: Optional[str] = None,
+    export_correction_cmd_post: bool = True,
     mode: str = "",
 ) -> None:
     """
@@ -1082,6 +1122,8 @@ def run_consistency_checks(
                     output_dir = os.path.join(post_dir_fs, f"ConsistencyChecks_{folder_versioned_suffix}")
                 os.makedirs(output_dir, exist_ok=True)
 
+                attach_output_log_mirror(output_dir)
+
                 # NEW: write FoldersCompared.txt with the exact PRE/POST folders used
                 try:
                     txt_path = write_compared_folders_file(output_dir=output_dir, pre_dir=pre_dir_fs, post_dir=post_dir_fs)
@@ -1107,7 +1149,7 @@ def run_consistency_checks(
 
                 print(f"{module_name} {market_tag} [INFO] Running Configuration Audit for POST folder before consistency checks...")
                 print("-" * 80)
-                post_audit_excel = run_configuration_audit(input_dir=post_dir_process_fs, ca_freq_filters_csv=ca_freq_filters_csv, n77_ssb_pre=n77_ssb_pre, n77_ssb_post=n77_ssb_post, n77b_ssb=n77b_ssb, allowed_n77_ssb_pre_csv=allowed_n77_ssb_pre_csv, allowed_n77_arfcn_pre_csv=allowed_n77_arfcn_pre_csv, allowed_n77_ssb_post_csv=allowed_n77_ssb_post_csv, allowed_n77_arfcn_post_csv=allowed_n77_arfcn_post_csv, versioned_suffix=audit_post_suffix, market_label=market_label, external_output_dir=output_dir, export_correction_cmd=True)
+                post_audit_excel = run_configuration_audit(input_dir=post_dir_process_fs, ca_freq_filters_csv=ca_freq_filters_csv, n77_ssb_pre=n77_ssb_pre, n77_ssb_post=n77_ssb_post, n77b_ssb=n77b_ssb, allowed_n77_ssb_pre_csv=allowed_n77_ssb_pre_csv, allowed_n77_arfcn_pre_csv=allowed_n77_arfcn_pre_csv, allowed_n77_ssb_post_csv=allowed_n77_ssb_post_csv, allowed_n77_arfcn_post_csv=allowed_n77_arfcn_post_csv, versioned_suffix=audit_post_suffix, market_label=market_label, external_output_dir=output_dir, export_correction_cmd=export_correction_cmd_post)
                 print("-" * 80)
                 if post_audit_excel:
                     print(f"{module_name} {market_tag} [INFO] POST Configuration Audit output: '{pretty_path(post_audit_excel)}'")
@@ -1249,6 +1291,7 @@ def execute_module(
     allowed_n77_arfcn_pre_csv: str = "",
     allowed_n77_ssb_post_csv: str = "",
     allowed_n77_arfcn_post_csv: str = "",
+    export_correction_cmd: bool = True,
     selected_module: str = "",
 ) -> None:
     """
@@ -1266,48 +1309,30 @@ def execute_module(
 
     try:
         if module_fn is run_consistency_checks:
-            module_fn(
-                input_dir=input_dir,
-                input_pre_dir=input_pre_dir,
-                input_post_dir=input_post_dir,
-                n77_ssb_pre=n77_ssb_pre,
-                n77_ssb_post=n77_ssb_post,
-                n77b_ssb=n77b_ssb,
-                ca_freq_filters_csv=ca_freq_filters_csv,
-                cc_freq_filters_csv=cc_freq_filters_csv,
-                allowed_n77_ssb_pre_csv=allowed_n77_ssb_pre_csv,
-                allowed_n77_arfcn_pre_csv=allowed_n77_arfcn_pre_csv,
-                allowed_n77_ssb_post_csv=allowed_n77_ssb_post_csv,
-                allowed_n77_arfcn_post_csv=allowed_n77_arfcn_post_csv,
-                mode=selected_module,
-            )
+            module_fn(input_dir=input_dir, input_pre_dir=input_pre_dir, input_post_dir=input_post_dir, n77_ssb_pre=n77_ssb_pre, n77_ssb_post=n77_ssb_post, n77b_ssb=n77b_ssb, ca_freq_filters_csv=ca_freq_filters_csv, cc_freq_filters_csv=cc_freq_filters_csv, allowed_n77_ssb_pre_csv=allowed_n77_ssb_pre_csv, allowed_n77_arfcn_pre_csv=allowed_n77_arfcn_pre_csv, allowed_n77_ssb_post_csv=allowed_n77_ssb_post_csv, allowed_n77_arfcn_post_csv=allowed_n77_arfcn_post_csv, export_correction_cmd_post=export_correction_cmd, mode=selected_module)
 
         elif module_fn is run_configuration_audit:
-            module_fn(
-                input_dir,
-                ca_freq_filters_csv=ca_freq_filters_csv,
-                n77_ssb_pre=n77_ssb_pre,
-                n77_ssb_post=n77_ssb_post,
-                allowed_n77_ssb_pre_csv=allowed_n77_ssb_pre_csv,
-                allowed_n77_arfcn_pre_csv=allowed_n77_arfcn_pre_csv,
-                allowed_n77_ssb_post_csv=allowed_n77_ssb_post_csv,
-                allowed_n77_arfcn_post_csv=allowed_n77_arfcn_post_csv,
-                n77b_ssb=n77b_ssb,
-            )
-
-        # NOTE: run_profiles_audit removed
+            module_fn(input_dir, ca_freq_filters_csv=ca_freq_filters_csv, n77_ssb_pre=n77_ssb_pre, n77_ssb_post=n77_ssb_post, n77b_ssb=n77b_ssb, allowed_n77_ssb_pre_csv=allowed_n77_ssb_pre_csv, allowed_n77_arfcn_pre_csv=allowed_n77_arfcn_pre_csv, allowed_n77_ssb_post_csv=allowed_n77_ssb_post_csv, allowed_n77_arfcn_post_csv=allowed_n77_arfcn_post_csv, export_correction_cmd=export_correction_cmd)
 
         elif module_fn is run_final_cleanup:
             module_fn(input_dir, n77_ssb_pre, n77_ssb_post)
 
         else:
-            # Simple fallback for future modules
             module_fn(input_dir, n77_ssb_pre, n77_ssb_post)
 
     finally:
         elapsed = time.perf_counter() - start_ts
         print(f"[TIMER] [INFO] {label} finished in {format_duration_hms(elapsed)}")
 
+
+def parse_cfg_bool(value: str, default: bool = True) -> bool:
+    """Parse a config string into bool with a safe default."""
+    v = (value or "").strip().lower()
+    if v in {"1", "true", "yes", "y", "on"}:
+        return True
+    if v in {"0", "false", "no", "n", "off"}:
+        return False
+    return default
 
 # ================================== MAIN =================================== #
 def main():
@@ -1381,6 +1406,7 @@ def main():
         "allowed_n77_arfcn_pre",
         "allowed_n77_ssb_post",
         "allowed_n77_arfcn_post",
+        "export_correction_cmd",
     )
 
     # Global fallback last input
@@ -1403,6 +1429,8 @@ def main():
     persisted_allowed_arfcn_pre        = cfg["allowed_n77_arfcn_pre"]
     persisted_allowed_ssb_post         = cfg["allowed_n77_ssb_post"]
     persisted_allowed_arfcn_post       = cfg["allowed_n77_arfcn_post"]
+    persisted_export_correction_cmd    = parse_cfg_bool(cfg.get("export_correction_cmd", ""), default=True)
+
 
     # Defaults per module (CLI > persisted per-module > global fallback > hardcode)
     default_input_audit = args.input or persisted_last_audit or persisted_last_single or INPUT_FOLDER or ""
@@ -1427,6 +1455,7 @@ def main():
     default_allowed_n77_arfcn_pre_csv = normalize_csv_list(args.allowed_n77_arfcn_pre or persisted_allowed_arfcn_pre or DEFAULT_ALLOWED_N77_ARFCN_PRE_CSV)
     default_allowed_n77_ssb_post_csv = normalize_csv_list(args.allowed_n77_ssb_post or persisted_allowed_ssb_post or DEFAULT_ALLOWED_N77_SSB_POST_CSV)
     default_allowed_n77_arfcn_post_csv = normalize_csv_list(args.allowed_n77_arfcn_post or persisted_allowed_arfcn_post or DEFAULT_ALLOWED_N77_ARFCN_POST_CSV)
+    default_export_correction_cmd = persisted_export_correction_cmd
 
     # ====================== MODE 1: GUI (NO ARGS) ===========================
     if no_args:
@@ -1454,6 +1483,7 @@ def main():
                 default_allowed_n77_arfcn_csv=default_allowed_n77_arfcn_pre_csv,
                 default_allowed_n77_ssb_post_csv=default_allowed_n77_ssb_post_csv,
                 default_allowed_n77_arfcn_post_csv=default_allowed_n77_arfcn_post_csv,
+                default_export_correction_cmd=default_export_correction_cmd,
             )
             if sel is None:
                 raise SystemExit("[INFO] Cancelled.")
@@ -1491,6 +1521,7 @@ def main():
                 allowed_n77_arfcn_pre=sel.allowed_n77_arfcn_pre_csv,
                 allowed_n77_ssb_post=sel.allowed_n77_ssb_post_csv,
                 allowed_n77_arfcn_post=sel.allowed_n77_arfcn_post_csv,
+                export_correction_cmd=("1" if sel.export_correction_cmd else "0"),
             )
 
             # Persist per-module input folders
@@ -1529,6 +1560,7 @@ def main():
             default_allowed_n77_arfcn_pre_csv = sel.allowed_n77_arfcn_pre_csv
             default_allowed_n77_ssb_post_csv = sel.allowed_n77_ssb_post_csv
             default_allowed_n77_arfcn_post_csv = sel.allowed_n77_arfcn_post_csv
+            default_export_correction_cmd = sel.export_correction_cmd
 
             try:
                 execute_module(
@@ -1545,6 +1577,7 @@ def main():
                     allowed_n77_arfcn_pre_csv=sel.allowed_n77_arfcn_pre_csv,
                     allowed_n77_ssb_post_csv=sel.allowed_n77_ssb_post_csv,
                     allowed_n77_arfcn_post_csv=sel.allowed_n77_arfcn_post_csv,
+                    export_correction_cmd=sel.export_correction_cmd,
                     selected_module=sel.module,
                 )
             except Exception as e:

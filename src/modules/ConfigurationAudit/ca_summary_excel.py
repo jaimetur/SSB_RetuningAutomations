@@ -280,7 +280,19 @@ def build_summary_audit(
         return str(value).strip()
 
     # ============================ MAIN CODE ================================
-    # Load node identifiers from SummaryAudit (Pre / Post) once, reused by all processors
+    # NOTE:
+    # - Some processors (NRCellRelation, GUtranCellRelation, Externals/Termpoints, Profiles audit scoping)
+    #   need to know which nodes are considered "Pre-retune" vs "Post-retune".
+    # - The helper load_nodes_names_and_id_from_summary_audit() extracts those node lists from rows produced
+    #   by process_nr_cell_du() (NR nodes with N77 SSB in Pre/Post-Retune allowed lists).
+    # - Therefore, we MUST run process_nr_cell_du() first to populate rows, then load nodes, then run the rest.
+
+    # 1) Create NRCellDU summary rows first (required for node extraction)
+    nodes_id_pre, nodes_name_pre = set(), set()
+    nodes_id_post, nodes_name_post = set(), set()
+    process_nr_cell_du(df_nr_cell_du, add_row, allowed_n77_ssb_pre_set, allowed_n77_ssb_post_set, nodes_id_pre, nodes_id_post)
+
+    # 2) Now that rows contains NRCellDU metrics, load node identifiers for Pre/Post
     nodes_id_pre, nodes_name_pre = load_nodes_names_and_id_from_summary_audit(rows, stage="Pre", module_name=module_name)
     nodes_id_post, nodes_name_post = load_nodes_names_and_id_from_summary_audit(rows, stage="Post", module_name=module_name)
 
@@ -288,7 +300,6 @@ def build_summary_audit(
     process_nr_freq(df_nr_freq, has_value, add_row, is_old, n77_ssb_pre, is_new, n77_ssb_post, series_only_not_old_not_new, nodes_id_pre, nodes_id_post)
     process_nr_freq_rel(df_nr_freq_rel, is_old, add_row, n77_ssb_pre, is_new, n77_ssb_post, series_only_not_old_not_new, param_mismatch_rows_nr, nodes_id_pre, nodes_id_post)
     process_nr_sector_carrier(df_nr_sector_carrier, add_row, allowed_n77_arfcn_pre_set, all_n77_arfcn_in_pre, allowed_n77_arfcn_post_set, all_n77_arfcn_in_post, nodes_id_pre, nodes_id_post)
-    process_nr_cell_du(df_nr_cell_du, add_row, allowed_n77_ssb_pre_set, allowed_n77_ssb_post_set, nodes_id_pre, nodes_id_post)
     process_nr_cell_relation(df_nr_cell_rel, extract_freq_from_nrfreqrelationref, n77_ssb_pre, n77_ssb_post, add_row, nodes_id_pre, nodes_id_post)
 
     # LTE Tables

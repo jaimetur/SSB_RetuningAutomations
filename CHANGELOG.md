@@ -5,7 +5,7 @@
 ---
 
 ## Release: v0.6.0
-- ### Release Date: 2026-01-26
+- ### Release Date: 2026-01-27
 
 - ### Main Changes:
   
@@ -14,6 +14,8 @@
   - #### 🌟 New Features:
     - Merge Excel sheets for the same MO instead add (1), (2)… in 'ConfigurationAudit' module.
     - Added a hyperlink in cell A1 on every sheet to jump back to SummaryAudit.
+    - New flag `--export-correction-cmd` (also available on GUI) to enable the export of Correction Commands during `ConfigurationAudit`module. (NOTE: This flag is disabled by default on CLI and need to be included if you want to export the Correction Command files).
+    - Now the execution log is also available in output folder for an easier way to identify which log belong to each execution.
 
   - #### 🚀 Enhancements:
     - ConsistencyChecks module:
@@ -37,12 +39,13 @@
 
   - #### 🐛 Bug fixes:
     - Stopped ConfigurationAudit from creating ConsistencyCheck-only folders (MissingRelations/ NewRelations/ RelationsDiscrepancies) under Correction_Cmd.
-    - Fixed Correction_Cmd export so it now includes all sheets that contain Correction_Cmd (e.g., NRCellRelation, GUtranCellRelation), not only External/TermPoint.
+    - Fixed Correction_Cmd exporters so it now includes all sheets that contain Correction_Cmd (e.g., NRCellRelation, GUtranCellRelation), not only External/TermPoint.
     - Fixed NRCellRelation command generation by ensuring canonical column names are present for the builders (so Correction_Cmd is no longer all-empty).
-    - Fixed GUtranCellRelation processing: added missing imports (e.g., re), restored missing output columns (Correction_Cmd, Frequency, GNodeB_SSB_Target) via proper reinjection, and set SubCategory back to LTE Frequency Audit.
+    - Fixed GUtranCellRelation processing: restored missing output columns (Correction_Cmd, Frequency, GNodeB_SSB_Target) via proper reinjection, and set SubCategory back to LTE Frequency Audit.
     - Fixed Summary sheet when one MO appears in multiple logs: File/LogFile now list the real logs (deduped), instead of duplicating the same name.
     - Fixed Summary LogPath: now points to <zip>/<log> instead of the temporary unzip folder (by passing source_zip_path/extracted_root through kwargs).
-    - Fixed TermPointToGNB being empty / crashing: corrected reinjection issues (where applicable) and added a DataFrame type guard to prevent 'str' ... copy() failures.
+    - Fixed TermPointToGNB being empty / crashing: corrected reinjection issues (where applicable).
+    - Fixed issue when `NRCellRelation` or `GUtranCellRelation` have to extract the list of nodes "Pre-retune" or "Post-retune" from SummaryAudit. Since those nodes are calculated by `process_nr_cell_du()` function, that function need to be run before to process other tables.
     - Minor bug fixing.
     
   - #### 📚 Documentation: 

@@ -4,6 +4,7 @@ import zipfile
 from colorama import Fore
 from datetime import datetime
 from pathlib import Path
+import re
 
 
 # TAG and TAGS Colored for messages output (in console and log)
@@ -151,42 +152,132 @@ def get_resource_path(relative_path: str) -> str:
     return os.path.join(base_path, relative_path)
 
 # ============================== LOGGING SYSTEM ============================== #
+
+ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;]*[mK]")
+
+def strip_ansi(text: str) -> str:
+    """Remove ANSI escape sequences (colors) from a string."""
+    if not isinstance(text, str) or not text:
+        return text
+    return ANSI_ESCAPE_RE.sub("", text)
+
 class LoggerDual:
     """
     Simple dual logger that mirrors stdout prints to both console and a log file.
     Replaces sys.stdout so every print() goes to both outputs automatically.
+
+    Enhancements:
+      - Optional extra mirror log files (e.g., also write the same log inside the output folder).
+      - Optional auto-flush so the log is updated during execution and not only at program end.
     """
-    def __init__(self, log_file_path: str, timestamp_format: str = "%Y-%m-%d %H:%M:%S"):
+
+    def __init__(self, log_file_path: str, timestamp_format: str = "%Y-%m-%d %H:%M:%S", tee_to_console: bool = True, enable_color: bool = True, auto_flush: bool = True, mirror_file_paths: list[str] | None = None):
         self.terminal = sys.stdout
-        self.log = open(log_file_path, "a", encoding="utf-8")
+        self.log_path = log_file_path
+        self.log = open(log_file_path, "a", encoding="utf-8") if log_file_path else None
         self.timestamp_format = timestamp_format
+        self.tee_to_console = tee_to_console
+        self.enable_color = enable_color
+        self.auto_flush = auto_flush
         self._at_line_start = True  # True when next write begins a new log line
+
+        self._mirror_logs: list[tuple[str, object]] = []  # list[(path, file_handle)]
+        for p in (mirror_file_paths or []):
+            self.add_mirror_file(p)
+
+    def add_mirror_file(self, mirror_path: str) -> bool:
+        """Add an additional log file to mirror output into. Returns True if added."""
+        if not mirror_path:
+            return False
+
+        norm = str(mirror_path)
+        for existing_path, _fh in self._mirror_logs:
+            if existing_path == norm:
+                return False
+
+        try:
+            os.makedirs(os.path.dirname(norm), exist_ok=True)
+        except Exception:
+            pass
+
+        try:
+            fh = open(norm, "a", encoding="utf-8")
+            self._mirror_logs.append((norm, fh))
+            return True
+        except Exception:
+            return False
 
     def _now_prefix(self) -> str:
         """Build a timestamp prefix for the log file."""
         return f"[{datetime.now().strftime(self.timestamp_format)}] "
 
+    def _strip_ansi(self, s: str) -> str:
+        # Keep behavior consistent: log files should not contain ANSI color codes.
+        return strip_ansi(s)
+
     def write(self, message: str):
         # Always write raw message to terminal
-        self.terminal.write(message)
+        if self.tee_to_console and self.terminal is not None:
+            self.terminal.write(message)
 
-        # Write to file with timestamp at the beginning of each new line
         if not message:
             return
 
-        parts = message.splitlines(keepends=True)
+        clean = self._strip_ansi(message) if self.enable_color else message
+        parts = clean.splitlines(keepends=True)
+
         for part in parts:
             if self._at_line_start:
-                self.log.write(self._now_prefix())
+                prefix = self._now_prefix()
+                if self.log is not None:
+                    self.log.write(prefix)
+                for _p, fh in self._mirror_logs:
+                    fh.write(prefix)
                 self._at_line_start = False
 
-            self.log.write(part)
+            if self.log is not None:
+                self.log.write(part)
+            for _p, fh in self._mirror_logs:
+                fh.write(part)
 
             # If this chunk ends with a newline, next write starts a new line
             if part.endswith("\n"):
                 self._at_line_start = True
 
+        if self.auto_flush:
+            self.flush()
+
     def flush(self):
         """Required for compatibility with Python's stdout flush behavior."""
-        self.terminal.flush()
-        self.log.flush()
+        try:
+            if self.terminal is not None:
+                self.terminal.flush()
+        except Exception:
+            pass
+
+        try:
+            if self.log is not None:
+                self.log.flush()
+        except Exception:
+            pass
+
+        for _p, fh in self._mirror_logs:
+            try:
+                fh.flush()
+            except Exception:
+                pass
+
+    def close(self):
+        """Close file handles (best-effort)."""
+        try:
+            if self.log is not None:
+                self.log.close()
+        except Exception:
+            pass
+
+        for _p, fh in self._mirror_logs:
+            try:
+                fh.close()
+            except Exception:
+                pass
+
