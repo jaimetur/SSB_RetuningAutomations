@@ -37,7 +37,7 @@
         - All MOs where a column `Correction_Cmd` is found in the Excel sheet will be exported as text file command.
         - External/Termpoints commands (they already come from the single Audit Excel).
     - Export Correction Commands:
-      - Enhancements in the way that the Correction_Cmd is loaded (before it was read from final Excel file, now it is read from the dataframe already in memmory).
+      - Enhancements in the way that the Correction_Cmd is loaded (before it was read from final Excel file, now it is read from the dataframe already in memory).
       - Correction Commands files are now exported as ZIP files (by default) to reduce latency and avoid to write hundreds of files on disk.
 
   - #### 🐛 Bug fixes:
