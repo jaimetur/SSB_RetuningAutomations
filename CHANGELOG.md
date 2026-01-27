@@ -5,7 +5,7 @@
 ---
 
 ## Release: v0.6.0
-- ### Release Date: 2026-01-27
+- ### Release Date: 2026-01-28
 
 - ### Main Changes:
   
