@@ -268,7 +268,8 @@ def export_relations_commands(output_dir: str, dfs_by_category: Dict[str, pd.Dat
 
         def _write_text(target_dir: str, file_name: str, text: str) -> None:
             if export_to_zip and zip_file is not None:
-                arcname = f"{base_folder_name}/{target_dir.strip('/').strip('\\\\')}/{file_name}"
+                target_dir_clean = str(target_dir).replace("\\", "/").strip("/")
+                arcname = f"{base_folder_name}/{target_dir_clean}/{file_name}" if target_dir_clean else f"{base_folder_name}/{file_name}"
                 zip_file.writestr(arcname.replace("\\", "/"), text)
                 return
 
