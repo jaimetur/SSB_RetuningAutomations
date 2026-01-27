@@ -634,6 +634,10 @@ def attach_output_log_mirror(output_dir: str) -> None:
     """
     If sys.stdout is LoggerDual, mirror the current log file into the given output folder.
     This allows having the same live-updating log inside Logs/ and also inside the output folder.
+
+    IMPORTANT:
+    - The mirror file is usually attached after some log lines were already written.
+    - To avoid missing the initial part of the log in the output folder, we first copy the current log content.
     """
     try:
         out_dir_fs = to_long_path(output_dir) if output_dir else output_dir
@@ -651,9 +655,39 @@ def attach_output_log_mirror(output_dir: str) -> None:
             return
 
         mirror_path = os.path.join(out_dir_fs, base_name)
-        add_fn(mirror_path)
+
+        try:
+            log_path_fs = to_long_path(str(log_path))
+        except Exception:
+            log_path_fs = str(log_path)
+
+        try:
+            mirror_path_fs = to_long_path(str(mirror_path))
+        except Exception:
+            mirror_path_fs = str(mirror_path)
+
+        # Avoid mirroring into itself
+        try:
+            if os.path.abspath(log_path_fs) == os.path.abspath(mirror_path_fs):
+                return
+        except Exception:
+            pass
+
+        # Copy current log content so the mirror contains the initial lines logged before adding the mirror
+        try:
+            if os.path.isfile(log_path_fs):
+                os.makedirs(os.path.dirname(mirror_path_fs), exist_ok=True)
+                with open(log_path_fs, "r", encoding="utf-8", errors="ignore") as src_fh:
+                    content = src_fh.read()
+                with open(mirror_path_fs, "w", encoding="utf-8") as dst_fh:
+                    dst_fh.write(content)
+        except Exception:
+            pass
+
+        add_fn(mirror_path_fs)
     except Exception:
         return
+
 
 def _find_first_dir_with_valid_logs(root_folder: str) -> Optional[str]:
     """
