@@ -706,6 +706,7 @@ class ConfigurationAudit:
                         # ------------------------------------------------------------------
                         # PHASE 5.3: Write parsed MO tables
                         # ------------------------------------------------------------------
+                        _log_info("PHASE 5.3: Write parsed MO tables (this phase can take some time)...")
                         with log_phase_timer("PHASE 5.3: Write parsed MO tables", log_fn=_log_info, show_start=show_phase_starts, show_end=False, show_timing=show_phase_timings, line_prefix="", start_level="INFO", end_level="INFO", timing_level="INFO"):
                             # Then write each table in the final determined order
                             written = 0
