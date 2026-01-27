@@ -232,7 +232,7 @@ def _reorder_cmds_del_first(cmds: List[object]) -> List[str]:
 # ----------------------------------------------------------------------
 #  EXPORT CORRECTION COMMNANDS TO TEXT FILES
 # ----------------------------------------------------------------------
-def export_relations_commands(output_dir: str, dfs_by_category: Dict[str, pd.DataFrame], base_folder_name: str = "Correction_Cmd", export_to_zip: bool = True) -> int:
+def export_relations_commands(output_dir: str, dfs_by_category: Dict[str, pd.DataFrame], base_folder_name: str = "Correction_Cmd", export_to_zip: bool = True, module_name: str = "") -> int:
     """
     Export Correction_Cmd values to text files grouped by NodeId and category.
 
@@ -347,11 +347,11 @@ def export_relations_commands(output_dir: str, dfs_by_category: Dict[str, pd.Dat
 
         if total_files > 0:
             if export_to_zip and zip_file is not None:
-                print(f"\n[Correction Commands] Generated {total_files} Correction_Cmd files in ZIP: '{pretty_path(zip_path or '')}'")
+                print(f"\n{module_name} [INFO] Generated {total_files} Correction_Cmd files in ZIP: '{pretty_path(zip_path or '')}'")
             else:
-                print(f"\n[Correction Commands] Generated {total_files} Correction_Cmd files in: '{pretty_path(base_dir)}'")
+                print(f"\n{module_name} [INFO] Generated {total_files} Correction_Cmd files in: '{pretty_path(base_dir)}'")
         else:
-            print(f"\n[Correction Commands] No relations Correction_Cmd files generated.")
+            print(f"\n{module_name} [INFO] No relations Correction_Cmd files generated.")
 
         return total_files
 
@@ -365,7 +365,7 @@ def export_relations_commands(output_dir: str, dfs_by_category: Dict[str, pd.Dat
 
 
 # ----------------------------- EXTERNAL/TERMPOINTS COMMANDS ----------------------------- #
-def export_external_and_termpoint_commands(audit_post_excel: str, output_dir: str, base_folder_name: str = "Correction_Cmd", sheet_dfs: Optional[dict[str, pd.DataFrame]] = None, export_to_zip: bool = True) -> int:
+def export_external_and_termpoint_commands(audit_post_excel: str, output_dir: str, base_folder_name: str = "Correction_Cmd", sheet_dfs: Optional[dict[str, pd.DataFrame]] = None, export_to_zip: bool = True, module_name: str = "") -> int:
     """
     Export correction commands coming from POST Configuration Audit Excel:
       - ExternalNRCellCU (SSB-Post)
@@ -596,11 +596,11 @@ def export_external_and_termpoint_commands(audit_post_excel: str, output_dir: st
 
         if total_files >0:
             if export_to_zip and zip_file is not None:
-                print(f"[Correction Commands] Generated {total_files} Termpoints/Externals Correction_Cmd files from Configuration Audit in ZIP: '{pretty_path(zip_path or '')}'")
+                print(f"{module_name} [INFO] Generated {total_files} Termpoints/Externals Correction_Cmd files from Configuration Audit in ZIP: '{pretty_path(zip_path or '')}'")
             else:
-                print(f"[Correction Commands] Generated {total_files} Termpoints/Externals Correction_Cmd files from Configuration Audit in: '{pretty_path(base_dir)}'")
+                print(f"{module_name} [INFO] Generated {total_files} Termpoints/Externals Correction_Cmd files from Configuration Audit in: '{pretty_path(base_dir)}'")
         else:
-            print(f"[Correction Commands] No Termpoints/Externals Correction_Cmd files generated from Configuration Audit.")
+            print(f"{module_name} [INFO] No Termpoints/Externals Correction_Cmd files generated from Configuration Audit.")
 
         return total_files
 
@@ -613,7 +613,7 @@ def export_external_and_termpoint_commands(audit_post_excel: str, output_dir: st
 
 
 
-def export_all_sheets_with_correction_commands(audit_post_excel: str, output_dir: str, base_folder_name: str = "Correction_Cmd", exclude_sheets: Optional[set[str]] = None, sheet_dfs: Optional[dict[str, pd.DataFrame]] = None, export_to_zip: bool = True) -> int:
+def export_all_sheets_with_correction_commands(audit_post_excel: str, output_dir: str, base_folder_name: str = "Correction_Cmd", exclude_sheets: Optional[set[str]] = None, sheet_dfs: Optional[dict[str, pd.DataFrame]] = None, export_to_zip: bool = True, module_name: str = "") -> int:
     """
     Export Correction_Cmd values from ANY sheet containing a 'Correction_Cmd' column.
     Intended for ConfigurationAudit (NRCellRelation, GUtranCellRelation, etc.).
@@ -731,11 +731,11 @@ def export_all_sheets_with_correction_commands(audit_post_excel: str, output_dir
 
         if total_files>0:
             if export_to_zip and zip_path:
-                print(f"[Correction Commands] Generated {total_files} Other_MOs (sheet-based) Correction_Cmd files from Configuration Audit in ZIP: '{pretty_path(zip_path)}'")
+                print(f"{module_name} [INFO] Generated {total_files} Other_MOs (sheet-based) Correction_Cmd files from Configuration Audit in ZIP: '{pretty_path(zip_path)}'")
             else:
-                print(f"[Correction Commands] Generated {total_files} Other_MOs (sheet-based) Correction_Cmd files from Configuration Audit in: '{pretty_path(base_dir)}'")
+                print(f"{module_name} [INFO] Generated {total_files} Other_MOs (sheet-based) Correction_Cmd files from Configuration Audit in: '{pretty_path(base_dir)}'")
         else:
-            print(f"[Correction Commands] No Other_MOs (sheet-based) Correction_Cmd files generated from Configuration Audit.")
+            print(f"{module_name} [INFO] No Other_MOs (sheet-based) Correction_Cmd files generated from Configuration Audit.")
 
         return total_files
 

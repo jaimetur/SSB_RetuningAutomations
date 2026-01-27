@@ -834,10 +834,10 @@ class ConfigurationAudit:
                     sheet_dfs_map: dict[str, pd.DataFrame] = {str(e.get("final_sheet", "")).strip(): df for e in table_entries if not bool(e.get("skip_write", False)) and str(e.get("final_sheet", "")).strip() and isinstance((df := e.get("df")), pd.DataFrame)}
 
                     # Export External / TermPoint commands (use in-memory DataFrames to avoid re-reading XLSX)
-                    export_external_and_termpoint_commands(excel_path_long, base_output_dir_long, base_folder_name=correction_cmd_folder_name, sheet_dfs=sheet_dfs_map, export_to_zip=True)
+                    export_external_and_termpoint_commands(excel_path_long, base_output_dir_long, base_folder_name=correction_cmd_folder_name, sheet_dfs=sheet_dfs_map, export_to_zip=True, module_name=module_name)
 
                     # Export any other sheet containing a 'Correction_Cmd' column (NRCellRelation, GUtranCellRelation, etc.)
-                    export_all_sheets_with_correction_commands(excel_path_long, base_output_dir_long, base_folder_name=correction_cmd_folder_name, sheet_dfs=sheet_dfs_map, export_to_zip=True,
+                    export_all_sheets_with_correction_commands(excel_path_long, base_output_dir_long, base_folder_name=correction_cmd_folder_name, sheet_dfs=sheet_dfs_map, export_to_zip=True, module_name=module_name,
                                                                exclude_sheets={"Summary", "SummaryAudit", "Summary Param Mismatch NR", "Summary Param Mismatch GU", "ExternalNRCellCU", "ExternalGUtranCell", "TermPointToGNodeB", "TermPointToGNB"})
             else:
                 _log_info("PHASE 6: Export Correction Commands skipped (export_correction_cmd=False or is a Pre-Audit).")

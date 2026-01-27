@@ -1327,7 +1327,7 @@ def run_consistency_checks(
                 else:
                     print(f"{module_name} {market_tag} [INFO] Frequencies not provided. Comparison will be skipped; only tables will be saved.")
 
-                app.save_outputs_excel(output_dir, results, versioned_suffix=file_versioned_suffix)
+                app.save_outputs_excel(output_dir, results, versioned_suffix=file_versioned_suffix, module_name=module_name)
 
                 print(f"\n{module_name} {market_tag} [INFO] Outputs saved to: '{pretty_path(output_dir)}'")
                 if results:

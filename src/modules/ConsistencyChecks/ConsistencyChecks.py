@@ -772,7 +772,7 @@ class ConsistencyChecks:
         return merged
 
     # ----------------------------- OUTPUT TO EXCEL ----------------------------- #
-    def save_outputs_excel(self, output_dir: str, results: Optional[Dict[str, Dict[str, pd.DataFrame]]] = None, versioned_suffix: Optional[str] = None) -> None:
+    def save_outputs_excel(self, output_dir: str, results: Optional[Dict[str, Dict[str, pd.DataFrame]]] = None, versioned_suffix: Optional[str] = None, module_name: str = "") -> None:
         import os
         os.makedirs(output_dir, exist_ok=True)
         suf = f"_{versioned_suffix}" if versioned_suffix else ""
@@ -992,7 +992,7 @@ class ConsistencyChecks:
 
             # Export text files (outside GU/NR blocks)
             if correction_cmd_sources:
-                cmd_files = export_relations_commands(output_dir, correction_cmd_sources, base_folder_name="Correction_Cmd_CC")
+                cmd_files = export_relations_commands(output_dir, correction_cmd_sources, base_folder_name="Correction_Cmd_CC", module_name=module_name)
 
             # -------------------------------------------------------------------
             #  APPLY HEADER STYLING + AUTO-FIT COLUMNS FOR ALL SHEETS
