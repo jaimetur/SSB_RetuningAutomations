@@ -1336,7 +1336,7 @@ def run_consistency_checks(
 
                 loaded = False
                 try:
-                    app.loadPrePost(pre_dir_process_fs, post_dir_process_fs)
+                    app.loadPrePost(input_dir_or_pre=pre_dir_process_fs, post_dir=post_dir_process_fs, module_name=module_name, market_tag=market_tag)
                     loaded = True
                 except TypeError:
                     loaded = False
@@ -1365,12 +1365,12 @@ def run_consistency_checks(
                             post_key = post_audit_excel
                         post_summary_df = CONFIG_AUDIT_SUMMARY_CACHE.get(post_key) or CONFIG_AUDIT_SUMMARY_CACHE.get(post_audit_excel)
 
-                    results = app.comparePrePost(n77_ssb_pre, n77_ssb_post, pre_audit_excel, post_audit_excel, audit_pre_summary_audit_df=pre_summary_df, audit_post_summary_audit_df=post_summary_df, module_name=module_name, market_tag=market_tag)
+                    results = app.comparePrePost(freq_before=n77_ssb_pre, freq_after=n77_ssb_post, audit_pre_excel=pre_audit_excel, audit_post_excel=post_audit_excel, audit_pre_summary_audit_df=pre_summary_df, audit_post_summary_audit_df=post_summary_df, module_name=module_name, market_tag=market_tag)
 
                 else:
                     print(f"{module_name} {market_tag} [INFO] Frequencies not provided. Comparison will be skipped; only tables will be saved.")
 
-                app.save_outputs_excel(output_dir, results, versioned_suffix=file_versioned_suffix, module_name=module_name, market_tag=market_tag)
+                app.save_outputs_excel(output_dir=output_dir, results=results, versioned_suffix=file_versioned_suffix, module_name=module_name, market_tag=market_tag)
 
                 print(f"\n{module_name} {market_tag} [INFO] Outputs saved to: '{pretty_path(output_dir)}'")
                 if results:

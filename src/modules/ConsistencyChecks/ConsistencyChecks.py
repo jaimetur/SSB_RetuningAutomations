@@ -117,7 +117,7 @@ class ConsistencyChecks:
         return df[mask]
 
     # ----------------------------- LOADING ----------------------------- #
-    def collect_from_dir(self, dir_path: str, prepost: str, collected: Dict[str, List[pd.DataFrame]]) -> None:
+    def _collect_from_dir(self, dir_path: str, prepost: str, collected: Dict[str, List[pd.DataFrame]]) -> None:
         """
         Small helper used in both legacy and dual-input modes to avoid duplication.
         """
@@ -166,7 +166,7 @@ class ConsistencyChecks:
                 self._source_paths.setdefault(mo, {}).setdefault(prepost, []).append((date_str or "", fpath))
                 collected[mo].append(df)
 
-    def loadPrePost(self, input_dir_or_pre: str, post_dir: Optional[str] = None) -> Dict[str, pd.DataFrame]:
+    def loadPrePost(self, input_dir_or_pre: str, post_dir: Optional[str] = None, module_name: Optional[str] = "", market_tag: Optional[str] = "GLOBAL") -> Dict[str, pd.DataFrame]:
         """
         Load Pre/Post either from:
           - Legacy mode: a single parent folder that contains 'Pre' and 'Post' subfolders (post_dir=None), or
@@ -194,14 +194,14 @@ class ConsistencyChecks:
                     self.pre_folder_found = True
                 elif prepost == "Post":
                     self.post_folder_found = True
-                self.collect_from_dir(entry.path, prepost, collected)
+                self._collect_from_dir(entry.path, prepost, collected)
 
             if not self.pre_folder_found:
-                print(f"[INFO] 'Pre' folder not found under: {input_dir}. Returning to GUI.")
+                print(f"{module_name} {market_tag} [INFO] 'Pre' folder not found under: {input_dir}. Returning to GUI.")
             if not self.post_folder_found:
-                print(f"[INFO] 'Post' folder not found under: {input_dir}. Returning to GUI.")
+                print(f"{module_name} {market_tag} [INFO] 'Post' folder not found under: {input_dir}. Returning to GUI.")
             if not any(collected.values()):
-                print(f"[WARNING] No GU/NR tables were loaded from: {input_dir}.")
+                print(f"{module_name} {market_tag} [WARNING] No GU/NR tables were loaded from: {input_dir}.")
         else:
             # ===== Dual-input mode: explicit PRE/POST folders =====
             pre_dir = input_dir_or_pre
@@ -212,11 +212,11 @@ class ConsistencyChecks:
 
             self.pre_folder_found = True
             self.post_folder_found = True
-            self.collect_from_dir(pre_dir, "Pre", collected)
-            self.collect_from_dir(post_dir, "Post", collected)
+            self._collect_from_dir(pre_dir, "Pre", collected)
+            self._collect_from_dir(post_dir, "Post", collected)
 
             if not any(collected.values()):
-                print(f"[WARNING] No GU/NR tables were loaded from: {pre_dir} and {post_dir}.")
+                print(f"{module_name} {market_tag} [WARNING] No GU/NR tables were loaded from: {pre_dir} and {post_dir}.")
 
         self.tables = {
             self._table_key_name(base): pd.concat(chunks, ignore_index=True)
