@@ -23,19 +23,20 @@
 
   - #### 🚀 Enhancements:
     - **ConsistencyChecks module:**
-      - ConsistencyChecks must export to `Correction_Cmd_CC` folder instead of `Correction_Cmd`. 
+      - ConsistencyChecks exports now all Correction Commands to `Correction_Cmd_CC` folder instead of `Correction_Cmd`. 
       - In ConsistencyChecks, export ONLY neighbor-relation commands (because they require comparing 2 audits):
         - NR_new / NR_missing / NR_disc
         - GU_new / GU_missing / GU_disc 
       - Stop exporting External/Termpoints from ConsistencyChecks (to prevent duplicates). External/Termpoints moved to ConfigurationAudit export. 
       - Avoid to execute `ConfigurationAudit` module if any previous Configuration Audit have been found on the selected folder (applies for both, PRE and POST folders).
       - If no previous Configuration Audit is found on input folders, then execute it but pass the dataframe generated in memory to `ConsistencyCheck` module instead of forze it to read the Excel file from disk (slow). 
-      - `SummaryAuditComparisson` sheet now includes a new column `diff` with the difference between `Value_Pre`and `Value_Post` columns.
+      - `SummaryAuditComparisson` sheet now includes a new column `Value_Diff` with the difference between `Value_Pre`and `Value_Post` columns.
       - `Summary_CellRelation` now distinguish between `Param_Discrepancies` and `Frequency_Discrepancies` and `SSB-Unknown`(those relations with Freq_Pre=Freq_Post but nodes not found in retuned list).
+      - `Summary_CellRelation` now highlight those rows where Freq_Pre or Freq_Post is one of the Frequencies affecte (SSB-Pre or SSB-Post).
       - Now sheets GU_disc and NR_disc are divided into two sheets called GU_param_disc/GU_freq_disc for GU and NR_param_disc/NR_freq_disc for NR to distinguish between Param/Frequency discrepancies.
       - Enhanced Summary info in log to distiguish between Param/Frequency discrepancies.
     - **ConfigurationAudit module:**
-      - ConfigurationAudit must keep using the normal export folder (`Correction_Cmd`). 
+      - ConfigurationAudit exports now all Correction Commands to `Correction_Cmd_CA` folder instead of `Correction_Cmd`. 
       - Avoid printing “Consistency Checks …” messages when the export is executed by ConfigurationAudit. 
       - In ConfigurationAudit, the `NRCellRelation` sheet must generate Correction_Cmd ONLY based on frequency (not parameter-comparison mismatches). 
       - In ConfigurationAudit, the `GUtranCellRelation` sheet must include these extra columns:
@@ -43,7 +44,7 @@
         - `ExternalGNodeBFunction` (extracted from the ref like neighborCellRef / nCellRef).
         - `GNodeB_SSB_Target` (same logic as ExternalGUtranCell).
       - In ConfigurationAudit, `GUtranCellRelation` must generate Correction_Cmd ONLY based on frequency, using the SAME logic as GU_disc in ConsistencyChecks.
-      - ConfigurationAudit must export ALL commands that do NOT require 2 audits, into Correction_Cmd/ (not _CC):
+      - ConfigurationAudit must export ALL commands that do NOT require 2 audits, into `Correction_Cmd_CA` folder.
         - All MOs where a column `Correction_Cmd` is found in the Excel sheet will be exported as text file command.
         - External/Termpoints commands (they already come from the single Audit Excel).
       - Disabled (by default) printing list of nodes that have already been retuned and nodes that still have not been retuned.
