@@ -731,7 +731,76 @@ def run_configuration_audit(
     exec_timestamp = datetime.now().strftime("%Y%m%d_%H%M")
     folder_versioned_suffix = f"{exec_timestamp}_v{TOOL_VERSION}"
 
+    def _find_existing_ca_excel_same_version(folder_fs: str) -> Optional[str]:
+        """
+        Return the newest ConfigurationAudit Excel inside an existing ConfigurationAudit_* folder that matches current TOOL_VERSION.
+        This is used to skip re-running audits in recursive/batch mode.
+        """
+        try:
+            candidates: List[Tuple[datetime, str]] = []
+            version_tag = f"v{TOOL_VERSION}"
+
+            def _extract_dt_from_folder_name(name: str) -> Optional[datetime]:
+                m = re.search(r"(\d{8}_\d{4})", name)
+                if not m:
+                    return None
+                try:
+                    return datetime.strptime(m.group(1), "%Y%m%d_%H%M")
+                except Exception:
+                    return None
+
+            for e in os.scandir(folder_fs):
+                if not e.is_dir():
+                    continue
+
+                name = e.name or ""
+                if not name.startswith("ConfigurationAudit_"):
+                    continue
+
+                if version_tag not in name:
+                    continue
+
+                excel_files: List[str] = []
+                try:
+                    for f in os.scandir(e.path):
+                        if not f.is_file():
+                            continue
+                        fn = f.name or ""
+                        if not fn.startswith("ConfigurationAudit_") or not fn.lower().endswith(".xlsx"):
+                            continue
+                        try:
+                            if os.path.getsize(to_long_path(f.path)) <= 0:
+                                continue
+                        except Exception:
+                            continue
+                        excel_files.append(f.path)
+                except Exception:
+                    excel_files = []
+
+                if not excel_files:
+                    continue
+
+                excel_files.sort()
+                dt = _extract_dt_from_folder_name(name)
+                if dt is None:
+                    try:
+                        dt = datetime.fromtimestamp(os.path.getmtime(to_long_path(e.path)))
+                    except Exception:
+                        dt = datetime.fromtimestamp(0)
+
+                candidates.append((dt, to_long_path(excel_files[-1])))
+
+            if not candidates:
+                return None
+
+            candidates.sort(key=lambda x: x[0], reverse=True)
+            return candidates[0][1]
+
+        except Exception:
+            return None
+
     def run_for_folder(folder: str) -> Optional[str]:
+
         """
         Run ConfigurationAudit for a single folder that is already known
         to contain valid logs.
@@ -744,8 +813,16 @@ def run_configuration_audit(
         # Use long-path version for filesystem operations
         folder_fs = to_long_path(folder) if folder else folder
 
+        # NEW: In recursive/batch mode, skip running the audit if we already have a ConfigurationAudit folder with the same TOOL_VERSION
+        if not external_output_dir:
+            existing_excel = _find_existing_ca_excel_same_version(folder_fs)
+            if existing_excel:
+                print(f"{module_name} [INFO] Skipping Audit (same version already exists): '{pretty_path(existing_excel)}'")
+                return existing_excel
+
         # Use timestamp (and optional standardized market) from parent folder for FILE names only
         parent_ts, parent_market = infer_parent_timestamp_and_market(folder_fs)
+
         file_ts = parent_ts or exec_timestamp
 
         # Caller-provided suffix keeps backward compatibility (but by default we now use parent timestamp)
@@ -863,13 +940,30 @@ def run_configuration_audit(
         return None
 
     # 3) Recursive search: only keep subfolders with valid logs
+    # NEW: prune traversal to avoid scanning tool output folders and blacklisted names (speeds up "batch" runs)
     candidate_dirs: List[str] = []
-    for dirpath, dirnames, filenames in os.walk(base_dir_fs):
+    for dirpath, dirnames, filenames in os.walk(base_dir_fs, topdown=True):
+        # Prune subdirectories we do NOT want to traverse into
+        try:
+            pruned: List[str] = []
+            for d in dirnames:
+                dl = (d or "").lower()
+                if any(tok in dl for tok in BLACKLIST):
+                    continue
+                if dl.startswith(("configurationaudit_", "profilesaudit_", "consistencychecks_", "cleanup_")):
+                    continue
+                pruned.append(d)
+            dirnames[:] = pruned
+        except Exception:
+            pass
+
         if dirpath == base_dir_fs:
             continue
+
         folder_name_low = os.path.basename(dirpath).lower()
         if any(tok in folder_name_low for tok in BLACKLIST):
             continue
+
         try:
             if folder_or_zip_has_valid_logs(dirpath):
                 candidate_dirs.append(dirpath)

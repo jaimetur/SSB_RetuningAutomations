@@ -35,6 +35,7 @@
       - `Summary_CellRelation` now highlight those rows where Freq_Pre or Freq_Post is one of the Frequencies affecte (SSB-Pre or SSB-Post).
       - Now sheets GU_disc and NR_disc are divided into two sheets called GU_param_disc/GU_freq_disc for GU and NR_param_disc/NR_freq_disc for NR to distinguish between Param/Frequency discrepancies.
       - Enhanced Summary info in log to distiguish between Param/Frequency discrepancies.
+      - Excel file is now saved on a temp folder first and then moved to the output folder (this reduce lags on remote folders such as Onedrive).
     - **ConfigurationAudit module:**
       - ConfigurationAudit exports now all Correction Commands to `Correction_Cmd_CA` folder instead of `Correction_Cmd`. 
       - Avoid printing “Consistency Checks …” messages when the export is executed by ConfigurationAudit. 
@@ -48,6 +49,7 @@
         - All MOs where a column `Correction_Cmd` is found in the Excel sheet will be exported as text file command.
         - External/Termpoints commands (they already come from the single Audit Excel).
       - Disabled (by default) printing list of nodes that have already been retuned and nodes that still have not been retuned.
+      - Irpoved recursive ConfigurationAudit to avoid run another ConfigurationAudit if the folder contains any previous audit run with the same tool version.
     - **Export Correction Commands:**
       - Enhancements in the way that the Correction_Cmd is loaded (before it was read from final Excel file, now it is read from the dataframe already in memory).
       - Correction Commands files are now exported as ZIP files (by default) to reduce latency and avoid to write hundreds of files on disk.
