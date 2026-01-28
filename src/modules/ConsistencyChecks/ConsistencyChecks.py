@@ -225,7 +225,7 @@ class ConsistencyChecks:
         return self.tables
 
     # ----------------------------- COMPARISON ----------------------------- #
-    def comparePrePost(self, freq_before: str, freq_after: str, module_name: Optional[str] = "", audit_pre_excel: Optional[str] = None, audit_post_excel: Optional[str] = None, audit_pre_summary_audit_df: Optional[pd.DataFrame] = None, audit_post_summary_audit_df: Optional[pd.DataFrame] = None) -> Dict[str, Dict[str, pd.DataFrame]]:
+    def comparePrePost(self, freq_before: str, freq_after: str, audit_pre_excel: Optional[str] = None, audit_post_excel: Optional[str] = None, audit_pre_summary_audit_df: Optional[pd.DataFrame] = None, audit_post_summary_audit_df: Optional[pd.DataFrame] = None, module_name: Optional[str] = "", market_tag: Optional[str] = "GLOBAL") -> Dict[str, Dict[str, pd.DataFrame]]:
         """
         Compare Pre/Post relations for GUtranCellRelation and NRCellRelation.
 
@@ -269,7 +269,7 @@ class ConsistencyChecks:
 
         if not self.tables:
             # Soft fail: do not raise, just inform and return empty results
-            print(f"{module_name} [WARNING] No tables loaded. Skipping comparison (likely missing Pre/Post folders).")
+            print(f"{module_name} {market_tag} [WARNING] No tables loaded. Skipping comparison (likely missing Pre/Post folders).")
             return {}
 
         # NEW: load node numeric identifiers from nodes with Retuning frpm POST Configuration Audit (SummaryAudit sheet)
@@ -284,12 +284,12 @@ class ConsistencyChecks:
 
             freq_col = detect_freq_column(table_name, list(df_all.columns))
             if not freq_col:
-                print(f"{module_name} [WARNING] No frequency column detected in {table_name}. Adjust mapping if needed.")
+                print(f"{module_name} {market_tag} [WARNING] No frequency column detected in {table_name}. Adjust mapping if needed.")
                 continue
 
             key_cols = detect_key_columns(table_name, list(df_all.columns), freq_col)
             if not key_cols:
-                print(f"{module_name} [WARNING] No key column detected in {table_name}.")
+                print(f"{module_name} {market_tag} [WARNING] No key column detected in {table_name}.")
                 continue
 
             # Forzar claves estables si existen
@@ -700,8 +700,8 @@ class ConsistencyChecks:
                 },
             }
 
-            print(f"\n{module_name} === {table_name} ===")
-            print(f"{module_name} Key: {key_cols} | Freq column: {freq_col}")
+            print(f"\n{module_name} {market_tag} === {table_name} ===")
+            print(f"{module_name} {market_tag} Key: {key_cols} | Freq column: {freq_col}")
 
             freq_disc_count = 0
             ssb_unknown_count = 0
@@ -724,27 +724,27 @@ class ConsistencyChecks:
             relations_with_discrepancies = int(len(discrepancies))
             total_discrepancies = int(param_disc_count) + int(freq_disc_count) + int(ssb_unknown_count)
 
-            print(f"{module_name} - Total Discrepancies (one relation can have more that one type of discrepancy): {total_discrepancies}")
-            print(f"{module_name}   - Param Discrepancies: {param_disc_count}")
-            print(f"{module_name}   - Frequency Discrepancies (SSB-Post): {freq_disc_count}")
-            print(f"{module_name}   - SSB Unknown: {ssb_unknown_count}")
-            print(f"{module_name} - Relations with Discrepancies (uniques): {relations_with_discrepancies}")
-            print(f"{module_name} - New Relations in Post: {len(new_in_post_clean)}")
-            print(f"{module_name} - Missing Relations in Post: {len(missing_in_post_clean)}")
+            print(f"{module_name} {market_tag} - Total Discrepancies (one relation can have more that one type of discrepancy): {total_discrepancies}")
+            print(f"{module_name} {market_tag}   - Param Discrepancies: {param_disc_count}")
+            print(f"{module_name} {market_tag}   - Frequency Discrepancies (SSB-Post): {freq_disc_count}")
+            print(f"{module_name} {market_tag}   - SSB Unknown: {ssb_unknown_count}")
+            print(f"{module_name} {market_tag} - Relations with Discrepancies (uniques): {relations_with_discrepancies}")
+            print(f"{module_name} {market_tag} - New Relations in Post: {len(new_in_post_clean)}")
+            print(f"{module_name} {market_tag} - Missing Relations in Post: {len(missing_in_post_clean)}")
 
             # Print the relation names that match the pattern and will be excluded
             if rel_series is not None and not rel_series.empty and pattern_nodes:
                 to_skip_relations = rel_series[rel_series.str.contains(pattern_nodes, regex=True, na=False)]
                 if not to_skip_relations.empty:
                     skipped_count = len(to_skip_relations)
-                    print(f"{module_name} - Relations skipped due to destination node being in the no-retuning buffer ({table_name}): {skipped_count} ")
+                    print(f"{module_name} {market_tag} - Relations skipped due to destination node being in the no-retuning buffer ({table_name}): {skipped_count} ")
                     # Below line show the list of all skipped relations (it can be huge, better keep below line commented).
-                    # print(f"{module_name} - Relations skipped List: {sorted(to_skip_relations.unique())}")
+                    # print(f"{module_name} {market_tag} - Relations skipped List: {sorted(to_skip_relations.unique())}")
 
         return results
 
     # ----------------------------- SUMMARY AUDIT COMPARISSON ----------------------------- #
-    def summaryaudit_comparison(self, module_name: str = "") -> Optional[pd.DataFrame]:
+    def summaryaudit_comparison(self, module_name: str = "", market_tag: str = "GLOBL") -> Optional[pd.DataFrame]:
         """
         Build a comparison DataFrame from PRE and POST ConfigurationAudit SummaryAudit sheets.
 
@@ -771,14 +771,14 @@ class ConsistencyChecks:
                 x_path = path
 
             if not os.path.isfile(x_path):
-                print(f"{module_name} [WARNING] {label} SummaryAudit Excel not found: '{path}'. Skipping SummaryAuditComparisson for this side.")
+                print(f"{module_name} {market_tag} [WARNING] {label} SummaryAudit Excel not found: '{path}'. Skipping SummaryAuditComparisson for this side.")
                 return None
 
             try:
                 wanted = {"Category", "SubCategory", "Metric", "Value"}
                 df = pd.read_excel(x_path, sheet_name="SummaryAudit", usecols=lambda c: c in wanted, engine="openpyxl")
             except Exception as e:
-                print(f"{module_name} [WARNING] Could not read 'SummaryAudit' sheet from {label} audit Excel '{path}': {e}.")
+                print(f"{module_name} {market_tag} [WARNING] Could not read 'SummaryAudit' sheet from {label} audit Excel '{path}': {e}.")
                 return None
 
             if "ExtraInfo" in df.columns:
@@ -788,7 +788,7 @@ class ConsistencyChecks:
 
             return df
 
-        print(f"{module_name} Loading ConfigurationAudits to extract SummaryAudit sheets...")
+        print(f"{module_name} {market_tag} Loading ConfigurationAudits to extract SummaryAudit sheets...")
         pre_df = pre_cached.copy() if pre_cached is not None else (_load_summary(pre_path, "PRE") if pre_path else None)
         post_df = post_cached.copy() if post_cached is not None else (_load_summary(post_path, "POST") if post_path else None)
 
@@ -811,14 +811,14 @@ class ConsistencyChecks:
             # Only POST available: just rename its Value as Value_Post
             post_df = post_df.copy()
             post_df = post_df.rename(columns={"Value": "Value_Post"})
-            print(f"{module_name} Using only 'SummaryAudit' from 'ConfigurationAudit POST' SummaryAudit to generate 'SummaryAuditComparisson' sheet...")
+            print(f"{module_name} {market_tag} Using only 'SummaryAudit' from 'ConfigurationAudit POST' SummaryAudit to generate 'SummaryAuditComparisson' sheet...")
 
             return post_df
         if post_df is None:
             # Only PRE available: just rename its Value as Value_Pre
             pre_df = pre_df.copy()
             pre_df = pre_df.rename(columns={"Value": "Value_Pre"})
-            print(f"{module_name} Using only 'SummaryAudit' from 'ConfigurationAudit PRE' SummaryAudit to generate 'SummaryAuditComparisson' sheet...")
+            print(f"{module_name} {market_tag} Using only 'SummaryAudit' from 'ConfigurationAudit PRE' SummaryAudit to generate 'SummaryAuditComparisson' sheet...")
             return pre_df
 
         # NEW: copy before renaming to avoid side effects
@@ -850,7 +850,7 @@ class ConsistencyChecks:
                 sort=False,
             )
 
-        print(f"{module_name} Using PRE and POST 'SummaryAudit' sheets from 'ConfigurationAudit' module to generate 'SummaryAuditComparisson' sheet....")
+        print(f"{module_name} {market_tag} Using PRE and POST 'SummaryAudit' sheets from 'ConfigurationAudit' module to generate 'SummaryAuditComparisson' sheet....")
 
         # Add numeric difference column at the end: Value_Pre - Value_Post
         try:
@@ -869,7 +869,7 @@ class ConsistencyChecks:
         return merged
 
     # ----------------------------- OUTPUT TO EXCEL ----------------------------- #
-    def save_outputs_excel(self, output_dir: str, results: Optional[Dict[str, Dict[str, pd.DataFrame]]] = None, versioned_suffix: Optional[str] = None, module_name: str = "") -> None:
+    def save_outputs_excel(self, output_dir: str, results: Optional[Dict[str, Dict[str, pd.DataFrame]]] = None, versioned_suffix: Optional[str] = None, module_name: str = "", market_tag: str = "GLOBAL") -> None:
         import os
         os.makedirs(output_dir, exist_ok=True)
         suf = f"_{versioned_suffix}" if versioned_suffix else ""
@@ -885,7 +885,7 @@ class ConsistencyChecks:
         # -------------------------------------------------------------------
         #  Write ConsistencyChecks_CellRelations.xlsx
         # -------------------------------------------------------------------
-        print(f"{module_name} Saving {pretty_path(excel_cc_cell_relation)}...")
+        print(f"{module_name} {market_tag} Saving {pretty_path(excel_cc_cell_relation)}...")
         with pd.ExcelWriter(excel_cc_cell_relation_long, engine="openpyxl") as writer:
             # Summary
             summary_rows = []
@@ -924,7 +924,7 @@ class ConsistencyChecks:
             summary_df.to_excel(writer, sheet_name="Summary", index=False)
 
             # NEW: add SummaryAuditComparisson sheet if PRE/POST ConfigurationAudit SummaryAudit are available
-            comparison_df = self.summaryaudit_comparison(module_name=module_name)
+            comparison_df = self.summaryaudit_comparison(module_name=module_name, market_tag=market_tag)
             if comparison_df is not None and not comparison_df.empty:
                 comparison_df.to_excel(writer, sheet_name="SummaryAuditComparisson", index=False)
 
@@ -1204,7 +1204,7 @@ class ConsistencyChecks:
         # -------------------------------------------------------------------
         #  Write CellRelations.xlsx
         # -------------------------------------------------------------------
-        print(f"{module_name} Saving {pretty_path(excel_cell_relation)}...")
+        print(f"{module_name} {market_tag} Saving {pretty_path(excel_cell_relation)}...")
 
         with pd.ExcelWriter(excel_cell_relation_long, engine="openpyxl") as writer:
             if "GUtranCellRelation" in self.tables:

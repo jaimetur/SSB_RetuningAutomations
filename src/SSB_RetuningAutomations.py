@@ -1334,12 +1334,12 @@ def run_consistency_checks(
                             post_key = post_audit_excel
                         post_summary_df = CONFIG_AUDIT_SUMMARY_CACHE.get(post_key) or CONFIG_AUDIT_SUMMARY_CACHE.get(post_audit_excel)
 
-                    results = app.comparePrePost(n77_ssb_pre, n77_ssb_post, module_name, pre_audit_excel, post_audit_excel, audit_pre_summary_audit_df=pre_summary_df, audit_post_summary_audit_df=post_summary_df)
+                    results = app.comparePrePost(n77_ssb_pre, n77_ssb_post, pre_audit_excel, post_audit_excel, audit_pre_summary_audit_df=pre_summary_df, audit_post_summary_audit_df=post_summary_df, module_name=module_name, market_tag=market_tag)
 
                 else:
                     print(f"{module_name} {market_tag} [INFO] Frequencies not provided. Comparison will be skipped; only tables will be saved.")
 
-                app.save_outputs_excel(output_dir, results, versioned_suffix=file_versioned_suffix, module_name=module_name)
+                app.save_outputs_excel(output_dir, results, versioned_suffix=file_versioned_suffix, module_name=module_name, market_tag=market_tag)
 
                 print(f"\n{module_name} {market_tag} [INFO] Outputs saved to: '{pretty_path(output_dir)}'")
                 if results:
