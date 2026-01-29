@@ -10,14 +10,14 @@
 - ### Main Changes:
   
   - #### 🚨 Breaking Changes:
-    - New flag `--fast-excel` (also available on GUI) to enablea new Excel writer engine (xlsxwriter) to speed up Excel exports (saving to Excel takes approximately half the time compared to the default engine). (NOTE: This engine has limited formatting support and does not support applying styles such as different row colors in Excel).
+    - New flag `--fast-excel` (also available on GUI) to enable a new Excel writer engine (xlsxwriter) to speed up Excel exports (saving to Excel takes approximately half the time compared to the default engine). (NOTE: This engine has limited formatting support and does not support applying styles such as different row colors in Excel).
 
   - #### 🌟 New Features:
-    - When running ConfigurationAudit, if the tool finds a previously generated ConfigurationAudit folder in the input directory created with the same tool version, it prompts the user to decide whether to run the audit again. (Note: in batch mode, the tool automatically skips folders that already contain a ConfigurationAudit generated with the same tool version.)
+    - When running `ConfigurationAudit`, if the tool finds a previously generated `ConfigurationAudit` folder in the input directory created with the same tool version, it prompts the user to decide whether to run the audit again. (Note: in batch mode, the tool automatically skips folders that already contain a `ConfigurationAudit` generated with the same tool version.)
     - Integrated a new Excel writer engine (xlsxwriter) to speed up Excel exports (saving to Excel takes approximately half the time compared to the default engine). You can enable it via the new `--fast-excel` CLI flag or from the GUI. Important: this engine has limited formatting support and does not support applying styles such as different row colors in Excel.
 
   - #### 🚀 Enhancements:
-    - Unified style_headers_autofilter_and_autofit to apply styles to sheets from ConfigurationAudit and ConsistencyCheck.
+    - Unified style_headers_autofilter_and_autofit to apply styles to sheets from `ConfigurationAudit` and `ConsistencyCheck`.
 
   - #### 🐛 Bug fixes:
     - Minor bug fixing.
@@ -51,24 +51,24 @@
         - NR_new / NR_missing / NR_disc
         - GU_new / GU_missing / GU_disc 
       - Stop exporting External/Termpoints from ConsistencyChecks (to prevent duplicates). External/Termpoints moved to ConfigurationAudit export. 
-      - Avoid to execute `ConfigurationAudit` module if any previous Configuration Audit have been found on the selected folder (applies for both, PRE and POST folders).
-      - If no previous Configuration Audit is found on input folders, then execute it but pass the dataframe generated in memory to `ConsistencyCheck` module instead of forze it to read the Excel file from disk (slow). 
+      - Avoid to execute `ConfigurationAudit` module if any previous Configuration Audit have been found in the selected folder (applies for both, PRE and POST folders).
+      - If no previous Configuration Audit is found in input folders, then execute it but pass the dataframe generated in memory to `ConsistencyCheck` module instead of forze it to read the Excel file from disk (slow). 
       - `SummaryAuditComparisson` sheet now includes a new column `Value_Diff` with the difference between `Value_Pre`and `Value_Post` columns.
       - `Summary_CellRelation` now distinguish between `Param_Discrepancies` and `Frequency_Discrepancies` and `SSB-Unknown`(those relations with Freq_Pre=Freq_Post but nodes not found in retuned list).
       - `Summary_CellRelation` now highlight those rows where Freq_Pre or Freq_Post is one of the Frequencies affecte (SSB-Pre or SSB-Post).
       - Now sheets GU_disc and NR_disc are divided into two sheets called GU_param_disc/GU_freq_disc for GU and NR_param_disc/NR_freq_disc for NR to distinguish between Param/Frequency discrepancies.
       - Enhanced Summary info in log to distiguish between Param/Frequency discrepancies.
-      - Excel file is now saved on a temp folder first and then moved to the output folder (this reduce lags on remote folders such as Onedrive).
+      - Excel file is now saved on a temp folder first and then moved to the output folder (this reduces lags on remote folders such as Onedrive).
     - **ConfigurationAudit module:**
       - ConfigurationAudit exports now all Correction Commands to `Correction_Cmd_CA` folder instead of `Correction_Cmd`. 
       - Avoid printing “Consistency Checks …” messages when the export is executed by ConfigurationAudit. 
-      - In ConfigurationAudit, the `NRCellRelation` sheet must generate Correction_Cmd ONLY based on frequency (not parameter-comparison mismatches). 
-      - In ConfigurationAudit, the `GUtranCellRelation` sheet must include these extra columns:
+      - In ConfigurationAudit, the `NRCellRelation` sheet now generates Correction_Cmd ONLY based on frequency (not parameter-comparison mismatches). 
+      - In ConfigurationAudit, the `GUtranCellRelation` sheet now includes these extra columns:
         - `Frequency` (from GUtranFreqRelationId).
         - `ExternalGNodeBFunction` (extracted from the ref like neighborCellRef / nCellRef).
         - `GNodeB_SSB_Target` (same logic as ExternalGUtranCell).
-      - In ConfigurationAudit, `GUtranCellRelation` must generate Correction_Cmd ONLY based on frequency, using the SAME logic as GU_disc in ConsistencyChecks.
-      - ConfigurationAudit must export ALL commands that do NOT require 2 audits, into `Correction_Cmd_CA` folder.
+      - In ConfigurationAudit, the `GUtranCellRelation` seeht now generates Correction_Cmd ONLY based on frequency, using the SAME logic as GU_disc in ConsistencyChecks.
+      - ConfigurationAudit now exporst ALL commands that do NOT require 2 audits, into `Correction_Cmd_CA` folder.
         - All MOs where a column `Correction_Cmd` is found in the Excel sheet will be exported as text file command.
         - External/Termpoints commands (they already come from the single Audit Excel).
       - Disabled (by default) printing list of nodes that have already been retuned and nodes that still have not been retuned.

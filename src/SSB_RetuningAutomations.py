@@ -27,6 +27,11 @@ from typing import Optional, List, Dict, Tuple
 import textwrap
 from pathlib import Path
 
+# Ensure repo root is on sys.path when running this file directly (e.g. "python .\\SSB_RetuningAutomations.py" from src)
+_THIS_FILE_DIR = Path(__file__).resolve().parent
+_PROJECT_ROOT_DIR = _THIS_FILE_DIR.parent
+if str(_PROJECT_ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(_PROJECT_ROOT_DIR))
 
 # Import our different Classes
 from src.utils.utils_datetime import format_duration_hms
