@@ -742,10 +742,13 @@ def run_configuration_audit(
     allowed_n77_arfcn_post = parse_arfcn_csv_to_set(csv_text=allowed_n77_arfcn_post_csv, default_values=default_n77_post_list, label="Allowed N77 ARFCN (Post)")
 
     # Print ConfigurationAudit Settings:
+    print(f"{module_name} [INFO] =============================")
     print(f"{module_name} [INFO] Configuration Audit Settings:")
+    print(f"{module_name} [INFO] =============================")
+    print(f"{module_name} [INFO] Input base folder           = '{pretty_path(base_dir_fs)}'")
     print(f"{module_name} [INFO] Old N77 SSB = {local_n77_ssb_pre} --> New N77 SSB = {local_n77_ssb_post}")
     if local_n77b_ssb is not None:
-        print(f"{module_name} [INFO] N77B SSB = {local_n77b_ssb}")
+        print(f"{module_name} [INFO] N77B SSB                    = {local_n77b_ssb}")
     else:
         print(f"{module_name} [WARNING] N77B SSB not provided or invalid.")
 
@@ -753,6 +756,18 @@ def run_configuration_audit(
     print(f"{module_name} [INFO] Allowed N77 ARFCN set (Pre)  = {sorted(allowed_n77_arfcn_pre)}")
     print(f"{module_name} [INFO] Allowed N77 SSB set (Post)   = {sorted(allowed_n77_ssb_post)}")
     print(f"{module_name} [INFO] Allowed N77 ARFCN set (Post) = {sorted(allowed_n77_arfcn_post)}")
+
+    print(f"{module_name} [INFO] CA freq filters (CSV)       = {ca_freq_filters_csv if ca_freq_filters_csv else '<none>'}")
+    print(f"{module_name} [INFO] Export correction commands  = {bool(export_correction_cmd)} (Folder='Correction_Cmd_CA')")
+    print(f"{module_name} [INFO] Profiles Audit enabled      = {bool(profiles_audit)}")
+    print(f"{module_name} [INFO] Fast Excel export           = {bool(fast_excel_export)} (AutofitRows={fast_excel_autofit_rows}, MaxWidth={fast_excel_autofit_max_width})")
+
+    if versioned_suffix:
+        print(f"{module_name} [INFO] Output suffix override      = '{versioned_suffix}'")
+    if market_label:
+        print(f"{module_name} [INFO] Market label                = '{market_label}'")
+    if external_output_dir:
+        print(f"{module_name} [INFO] External output dir override= '{pretty_path(external_output_dir)}'")
 
     exec_timestamp = datetime.now().strftime("%Y%m%d_%H%M")
     folder_versioned_suffix = f"{exec_timestamp}_v{TOOL_VERSION}"
