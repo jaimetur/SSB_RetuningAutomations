@@ -635,7 +635,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--export-correction-cmd", dest="export_correction_cmd", action=argparse.BooleanOptionalAction, default=True, help="Enable/disable exporting correction command text files during ConfigurationAudit (slow). For ConsistencyChecks, this controls the POST ConfigurationAudit export (PRE is always skipped).")
 
     # Fast Excel exports
-    parser.add_argument("--fast-excel", dest="fast_excel_export", action=argparse.BooleanOptionalAction, default=False, help="Enable/disable fast Excel export using xlsxwriter engine (reduced formatting features if compared to openpyxl).")
+    parser.add_argument("--fast-excel", dest="fast_excel_export", action=argparse.BooleanOptionalAction, default=None, help="Enable/disable fast Excel export using xlsxwriter engine (reduced formatting features if compared to openpyxl).")
 
     parser.add_argument("--no-gui", action="store_true", help="Disable GUI usage (only CLI).")
 
@@ -820,7 +820,7 @@ def run_configuration_audit(
         except Exception:
             return None
 
-    def run_for_folder(folder: str) -> Optional[str]:
+    def run_for_folder(folder: str, is_batch_mode: bool = False) -> Optional[str]:
 
         """
         Run ConfigurationAudit for a single folder that is already known
@@ -836,12 +836,27 @@ def run_configuration_audit(
         # Use long-path version for filesystem operations
         folder_fs = to_long_path(folder) if folder else folder
 
-        # NEW: In recursive/batch mode, skip running the audit if we already have a ConfigurationAudit folder with the same TOOL_VERSION
+        # If a ConfigurationAudit of the same TOOL_VERSION already exists:
+        # - In batch mode (recursive scan): auto-skip.
+        # - In normal mode (single folder): ask user whether to reuse or re-run.
         if not external_output_dir:
             existing_excel = _find_existing_ca_excel_same_version(folder_fs)
             if existing_excel:
-                print(f"{module_name} [INFO] Skipping Audit (same version already exists): '{pretty_path(existing_excel)}'")
-                return existing_excel
+                if is_batch_mode:
+                    print(f"{module_name} [INFO] Skipping Audit (same version already exists): '{pretty_path(existing_excel)}'")
+                    return existing_excel
+
+                title = "Existing ConfigurationAudit detected"
+                message = (
+                    f"A ConfigurationAudit (same version) already exists for this folder:\n\n"
+                    f"'{pretty_path(existing_excel)}'\n\n"
+                    f"Do you want to run ConfigurationAudit again?"
+                )
+                if not ask_yes_no_dialog(title, message, default=False):
+                    print(f"{module_name} [INFO] Reusing existing Audit (user selected): '{pretty_path(existing_excel)}'")
+                    return existing_excel
+
+                print(f"{module_name} [INFO] Re-running Audit (user selected) despite existing: '{pretty_path(existing_excel)}'")
 
         # Use timestamp (and optional standardized market) from parent folder for FILE names only
         parent_ts, parent_market = infer_parent_timestamp_and_market(folder_fs)
@@ -946,7 +961,7 @@ def run_configuration_audit(
 
     # 1) If the base folder itself has valid logs, just run once there.
     if folder_or_zip_has_valid_logs(base_dir_fs):
-        return run_for_folder(base_dir_fs)
+        return run_for_folder(base_dir_fs, is_batch_mode=False)
 
     # 2) Otherwise, ask the user if we should scan subfolders recursively.
     title = "Missing valid logs in input folder"
@@ -1004,7 +1019,7 @@ def run_configuration_audit(
     for sub_dir in candidate_dirs:
         print(f"{module_name} [INFO] → Running Configuration Audit in subfolder: '{pretty_path(sub_dir)}'")
         try:
-            excel_path = run_for_folder(sub_dir)
+            excel_path = run_for_folder(sub_dir, is_batch_mode=True)
             if excel_path:
                 last_excel = excel_path
         except Exception as ex:
@@ -1760,6 +1775,9 @@ def main():
     default_allowed_n77_ssb_post_csv = normalize_csv_list(args.allowed_n77_ssb_post or persisted_allowed_ssb_post or DEFAULT_ALLOWED_N77_SSB_POST_CSV)
     default_allowed_n77_arfcn_post_csv = normalize_csv_list(args.allowed_n77_arfcn_post or persisted_allowed_arfcn_post or DEFAULT_ALLOWED_N77_ARFCN_POST_CSV)
     default_export_correction_cmd = persisted_export_correction_cmd
+
+    # CLI must NOT rely on persisted value; GUI can use persisted unless CLI explicitly sets it
+    cli_fast_excel_export = bool(args.fast_excel_export) if args.fast_excel_export is not None else False
     default_fast_excel_export = bool(args.fast_excel_export) if args.fast_excel_export is not None else persisted_fast_excel_export
 
     # ====================== MODE 1: GUI (NO ARGS) ===========================
@@ -1956,7 +1974,7 @@ def main():
             allowed_n77_arfcn_pre_csv=allowed_n77_arfcn_pre_csv,
             allowed_n77_ssb_post_csv=allowed_n77_ssb_post_csv,
             allowed_n77_arfcn_post_csv=allowed_n77_arfcn_post_csv,
-            fast_excel_export=default_fast_excel_export,
+            fast_excel_export=cli_fast_excel_export,
             selected_module=args.module,
         )
         return
@@ -2002,6 +2020,7 @@ def main():
             allowed_n77_arfcn_pre_csv=allowed_n77_arfcn_pre_csv,
             allowed_n77_ssb_post_csv=allowed_n77_ssb_post_csv,
             allowed_n77_arfcn_post_csv=allowed_n77_arfcn_post_csv,
+            fast_excel_export=cli_fast_excel_export,
             selected_module=args.module,
         )
         return
@@ -2044,7 +2063,7 @@ def main():
             allowed_n77_arfcn_pre_csv=allowed_n77_arfcn_pre_csv,
             allowed_n77_ssb_post_csv=allowed_n77_ssb_post_csv,
             allowed_n77_arfcn_post_csv=allowed_n77_arfcn_post_csv,
-            fast_excel_export=default_fast_excel_export,
+            fast_excel_export=cli_fast_excel_export,
             selected_module=args.module,
         )
         return

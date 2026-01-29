@@ -675,8 +675,10 @@ class ConfigurationAudit:
                                 excel_engine = "openpyxl"
 
                         if excel_engine == "xlsxwriter":
-                            # Performance: disable URL/number auto-detection (can be slow on huge tables)
-                            xlsxwriter_options = {"constant_memory": True, "strings_to_urls": False, "strings_to_numbers": False}
+                            # NOTE: Do NOT enable constant_memory when using pandas.to_excel().
+                            # Pandas writes cells in an order that violates xlsxwriter constant_memory constraints (row-ordered writes only).
+                            # If enabled, sheets end up with only the first column written (and sometimes the last row looks "complete").
+                            xlsxwriter_options = {"strings_to_urls": False, "strings_to_numbers": False}
                             writer = pd.ExcelWriter(tmp_excel_path_long, engine="xlsxwriter", engine_kwargs={"options": xlsxwriter_options})
                         else:
                             writer = pd.ExcelWriter(tmp_excel_path_long, engine="openpyxl")
