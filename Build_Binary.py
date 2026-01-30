@@ -232,7 +232,7 @@ def _include_extrafiles_and_zip(input_file, output_file):
         },
         {
             'subdir': 'help',  # These files go into the 'help' subdirectory
-            'files': ["./help/*.pptx"]
+            'files': ["./help/*.pdf", "./help/*.docx", "./help/*.pptx"]
         },
     ]
 

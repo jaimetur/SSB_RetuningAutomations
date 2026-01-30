@@ -33,10 +33,15 @@ It ships a single launcher that can run in **GUI** mode (no arguments) or **CLI*
 
 1. **Configuration Audit** — parses raw log folders and builds a curated Excel workbook (module scaffold ready).  
 2. **Consistency Check (Pre/Post Comparison)** — loads Pre and Post datasets, compares relations across frequencies, and generates a clean Excel summary (plus detailed tables).  
-3. **Initial Clean-Up (During Maintenance Window)** — helper utilities to tidy intermediate outputs (module scaffold ready).
-4. **Final Clean-Up (During Maintenance Window)** — helper utilities to tidy final outputs (module scaffold ready).
+3. **Final Clean-Up (During Maintenance Window)** — helper utilities to tidy final outputs (module scaffold ready).
 
 The tool automatically adds a **timestamped + versioned suffix** to outputs, which makes artifacts fully traceable (e.g., `20251106-153245_v0.2.0`).
+
+---            
+               
+## 📙 Technical User Guide
+
+You can find a detaild [Technical User Guide here.](https://github.com/jaimetur/SSB_RetuningAutomations/blob/main/help/SSB_RetuningAutomations_User_Guide.docx)
 
 ---
 
@@ -214,7 +219,7 @@ This tool can be executed either with **GUI mode** (default when no arguments ar
 ```bash
 SSB_RetuningAutomations.exe/bin --module <module-name> [options]
 
---module                  Module to run: configuration-audit | consistency-check | consistency-check-bulk | profiles-audit | final-cleanup
+--module                  Module to run: configuration-audit | consistency-check | consistency-check-bulk| final-cleanup
 --input                   Input folder to process (single-input modules)
 --input-pre               PRE input folder (only for consistency-check)
 --input-post              POST input folder (only for consistency-check)
@@ -253,7 +258,6 @@ If `--module` is omitted and **no other arguments** are provided, the GUI will l
 | `configuration-audit`    | Runs the Configuration Audit module (single input folder).          |
 | `consistency-check`      | Runs the Pre/Post Relations Consistency Check (dual input folders). |
 | `consistency-check-bulk` | Runs the Pre/Post Relations Consistency Check (bulk mode).          |
-| `profiles-audit`         | Runs the Profiles Audit module (single input folder).               |
 | `final-cleanup`          | Runs the Final Clean-Up module (single input folder).               |
 
 ---
