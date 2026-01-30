@@ -558,6 +558,12 @@ def process_termpoint_to_gnb(df_term_point_to_gnb, normalize_state, normalize_ip
         # -------------------------------------------------
         # Write back (NO column removal)
         # -------------------------------------------------
+        if "SSB needs update" in work.columns and "GNodeB_SSB_Target" in work.columns:
+            cols = list(work.columns)
+            cols.remove("GNodeB_SSB_Target")
+            cols.insert(cols.index("SSB needs update") + 1, "GNodeB_SSB_Target")
+            work = work[cols]
+
         df_term_point_to_gnb.loc[:, work.columns] = work
 
     except Exception as ex:

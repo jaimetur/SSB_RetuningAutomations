@@ -554,7 +554,7 @@ def save_cfg_values(config_dir, config_path, config_section, cfg_field_map, **kw
         ensure_cfg_section(config_section, parser)
         section = parser[config_section]
 
-        csv_fields = {"freq_filters", "allowed_n77_ssb", "allowed_n77_arfcn"}
+        csv_fields = {"freq_filters", "allowed_n77_ssb", "allowed_n77_arfcn", "network_frequencies"}
 
         for logical, value in kwargs.items():
             cfg_key = cfg_field_map.get(logical)

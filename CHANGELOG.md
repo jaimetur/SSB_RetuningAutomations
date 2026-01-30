@@ -12,8 +12,13 @@
   - #### 🚨 Breaking Changes:
 
   - #### 🌟 New Features:
+    - New module `0. Update Network Frequencies` to update the Frequency List from the Network. For this module to work you need to provide an Input Folder with a valid log for the MO NRFrequency.
 
   - #### 🚀 Enhancements:
+    - Updated Correction Commands for MO `NRCellRelation`.
+    - Updated Correction Commands for MO `GUtranCellRelation`.
+    - Updated Correction Commands for MO `ExternalGUtranCell`.
+    - Moved `GNodeB_SSB_Target` column beside `SSB needs update` columnd in MO table `TermpointToGNB`.
 
   - #### 🐛 Bug fixes:
     - Minor bug fixing.

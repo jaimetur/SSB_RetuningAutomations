@@ -471,7 +471,7 @@ def export_external_and_termpoint_commands(audit_post_excel: str, output_dir: st
             with open(out_path, "w", encoding="utf-8") as f:
                 f.write(text)
 
-        def _export_grouped_commands_from_sheet(audit_excel: str, sheet_name: str, output_dir: str, command_column: str = "Correction_Cmd", node_column: str = "NodeId", filter_column: Optional[str] = None, filter_values: Optional[list[str]] = None, filename_suffix: Optional[str] = None) -> int:
+        def _export_grouped_commands_from_sheet(audit_excel: str, sheet_name: str, output_dir: str, command_column: str = "Correction_Cmd", node_column: str = "NodeId", filter_column: Optional[str] = None, filter_values: Optional[list[str]] = None, filename_suffix: Optional[str] = None, hoist_header_lines: int = 3, hoist_footer_lines: int = 1, force_file_header: Optional[list[str]] = None, force_file_footer: Optional[list[str]] = None, strip_file_wrappers: bool = False) -> int:
             """
             Export Correction_Cmd grouped by NodeId from a given sheet into output_dir.
             Returns how many files were generated.
@@ -479,7 +479,7 @@ def export_external_and_termpoint_commands(audit_post_excel: str, output_dir: st
             Behavior:
               - 'del ...' lines are moved to the top of each node file.
               - For External* and TermPoint* blocks, we keep per-block order exactly as in Excel,
-                but hoist ONLY the first 3 lines and the last line once per node file.
+                but hoist ONLY the first N header lines and the last M footer lines once per node file (configurable per export call).
                 (No special single-instance handling for 'wait' or 'lt all' after wait.)
             """
             df = _read_sheet_case_insensitive(audit_excel, sheet_name)
@@ -528,6 +528,20 @@ def export_external_and_termpoint_commands(audit_post_excel: str, output_dir: st
                 if not cmds:
                     continue
 
+                if strip_file_wrappers:
+                    def _strip_wrappers_block(s: str) -> str:
+                        wrappers = {"confb+", "gs+", "lt all", "alt"}
+                        block = str(s).replace("\r\n", "\n").replace("\r", "\n").strip("\n")
+                        lines = [ln.rstrip() for ln in block.split("\n") if ln.strip() != ""]
+                        while lines and lines[0].strip().lower() in wrappers:
+                            lines.pop(0)
+                        while lines and lines[-1].strip().lower() == "alt":
+                            lines.pop()
+                        return "\n".join(lines).strip()
+
+                    cmds = [_strip_wrappers_block(c) for c in cmds]
+                    cmds = [c for c in cmds if str(c).strip()]
+
                 # del first (and keep rest blocks after)
                 ordered_blocks = _reorder_cmds_del_first(cmds)
                 if not ordered_blocks:
@@ -537,15 +551,19 @@ def export_external_and_termpoint_commands(audit_post_excel: str, output_dir: st
                 rest_blocks = [b for b in ordered_blocks if not _DEL_LINE_RE.match(b)]
 
                 # NEW: HOIST only the first 3 lines and the last line ONCE per node
-                merged_rest = _merge_blocks_hoist_header_footer(rest_blocks, header_lines=3, footer_lines=1) if rest_blocks else ""
+                merged_rest = _merge_blocks_hoist_header_footer(rest_blocks, header_lines=hoist_header_lines, footer_lines=hoist_footer_lines) if (rest_blocks and (hoist_header_lines or hoist_footer_lines)) else ("\n\n".join([str(b).strip() for b in (rest_blocks or []) if str(b).strip()]).strip())
 
                 pieces: List[str] = []
+                if force_file_header:
+                    pieces.append("\n".join([str(x).strip() for x in force_file_header if str(x).strip()]).strip())
                 if del_lines:
                     pieces.append("\n".join(del_lines).strip())
-                if merged_rest.strip():
-                    pieces.append(merged_rest.strip())
+                if str(merged_rest).strip():
+                    pieces.append(str(merged_rest).strip())
+                if force_file_footer:
+                    pieces.append("\n".join([str(x).strip() for x in force_file_footer if str(x).strip()]).strip())
 
-                merged_script = "\n\n".join([p for p in pieces if p.strip()]).strip()
+                merged_script = "\n\n".join([p for p in pieces if str(p).strip()]).strip()
                 if not merged_script:
                     continue
 
@@ -568,16 +586,16 @@ def export_external_and_termpoint_commands(audit_post_excel: str, output_dir: st
         # - Export to two subfolders inside ExternalNRCellCU
         # - If a NodeId has both targets, grouping is done within each filtered subset
         # -----------------------------
-        total_files += _export_grouped_commands_from_sheet(audit_excel=audit_post_excel, sheet_name="ExternalNRCellCU", output_dir=ext_nr_ssbpost_dir, command_column="Correction_Cmd", filter_column="GNodeB_SSB_Target", filter_values=["SSB-Post"], filename_suffix="ExternalNRCellCU")
-        total_files += _export_grouped_commands_from_sheet(audit_excel=audit_post_excel, sheet_name="ExternalNRCellCU", output_dir=ext_nr_unknown_dir, command_column="Correction_Cmd", filter_column="GNodeB_SSB_Target", filter_values=["Unknown", "Unkwnow"], filename_suffix="ExternalNRCellCU")
+        total_files += _export_grouped_commands_from_sheet(audit_excel=audit_post_excel, sheet_name="ExternalNRCellCU", output_dir=ext_nr_ssbpost_dir, command_column="Correction_Cmd", filter_column="GNodeB_SSB_Target", filter_values=["SSB-Post"], filename_suffix="ExternalNRCellCU", hoist_header_lines=4, hoist_footer_lines=1)
+        total_files += _export_grouped_commands_from_sheet(audit_excel=audit_post_excel, sheet_name="ExternalNRCellCU", output_dir=ext_nr_unknown_dir, command_column="Correction_Cmd", filter_column="GNodeB_SSB_Target", filter_values=["Unknown", "Unkwnow"], filename_suffix="ExternalNRCellCU", hoist_header_lines=4, hoist_footer_lines=1)
 
         # -----------------------------
         # ExternalGUtranCell - SSB-Post / Unknown
         # - Export to two subfolders inside ExternalGUtranCell
         # - If a NodeId has both targets, grouping is done within each filtered subset
         # -----------------------------
-        total_files += _export_grouped_commands_from_sheet(audit_excel=audit_post_excel, sheet_name="ExternalGUtranCell", output_dir=ext_gu_ssbpost_dir, command_column="Correction_Cmd", filter_column="GNodeB_SSB_Target", filter_values=["SSB-Post"], filename_suffix="ExternalGUtranCell")
-        total_files += _export_grouped_commands_from_sheet(audit_excel=audit_post_excel, sheet_name="ExternalGUtranCell", output_dir=ext_gu_unknown_dir, command_column="Correction_Cmd", filter_column="GNodeB_SSB_Target", filter_values=["Unknown", "Unkwnow"], filename_suffix="ExternalGUtranCell")
+        total_files += _export_grouped_commands_from_sheet(audit_excel=audit_post_excel, sheet_name="ExternalGUtranCell", output_dir=ext_gu_ssbpost_dir, command_column="Correction_Cmd", filter_column="GNodeB_SSB_Target", filter_values=["SSB-Post"], filename_suffix="ExternalGUtranCell", hoist_header_lines=0, hoist_footer_lines=0, force_file_header=["confb+", "gs+", "lt all", "alt"], force_file_footer=["alt"], strip_file_wrappers=True)
+        total_files += _export_grouped_commands_from_sheet(audit_excel=audit_post_excel, sheet_name="ExternalGUtranCell", output_dir=ext_gu_unknown_dir, command_column="Correction_Cmd", filter_column="GNodeB_SSB_Target", filter_values=["Unknown", "Unkwnow"], filename_suffix="ExternalGUtranCell", hoist_header_lines=0, hoist_footer_lines=0, force_file_header=["confb+", "gs+", "lt all", "alt"], force_file_footer=["alt"], strip_file_wrappers=True)
 
         # -----------------------------
         # TermPointToGNodeB - SSB-Post / Unknown  (Bullets 2 & 3 from new requirements slide)
@@ -594,6 +612,17 @@ def export_external_and_termpoint_commands(audit_post_excel: str, output_dir: st
         # -----------------------------
         total_files += _export_grouped_commands_from_sheet(audit_excel=audit_post_excel, sheet_name="TermPointToGNB", output_dir=tp_gnb_ssbpost_dir, command_column="Correction_Cmd", filter_column="GNodeB_SSB_Target", filter_values=["SSB-Post"], filename_suffix="TermPointToGNB")
         total_files += _export_grouped_commands_from_sheet(audit_excel=audit_post_excel, sheet_name="TermPointToGNB", output_dir=tp_gnb_unknown_dir, command_column="Correction_Cmd", filter_column="GNodeB_SSB_Target", filter_values=["Unknown", "Unkwnow"], filename_suffix="TermPointToGNB")
+
+        # -----------------------------
+        # NRCellRelation / GUtranCellRelation
+        # - Export into the same ZIP/folder as Externals & TermPoints (NOT Other_MOs.zip)
+        # - Add confb+/gs+/lt all/alt once per file at the top, and a final alt once per file at the bottom
+        # -----------------------------
+        nr_rel_dir = os.path.join(base_dir, "NRCellRelation")
+        gu_rel_dir = os.path.join(base_dir, "GUtranCellRelation")
+
+        total_files += _export_grouped_commands_from_sheet(audit_excel=audit_post_excel, sheet_name="NRCellRelation", output_dir=nr_rel_dir, command_column="Correction_Cmd", filename_suffix="NRCellRelation", hoist_header_lines=0, hoist_footer_lines=0, force_file_header=["confb+", "gs+", "lt all", "alt"], force_file_footer=["alt"], strip_file_wrappers=True)
+        total_files += _export_grouped_commands_from_sheet(audit_excel=audit_post_excel, sheet_name="GUtranCellRelation", output_dir=gu_rel_dir, command_column="Correction_Cmd", filename_suffix="GUtranCellRelation", hoist_header_lines=0, hoist_footer_lines=0, force_file_header=["confb+", "gs+", "lt all", "alt"], force_file_footer=["alt"], strip_file_wrappers=True)
 
         if total_files >0:
             if export_to_zip and zip_file is not None:

@@ -31,6 +31,7 @@ Download the tool either for Linux, MacOS or Windows (for both x64 and arm64 arc
 **RetuningAutomations** streamlines routine tasks during SSB retuning projects.  
 It ships a single launcher that can run in **GUI** mode (no arguments) or **CLI** mode (with arguments) to execute one of several modules:
 
+0. **Update Network Frequencies** — updates the Frequency List from the Network based on the MO NRFrequency that has to be found on the input folder.  
 1. **Configuration Audit** — parses raw log folders and builds a curated Excel workbook (module scaffold ready).  
 2. **Consistency Check (Pre/Post Comparison)** — loads Pre and Post datasets, compares relations across frequencies, and generates a clean Excel summary (plus detailed tables).  
 3. **Consistency Check (bulk mode)** — run an Smart Consistency Check in all markets detected in the input folder, selecting the most suitable folder for Pre and Post for each market.  

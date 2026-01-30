@@ -213,8 +213,11 @@ def build_correction_command_gu_missing_relations(
         user_label = pick_non_empty_value(rel_row, row, "userLabel")
         coverage = pick_non_empty_value(rel_row, row, "coverageIndicator")
 
+        retune_needed = False
+
         # Overwrite GUtranFreqRelationId to a hardcoded value (new SSB) only when old SSB is found
         if n77_ssb_pre and isinstance(freq_rel, str) and freq_rel.startswith(str(n77_ssb_pre)):
+            retune_needed = True
             freq_rel = f"{n77_ssb_post}-30-20-0-1" if n77_ssb_post else freq_rel
 
         if not user_label:
@@ -229,7 +232,15 @@ def build_correction_command_gu_missing_relations(
             pos = neighbor_ref.find("GUtraNetwork=")
             clean_neighbor_ref = neighbor_ref[pos:]
 
+        # NEW: Add ExternalGUtranCell gUtranSyncSignalFrequencyRef line when retuning from Old SSB to SSB-Post
+        set_external_cmd = ""
+        if retune_needed and n77_ssb_post and isinstance(clean_neighbor_ref, str) and clean_neighbor_ref.startswith("GUtraNetwork=") and "," in clean_neighbor_ref:
+            external_part = clean_neighbor_ref.split(",", 1)[1].strip()
+            if external_part:
+                set_external_cmd = f"set {external_part} gUtranSyncSignalFrequencyRef GUtraNetwork=1,GUtranSyncSignalFrequency={n77_ssb_post}-30"
+
         parts = [
+            set_external_cmd,
             f"crn ENodeBFunction={enb_func},EUtranCellFDD={eu_cell},GUtranFreqRelation={freq_rel},GUtranCellRelation={cell_rel}",
             f"neighborCellRef {clean_neighbor_ref}" if clean_neighbor_ref else "",
             f"isEndcAllowed {is_endc}" if is_endc else "",
@@ -701,7 +712,14 @@ def build_correction_command_external_gutran_cell(ext_gnb: str, ext_cell: str, s
     """
     if not ext_gnb or not ext_cell or ssb_post is None:
         return ""
-    return f"set ExternalGNodeBFunction={ext_gnb},ExternalGUtranCell={ext_cell} gUtranSyncSignalFrequencyRef GUtraNetwork=1,GUtranSyncSignalFrequency={ssb_post}-30\n"
+    return (
+        "confb+\n"
+        "gs+\n"
+        "lt all\n"
+        "alt\n"
+        f"set ExternalGNodeBFunction={ext_gnb},ExternalGUtranCell={ext_cell} gUtranSyncSignalFrequencyRef GUtraNetwork=1,GUtranSyncSignalFrequency={ssb_post}-30\n"
+        "alt"
+    )
 
 
 # ----------------------------------------------------------------------

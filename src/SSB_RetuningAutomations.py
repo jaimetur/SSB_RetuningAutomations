@@ -103,12 +103,13 @@ TABLES_ORDER: List[str] = []
 
 # Module names (GUI labels)
 MODULE_NAMES = [
+    "0. Update Network Frequencies",
     "1. Configuration Audit & Logs Parser",
     "2. Consistency Check (Pre/Post Comparison)",
     "3. Consistency Check (Bulk mode Pre/Post auto-detection)",
-    # NOTE: Module 4 (Profiles Audit) has been removed from GUI/CLI.
     "4. Final Clean-Up (After Retune is completed)",
 ]
+
 
 # ============================== PERSISTENT CONFIG =========================== #
 CONFIG_DIR  = Path.home() / ".retuning_automations"
@@ -133,6 +134,8 @@ CONFIG_KEY_ALLOWED_N77_ARFCN_POST       = "allowed_n77_arfcn_post_csv"
 CONFIG_KEY_PROFILES_AUDIT               = "profiles_audit"
 CONFIG_KEY_EXPORT_CORRECTION_CMD        = "export_correction_cmd"
 CONFIG_KEY_FAST_EXCEL_EXPORT            = "fast_excel_export"
+CONFIG_KEY_NETWORK_FREQUENCIES         = "network_frequencies"
+
 
 # Logic Map -> Key in config
 CFG_FIELD_MAP = {
@@ -154,6 +157,7 @@ CFG_FIELD_MAP = {
     "profiles_audit":           CONFIG_KEY_PROFILES_AUDIT,
     "export_correction_cmd":    CONFIG_KEY_EXPORT_CORRECTION_CMD,
     "fast_excel_export":        CONFIG_KEY_FAST_EXCEL_EXPORT,
+    "network_frequencies":      CONFIG_KEY_NETWORK_FREQUENCIES,
 }
 
 
@@ -195,10 +199,10 @@ class GuiResult:
 
 
 def is_consistency_module(selected_text: str) -> bool:
-    """True if selected module is the second (Consistency Check manual)."""
+    """True if selected module is the manual Consistency Check (Pre/Post)."""
     try:
         idx = MODULE_NAMES.index(selected_text)
-        return idx == 1
+        return idx == 2
     except ValueError:
         lowered = selected_text.strip().lower()
         # Explicitly exclude the bulk mode entry
@@ -245,8 +249,9 @@ def gui_config_dialog(
     # Module-specific default single-input folders (used when switching module in the combobox)
     module_single_defaults: Dict[str, str] = {
         MODULE_NAMES[0]: default_input_audit or default_input or "",
-        MODULE_NAMES[2]: default_input_cc_bulk or default_input or "",
-        MODULE_NAMES[3]: default_input_final_cleanup or default_input or "",
+        MODULE_NAMES[1]: default_input_audit or default_input or "",
+        MODULE_NAMES[3]: default_input_cc_bulk or default_input or "",
+        MODULE_NAMES[4]: default_input_final_cleanup or default_input or "",
     }
 
     root = tk.Tk()
@@ -266,8 +271,8 @@ def gui_config_dialog(
         pass
 
     # Vars
-    module_var = tk.StringVar(value=MODULE_NAMES[0])
-    input_var = tk.StringVar(value=module_single_defaults.get(MODULE_NAMES[0], default_input or ""))
+    module_var = tk.StringVar(value=MODULE_NAMES[1])
+    input_var = tk.StringVar(value=module_single_defaults.get(MODULE_NAMES[1], default_input or ""))
     input_pre_var = tk.StringVar(value=default_input_cc_pre or "")
     input_post_var = tk.StringVar(value=default_input_cc_post or "")
     n77_ssb_pre_var = tk.StringVar(value=default_n77_ssb_pre or "")
@@ -435,7 +440,7 @@ def gui_config_dialog(
     def refresh_export_correction_cmd_option(*_e):
         """Show the export option only when it is relevant (ConfigurationAudit / ConsistencyChecks)."""
         sel_module = (module_var.get() or "").strip()
-        needs_export_option = (sel_module == MODULE_NAMES[0]) or is_consistency_module(sel_module) or (sel_module == MODULE_NAMES[2])
+        needs_export_option = (sel_module == MODULE_NAMES[1]) or is_consistency_module(sel_module) or (sel_module == MODULE_NAMES[3])
 
         if needs_export_option:
             configuration_audit_options_label.grid()
@@ -621,8 +626,8 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Launcher Retuning Automations Tool with GUI fallback.")
     parser.add_argument(
         "--module",
-        choices=["configuration-audit", "consistency-check", "consistency-check-bulk", "final-cleanup"],
-        help="Module to run: configuration-audit|consistency-check|consistency-check-bulk|final-cleanup. "
+        choices=["update-network-frequencies", "configuration-audit", "consistency-check", "consistency-check-bulk", "final-cleanup"],
+        help="Module to run: update-network-frequencies|configuration-audit|consistency-check|consistency-check-bulk|final-cleanup. "
              "If omitted and no other args are provided, GUI appears (if available)."
     )
     # Single-input (most modules)
@@ -1105,7 +1110,7 @@ def run_consistency_checks(
 
     # Normalize mode early (GUI passes module label, CLI passes module key)
     mode_low = (mode or "").strip().lower()
-    is_bulk = ("bulk" in mode_low) or (mode_low == "consistency-check-bulk") or (mode_low == MODULE_NAMES[2].lower())
+    is_bulk = ("bulk" in mode_low) or (mode_low == "consistency-check-bulk") or (mode_low == MODULE_NAMES[3].lower())
 
     module_name = "[Consistency Checks (Bulk Pre/Post Auto-Detection)]" if is_bulk else "[Consistency Checks (Pre/Post Comparison)]"
     print(f"{module_name} [INFO] Running Consistency Check ({'bulk mode' if is_bulk else 'manual mode'})…")
@@ -1614,17 +1619,98 @@ def run_final_cleanup(input_dir: str, *_args) -> None:
         print(f"{module_name} [INFO] Module logic not yet implemented (under development). Exiting...")
 
 
+def run_update_network_frequencies(input_dir: str, *_args) -> None:
+    module_name = "[Update Network Frequencies]"
+    input_dir_fs = to_long_path(input_dir) if input_dir else input_dir
+
+    print(f"{module_name} [INFO] Scanning NRFrequency MO to update GUI Available Frequencies…")
+    print(f"{module_name} [INFO] Input folder: '{pretty_path(input_dir_fs)}'")
+
+    if not input_dir_fs or not os.path.exists(input_dir_fs):
+        print(f"{module_name} [WARNING] Input folder does not exist: '{pretty_path(input_dir_fs)}'")
+        return
+
+    # Reuse the same logic used by other modules to support folders containing ZIPs, etc.
+    logs_ctx = ensure_logs_available(input_dir_fs)
+    process_dir = logs_ctx.process_dir or input_dir_fs
+
+    from src.utils.utils_io import find_log_files, read_text_file
+    from src.utils.utils_parsing import find_all_subnetwork_headers, extract_mo_from_subnetwork_line, parse_table_slice_from_subnetwork
+    from src.utils.utils_frequency import resolve_column_case_insensitive
+
+    log_files = find_log_files(process_dir, recursive=True)
+    if not log_files:
+        print(f"{module_name} [WARNING] No log files found in: '{pretty_path(process_dir)}'")
+        return
+
+    found_freqs = set()
+
+    for lf in log_files:
+        try:
+            lines, _enc = read_text_file(lf)
+        except Exception:
+            continue
+
+        if not lines:
+            continue
+
+        headers = find_all_subnetwork_headers(lines)
+        if not headers:
+            continue
+
+        for i, hidx in enumerate(headers):
+            end_idx = headers[i + 1] if i + 1 < len(headers) else len(lines)
+            mo_name = extract_mo_from_subnetwork_line(lines[hidx])
+            if mo_name != "NRFrequency":
+                continue
+
+            try:
+                df = parse_table_slice_from_subnetwork(lines, hidx, end_idx)
+            except Exception:
+                continue
+
+            if df is None or df.empty:
+                continue
+
+            col_arfcn = resolve_column_case_insensitive(df, ["arfcnValueNRDl"])
+            if not col_arfcn:
+                continue
+
+            for v in df[col_arfcn].astype(str).tolist():
+                sv = str(v).strip()
+                if sv and sv.isdigit():
+                    found_freqs.add(sv)
+
+    if not found_freqs:
+        print(f"{module_name} [WARNING] NRFrequency found, but no valid arfcnValueNRDl values were extracted.")
+        return
+
+    def _freq_sort_key(v: str) -> tuple:
+        try:
+            return (0, int(v))
+        except Exception:
+            return (1, str(v))
+
+    new_list = sorted(found_freqs, key=_freq_sort_key)
+    NETWORK_FREQUENCIES[:] = new_list
+
+    save_cfg_values(config_dir=CONFIG_DIR, config_path=CONFIG_PATH, config_section=CONFIG_SECTION, cfg_field_map=CFG_FIELD_MAP, network_frequencies=",".join(new_list))
+
+    print(f"{module_name} [INFO] Updated Available Frequencies: {len(new_list)} values saved into config.cfg")
+
 
 def resolve_module_callable(name: str):
     name = (name or "").strip().lower()
-    if name in ("audit", MODULE_NAMES[0].lower(), "configuration-audit"):
+    if name in ("update-network-frequencies", MODULE_NAMES[0].lower(), "update-frequencies"):
+        return run_update_network_frequencies
+    if name in ("audit", MODULE_NAMES[1].lower(), "configuration-audit"):
         return run_configuration_audit
-    if name in ("consistency-check", MODULE_NAMES[1].lower()):
+    if name in ("consistency-check", MODULE_NAMES[2].lower()):
         return run_consistency_checks
-    if name in ("consistency-check-bulk", MODULE_NAMES[2].lower()):
+    if name in ("consistency-check-bulk", MODULE_NAMES[3].lower()):
         return run_consistency_checks
     # NOTE: profiles-audit removed
-    if name in ("final-cleanup", MODULE_NAMES[3].lower(), "final-cleanup"):
+    if name in ("final-cleanup", MODULE_NAMES[4].lower(), "final-cleanup"):
         return run_final_cleanup
     return None
 
@@ -1765,6 +1851,7 @@ def main():
             "profiles_audit",
             "export_correction_cmd",
             "fast_excel_export",
+            "network_frequencies",
         )
 
         # Global fallback last input
@@ -1790,6 +1877,17 @@ def main():
         persisted_profiles_audit           = parse_cfg_bool(cfg.get("profiles_audit", ""), default=True)
         persisted_export_correction_cmd    = parse_cfg_bool(cfg.get("export_correction_cmd", ""), default=True)
         persisted_fast_excel_export        = parse_cfg_bool(cfg.get("fast_excel_export", ""), default=False)
+
+        # NEW: Load GUI "Available frequencies" from config (generated by Update Network Frequencies module)
+        persisted_network_frequencies = normalize_csv_list(cfg.get("network_frequencies", ""))
+        if persisted_network_frequencies:
+            def _freq_sort_key(v: str) -> tuple:
+                try:
+                    return (0, int(v))
+                except Exception:
+                    return (1, str(v))
+            NETWORK_FREQUENCIES[:] = sorted({s.strip() for s in persisted_network_frequencies.split(",") if s.strip()}, key=_freq_sort_key)
+
 
     else:
         # CLI mode: no persistence (no read from config.cfg)
@@ -1898,11 +1996,11 @@ def main():
                 # Single-input modules: keep dual-input defaults untouched
                 input_dir = sel.input_dir
                 # Update per-module defaults in memory
-                if sel.module == MODULE_NAMES[0]:
+                if sel.module == MODULE_NAMES[0] or sel.module == MODULE_NAMES[1]:
                     default_input_audit = sel.input_dir
-                elif sel.module == MODULE_NAMES[2]:
-                    default_input_cc_bulk = sel.input_dir
                 elif sel.module == MODULE_NAMES[3]:
+                    default_input_cc_bulk = sel.input_dir
+                elif sel.module == MODULE_NAMES[4]:
                     default_input_final_cleanup = sel.input_dir
                 default_input = default_input_audit
 
@@ -1929,13 +2027,13 @@ def main():
                 persist_kwargs["last_input_cc_post"] = sel.input_post_dir
             else:
                 # Single-input modules
-                if sel.module == MODULE_NAMES[0]:
+                if sel.module == MODULE_NAMES[0] or sel.module == MODULE_NAMES[1]:
                     persist_kwargs["last_input_audit"] = sel.input_dir
                     persist_kwargs["last_input"] = sel.input_dir
-                elif sel.module == MODULE_NAMES[2]:
+                elif sel.module == MODULE_NAMES[3]:
                     persist_kwargs["last_input_cc_bulk"] = sel.input_dir
                     persist_kwargs["last_input"] = sel.input_dir
-                elif sel.module == MODULE_NAMES[3]:
+                elif sel.module == MODULE_NAMES[4]:
                     persist_kwargs["last_input_final_cleanup"] = sel.input_dir
                     persist_kwargs["last_input"] = sel.input_dir
 
@@ -2010,6 +2108,17 @@ def main():
     allowed_n77_arfcn_pre_csv = default_allowed_n77_arfcn_pre_csv
     allowed_n77_ssb_post_csv = default_allowed_n77_ssb_post_csv
     allowed_n77_arfcn_post_csv = default_allowed_n77_arfcn_post_csv
+
+    # Update Network Frequencies (module 0)
+    if module_fn is run_update_network_frequencies:
+        input_dir = args.input or default_input_audit
+        if not input_dir:
+            print("[ERROR] Error: --input is required for update-network-frequencies in CLI mode.\n")
+            parser.print_help()
+            return
+        execute_module(module_fn, input_dir=input_dir, selected_module=args.module)
+        return
+
 
     # Configuration Audit (module 1)
     if module_fn is run_configuration_audit:
