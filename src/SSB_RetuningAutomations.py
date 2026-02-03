@@ -36,7 +36,7 @@ if str(_PROJECT_ROOT_DIR) not in sys.path:
 
 # Import our different Classes
 from src.utils.utils_datetime import format_duration_hms
-from src.utils.utils_dialog import tk, ttk, filedialog, messagebox, ask_reopen_launcher, ask_yes_no_dialog, ask_yes_no_dialog_custom, browse_input_folders_replace, browse_input_folders_add
+from src.utils.utils_dialog import tk, ttk, filedialog, messagebox, ask_reopen_launcher, ask_yes_no_dialog, ask_yes_no_dialog_custom, browse_input_folders_replace, browse_input_folders_add, select_step0_subfolders, get_multi_step0_items
 from src.utils.utils_infrastructure import LoggerDual
 from src.utils.utils_io import load_cfg_values, save_cfg_values, log_module_exception, to_long_path, pretty_path, folder_or_zip_has_valid_logs, detect_pre_post_subfolders, write_compared_folders_file, ensure_logs_available, attach_output_log_mirror, materialize_step0_zip_runs_as_folders
 
@@ -319,6 +319,14 @@ def gui_config_dialog(
 
     btn_browse.grid(row=1, column=3, sticky="ew", **pad)
 
+    btn_select_subfolders = ttk.Button(
+        single_frame,
+        text="Select Subfolders…",
+        state="disabled",
+        command=lambda: (select_step0_subfolders(module_var, input_var, root, MODULE_NAMES), _refresh_add_other_state())
+    )
+    btn_select_subfolders.grid(row=2, column=2, sticky="ew", **pad)
+
     def _refresh_add_other_state():
         sel = module_var.get()
         # Solo módulos 1, 3 y 4
@@ -329,6 +337,12 @@ def gui_config_dialog(
         has_first = bool(raw_paths)
 
         btn_add.config(state=("normal" if (sel in multi_modules and has_first) else "disabled"))
+
+        try:
+            multi_items = get_multi_step0_items(module_var, input_var, MODULE_NAMES)
+            btn_select_subfolders.config(state=("normal" if (sel in multi_modules and has_first and len(multi_items) > 0) else "disabled"))
+        except Exception:
+            btn_select_subfolders.config(state="disabled")
 
     btn_add = ttk.Button(
         single_frame,

@@ -12,7 +12,8 @@
   - #### 🚨 Breaking Changes:
 
   - #### 🌟 New Features:
-    - Now `ConfigurationAudit` module supports multiple Input folders from GUI (using Add button or selecting several folders within the same subfolder) and also from CLI (using `--inputs` argument instead of `--input`) to process all of them in batch mode.
+    - Now `ConfigurationAudit`, `ConsistencyCheck (bulk)` and `Final Clean-up` modules supports multiple Input folders from GUI (using Add button or selecting several folders within the same subfolder) and also from CLI (using `--inputs` argument instead of `--input`) to process all of them in batch mode.
+    - Now `ConfigurationAudit`, `ConsistencyCheck (bulk)` and `Final Clean-up` modules supports multi-select valid `Step0` subfolders.
     - `NRCellDU` now updates `ssbFrequency` column when the value is 0 and `ssbFrequencyAutoSelected` is not 0. 
 
   - #### 🚀 Enhancements:
