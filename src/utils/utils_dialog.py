@@ -162,30 +162,36 @@ STEP0_SEARCH_MAX_DEPTH = 6  # How many subfolder levels below each selected inpu
 STEP0_LOGS_SEARCH_MAX_DEPTH = 6  # How many subfolder levels below a Step0 folder to scan for valid logs/zips
 
 
-def get_multi_step0_items(module_var, input_var, module_names: List[str]) -> List[Tuple[str, str]]:
+def _split_input_paths(raw: str) -> List[str]:
+    return [p.strip() for p in re.split(r"[;\n]+", raw or "") if p.strip()]
+
+
+def _unique_preserve_order(paths: List[str]) -> List[str]:
+    seen = set()
+    out: List[str] = []
+    for p in paths:
+        if not p:
+            continue
+        p_clean = pretty_path(os.path.normpath(p))
+        k = p_clean.lower() if os.name == "nt" else p_clean
+        if k in seen:
+            continue
+        seen.add(k)
+        out.append(p_clean)
+    return out
+
+
+def _is_multi_input_module(sel_module: str, module_names: List[str]) -> bool:
+    if len(module_names) < 5:
+        return False
+    multi_modules = (module_names[1], module_names[3], module_names[4])
+    return sel_module in multi_modules
+
+
+def _build_step0_map(parent_folders: List[str]) -> Dict[str, List[str]]:
     """
-    Return the (parent, step0_folder) items that would be selectable.
-
-    Only includes parents that contain *more than one* valid Step0 folder.
-    This is used by the launcher to enable/disable the "Select Subfolders" button.
+    Returns a map: parent_folder -> [valid_step0_folder_paths]
     """
-    def _split_input_paths(raw: str) -> List[str]:
-        return [p.strip() for p in re.split(r"[;\n]+", raw or "") if p.strip()]
-
-    def _unique_preserve_order(paths: List[str]) -> List[str]:
-        seen = set()
-        out: List[str] = []
-        for p in paths:
-            if not p:
-                continue
-            p_clean = pretty_path(os.path.normpath(p))
-            k = p_clean.lower() if os.name == "nt" else p_clean
-            if k in seen:
-                continue
-            seen.add(k)
-            out.append(p_clean)
-        return out
-
     def _folder_tree_has_valid_logs(folder: str, max_depth: int = STEP0_LOGS_SEARCH_MAX_DEPTH) -> bool:
         folder_fs = to_long_path(folder) if folder else folder
         if not folder_fs or not os.path.isdir(folder_fs):
@@ -243,25 +249,35 @@ def get_multi_step0_items(module_var, input_var, module_names: List[str]) -> Lis
         candidates.sort(key=lambda x: x[0])
         return [p for _dt, p in candidates]
 
-    sel_module = (module_var.get() or "").strip()
-    if len(module_names) < 5:
-        return []
+    step0_map: Dict[str, List[str]] = {}
+    for parent in parent_folders:
+        step0_map[parent] = _find_valid_step0_folders_under(parent, max_depth=STEP0_SEARCH_MAX_DEPTH)
+    return step0_map
 
-    multi_modules = (module_names[1], module_names[3], module_names[4])
-    if sel_module not in multi_modules:
+
+def get_multi_step0_items(module_var, input_var, module_names: List[str]) -> List[Tuple[str, str]]:
+    """
+    Return the (parent, step0_folder) items that would be selectable.
+
+    Only includes parents that contain *more than one* valid Step0 folder.
+    This is used by the launcher to enable/disable the "Select Subfolders" button.
+    """
+    sel_module = (module_var.get() or "").strip()
+    if not _is_multi_input_module(sel_module, module_names):
         return []
 
     current_paths = _unique_preserve_order(_split_input_paths(input_var.get()))
     if not current_paths:
         return []
 
+    step0_map = _build_step0_map(current_paths)
+
     items: List[Tuple[str, str]] = []
-    for p in current_paths:
-        step0s = _find_valid_step0_folders_under(p, max_depth=STEP0_SEARCH_MAX_DEPTH)
+    for parent, step0s in step0_map.items():
         if len(step0s) <= 1:
             continue
         for step0_folder in step0s:
-            items.append((p, step0_folder))
+            items.append((parent, step0_folder))
 
     return items
 
@@ -275,23 +291,6 @@ def select_step0_subfolders(module_var, input_var, root, module_names: List[str]
     - False: no change was required
     - None: a selection dialog was shown and the user cancelled
     """
-    def _split_input_paths(raw: str) -> List[str]:
-        return [p.strip() for p in re.split(r"[;\n]+", raw or "") if p.strip()]
-
-    def _unique_preserve_order(paths: List[str]) -> List[str]:
-        seen = set()
-        out: List[str] = []
-        for p in paths:
-            if not p:
-                continue
-            p_clean = pretty_path(os.path.normpath(p))
-            k = p_clean.lower() if os.name == "nt" else p_clean
-            if k in seen:
-                continue
-            seen.add(k)
-            out.append(p_clean)
-        return out
-
     def _match_pattern(text: str, pattern: str) -> bool:
         patt = (pattern or "").strip()
         if not patt:
@@ -299,63 +298,6 @@ def select_step0_subfolders(module_var, input_var, root, module_names: List[str]
         t = text.lower() if os.name == "nt" else text
         p = patt.lower() if os.name == "nt" else patt
         return fnmatch.fnmatch(t, p)
-
-    def _folder_tree_has_valid_logs(folder: str, max_depth: int = STEP0_LOGS_SEARCH_MAX_DEPTH) -> bool:
-        folder_fs = to_long_path(folder) if folder else folder
-        if not folder_fs or not os.path.isdir(folder_fs):
-            return False
-
-        if folder_or_zip_has_valid_logs(folder_fs):
-            return True
-
-        stack: List[Tuple[str, int]] = [(folder_fs, 0)]
-        while stack:
-            current_fs, depth = stack.pop()
-            if depth >= max_depth:
-                continue
-            try:
-                for e in os.scandir(current_fs):
-                    if not e.is_dir(follow_symlinks=False):
-                        continue
-                    if folder_or_zip_has_valid_logs(e.path):
-                        return True
-                    stack.append((e.path, depth + 1))
-            except Exception:
-                continue
-
-        return False
-
-    def _find_valid_step0_folders_under(parent_folder: str, max_depth: int = STEP0_SEARCH_MAX_DEPTH) -> List[str]:
-        parent_fs = to_long_path(parent_folder) if parent_folder else parent_folder
-        if not parent_fs or not os.path.isdir(parent_fs):
-            return []
-
-        candidates: List[Tuple[object, str]] = []
-        stack: List[Tuple[str, int]] = [(parent_fs, 0)]
-
-        while stack:
-            current_fs, depth = stack.pop()
-            if depth > max_depth:
-                continue
-
-            try:
-                for e in os.scandir(current_fs):
-                    if not e.is_dir(follow_symlinks=False):
-                        continue
-
-                    info = detect_step0_folders(e.name, current_fs)
-                    if info:
-                        if _folder_tree_has_valid_logs(info.path, max_depth=STEP0_LOGS_SEARCH_MAX_DEPTH):
-                            candidates.append((info.datetime_key, pretty_path(os.path.normpath(info.path))))
-                        continue
-
-                    if depth < max_depth:
-                        stack.append((e.path, depth + 1))
-            except Exception:
-                continue
-
-        candidates.sort(key=lambda x: x[0])
-        return [p for _dt, p in candidates]
 
     def _format_step0_item_label(parent_folder: str, step0_folder: str) -> str:
         parent_clean = pretty_path(os.path.normpath(parent_folder))
@@ -407,8 +349,7 @@ def select_step0_subfolders(module_var, input_var, root, module_names: List[str]
 
         ttk.Label(header, text="Filter pattern:").pack(side="left")
         filter_var = tk.StringVar(value=default_pattern)
-        filter_entry = ttk.Entry(header, textvariable=filter_var, width=40)
-        filter_entry.pack(side="left", padx=8)
+        ttk.Entry(header, textvariable=filter_var, width=40).pack(side="left", padx=8)
 
         body = ttk.Frame(win, padding=10)
         body.pack(fill="both", expand=True)
@@ -443,8 +384,7 @@ def select_step0_subfolders(module_var, input_var, root, module_names: List[str]
         for idx, (parent_folder, step0_folder) in enumerate(items):
             label = _format_step0_item_label(parent_folder, step0_folder)
             var = tk.IntVar(value=1)
-            chk = ttk.Checkbutton(inner, text=label, variable=var)
-            chk.grid(row=idx, column=0, sticky="w", pady=2)
+            ttk.Checkbutton(inner, text=label, variable=var).grid(row=idx, column=0, sticky="w", pady=2)
             vars_list.append(var)
             labels_list.append(label)
 
@@ -492,44 +432,35 @@ def select_step0_subfolders(module_var, input_var, root, module_names: List[str]
         return result["selected"]  # type: ignore
 
     sel_module = (module_var.get() or "").strip()
-    if len(module_names) < 5:
-        return False
-
-    multi_modules = (module_names[1], module_names[3], module_names[4])
-    if sel_module not in multi_modules:
+    if not _is_multi_input_module(sel_module, module_names):
         return False
 
     current_paths = _unique_preserve_order(_split_input_paths(input_var.get()))
     if not current_paths:
         return False
 
-    out_paths: List[str] = []
-    multi_parent_map: Dict[str, List[str]] = {}
-    multi_parent_order: List[str] = []
+    step0_map = _build_step0_map(current_paths)
 
-    for p in current_paths:
-        step0s = _find_valid_step0_folders_under(p, max_depth=STEP0_SEARCH_MAX_DEPTH)
+    out_paths: List[str] = []
+    selectable_items: List[Tuple[str, str]] = []
+
+    for parent, step0s in step0_map.items():
         if len(step0s) == 0:
-            out_paths.append(pretty_path(os.path.normpath(p)))
+            out_paths.append(parent)
         elif len(step0s) == 1:
             out_paths.append(step0s[0])
         else:
-            multi_parent_map[p] = step0s
-            multi_parent_order.append(p)
+            for step0_folder in step0s:
+                selectable_items.append((parent, step0_folder))
 
-    if not multi_parent_order:
+    if not selectable_items:
         new_value = ";".join(_unique_preserve_order(out_paths))
         if new_value != (input_var.get() or ""):
             input_var.set(new_value)
             return True
         return False
 
-    items: List[Tuple[str, str]] = []
-    for parent in multi_parent_order:
-        for step0_folder in multi_parent_map.get(parent, []):
-            items.append((parent, step0_folder))
-
-    selected = _pick_step0_subfolders_dialog(root, items, default_pattern="*Step0*")
+    selected = _pick_step0_subfolders_dialog(root, selectable_items, default_pattern="*Step0*")
     if selected is None:
         return None
 
@@ -544,28 +475,12 @@ def select_step0_subfolders(module_var, input_var, root, module_names: List[str]
 
 # ============================ PUBLIC API (USED BY LAUNCHER) ================== #
 
-def browse_input_folders_replace(module_var, input_var, root, module_names: List[str]) -> None:
+def browse_input_folders(module_var, input_var, root, module_names: List[str], add_mode: bool) -> None:
     """
     Native Tk folder picker (single selection).
-    Replaces current value with the selected folder.
+    - add_mode=False => replace current value
+    - add_mode=True  => add folder to current list (semicolon-separated)
     """
-    def _split_input_paths(raw: str) -> List[str]:
-        return [p.strip() for p in re.split(r"[;\n]+", raw or "") if p.strip()]
-
-    def _unique_preserve_order(paths: List[str]) -> List[str]:
-        seen = set()
-        out: List[str] = []
-        for p in paths:
-            if not p:
-                continue
-            p_clean = pretty_path(os.path.normpath(p))
-            k = p_clean.lower() if os.name == "nt" else p_clean
-            if k in seen:
-                continue
-            seen.add(k)
-            out.append(p_clean)
-        return out
-
     if filedialog is None:
         return
 
@@ -573,56 +488,19 @@ def browse_input_folders_replace(module_var, input_var, root, module_names: List
     initial_dir = current[-1] if current else os.getcwd()
 
     sel_module = (module_var.get() or "").strip()
-    title = f"Select input folder — {sel_module}" if sel_module else "Select input folder"
+    if add_mode:
+        title = f"Add other input folder — {sel_module}" if sel_module else "Add other input folder"
+    else:
+        title = f"Select input folder — {sel_module}" if sel_module else "Select input folder"
 
     path = filedialog.askdirectory(title=title, initialdir=initial_dir)
     if not path:
         return
 
-    input_var.set(pretty_path(os.path.normpath(path)))
-    # Legacy wrapper used by browse_input_folders_*.
-    # If the user cancels the selection dialog, we keep the current input_var value.
-    _ = select_step0_subfolders(module_var, input_var, root, module_names)
+    if add_mode:
+        merged = _unique_preserve_order(current + [pretty_path(os.path.normpath(path))])
+        input_var.set(";".join(merged))
+    else:
+        input_var.set(pretty_path(os.path.normpath(path)))
 
-
-def browse_input_folders_add(module_var, input_var, root, module_names: List[str]) -> None:
-    """
-    Native Tk folder picker (single selection).
-    Adds a new folder to the current list (semicolon-separated).
-    No loops: user adds again only by pressing the button again.
-    """
-    def _split_input_paths(raw: str) -> List[str]:
-        return [p.strip() for p in re.split(r"[;\n]+", raw or "") if p.strip()]
-
-    def _unique_preserve_order(paths: List[str]) -> List[str]:
-        seen = set()
-        out: List[str] = []
-        for p in paths:
-            if not p:
-                continue
-            p_clean = pretty_path(os.path.normpath(p))
-            k = p_clean.lower() if os.name == "nt" else p_clean
-            if k in seen:
-                continue
-            seen.add(k)
-            out.append(p_clean)
-        return out
-
-    if filedialog is None:
-        return
-
-    current = _unique_preserve_order(_split_input_paths(input_var.get()))
-    initial_dir = current[-1] if current else os.getcwd()
-
-    sel_module = (module_var.get() or "").strip()
-    title = f"Add other input folder — {sel_module}" if sel_module else "Add other input folder"
-
-    path = filedialog.askdirectory(title=title, initialdir=initial_dir)
-    if not path:
-        return
-
-    merged = _unique_preserve_order(current + [path])
-    input_var.set(";".join(merged))
-    # Legacy wrapper used by browse_input_folders_*.
-    # If the user cancels the selection dialog, we keep the current input_var value.
     _ = select_step0_subfolders(module_var, input_var, root, module_names)

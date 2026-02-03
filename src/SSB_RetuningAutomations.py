@@ -36,7 +36,7 @@ if str(_PROJECT_ROOT_DIR) not in sys.path:
 
 # Import our different Classes
 from src.utils.utils_datetime import format_duration_hms
-from src.utils.utils_dialog import tk, ttk, filedialog, messagebox, ask_reopen_launcher, ask_yes_no_dialog, ask_yes_no_dialog_custom, browse_input_folders_replace, browse_input_folders_add, select_step0_subfolders, get_multi_step0_items
+from src.utils.utils_dialog import tk, ttk, filedialog, messagebox, ask_reopen_launcher, ask_yes_no_dialog, ask_yes_no_dialog_custom, browse_input_folders, select_step0_subfolders, get_multi_step0_items, select_step0_subfolders, get_multi_step0_items
 from src.utils.utils_infrastructure import LoggerDual
 from src.utils.utils_io import load_cfg_values, save_cfg_values, log_module_exception, to_long_path, pretty_path, folder_or_zip_has_valid_logs, detect_pre_post_subfolders, write_compared_folders_file, ensure_logs_available, attach_output_log_mirror, materialize_step0_zip_runs_as_folders
 
@@ -311,20 +311,11 @@ def gui_config_dialog(
 
     ttk.Entry(single_frame, textvariable=input_var, width=100).grid(row=1, column=1, columnspan=2, sticky="ew", **pad)
 
-    btn_browse = ttk.Button(
-        single_frame,
-        text="Browse…",
-        command=lambda: (browse_input_folders_replace(module_var, input_var, root, MODULE_NAMES), _refresh_add_other_state())
-    )
+    btn_browse = ttk.Button(single_frame, text="Browse…", command=lambda: (browse_input_folders(module_var, input_var, root, MODULE_NAMES, add_mode=False), _refresh_add_other_state()))
 
     btn_browse.grid(row=1, column=3, sticky="ew", **pad)
 
-    btn_select_subfolders = ttk.Button(
-        single_frame,
-        text="Select Subfolders…",
-        state="disabled",
-        command=lambda: (select_step0_subfolders(module_var, input_var, root, MODULE_NAMES), _refresh_add_other_state())
-    )
+    btn_select_subfolders = ttk.Button(single_frame, text="Select Subfolders…", state="disabled", command=lambda: (select_step0_subfolders(module_var, input_var, root, MODULE_NAMES), _refresh_add_other_state()))
     btn_select_subfolders.grid(row=2, column=2, sticky="ew", **pad)
 
     def _refresh_add_other_state():
@@ -344,12 +335,8 @@ def gui_config_dialog(
         except Exception:
             btn_select_subfolders.config(state="disabled")
 
-    btn_add = ttk.Button(
-        single_frame,
-        text="Add Other…",
-        state="disabled",
-        command=lambda: (browse_input_folders_add(module_var, input_var, root, MODULE_NAMES), _refresh_add_other_state())
-    )
+
+    btn_add = ttk.Button(single_frame, text="Add Other…", state="disabled", command=lambda: (browse_input_folders(module_var, input_var, root, MODULE_NAMES, add_mode=True), _refresh_add_other_state()))
     btn_add.grid(row=2, column=3, sticky="ew", **pad)
 
     # Dual-input frame (only for module 2)
@@ -632,6 +619,11 @@ def gui_config_dialog(
                 fast_excel_export=bool(fast_excel_export_var.get()),
             )
         else:
+            step0_ret = select_step0_subfolders(module_var, input_var, root, MODULE_NAMES)
+            if step0_ret is None:
+                return
+            _refresh_add_other_state()
+
             sel_input = input_var.get().strip()
             if not sel_input:
                 if messagebox is not None:
