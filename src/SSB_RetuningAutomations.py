@@ -27,6 +27,7 @@ from typing import Optional, List, Dict, Tuple
 import textwrap
 from pathlib import Path
 
+
 # Ensure repo root is on sys.path when running this file directly (e.g. "python .\\SSB_RetuningAutomations.py" from src)
 _THIS_FILE_DIR = Path(__file__).resolve().parent
 _PROJECT_ROOT_DIR = _THIS_FILE_DIR.parent
@@ -35,9 +36,9 @@ if str(_PROJECT_ROOT_DIR) not in sys.path:
 
 # Import our different Classes
 from src.utils.utils_datetime import format_duration_hms
-from src.utils.utils_dialog import tk, ttk, filedialog, messagebox, ask_reopen_launcher, ask_yes_no_dialog, ask_yes_no_dialog_custom
+from src.utils.utils_dialog import tk, ttk, filedialog, messagebox, ask_reopen_launcher, ask_yes_no_dialog, ask_yes_no_dialog_custom, browse_input_folders_replace, browse_input_folders_add
 from src.utils.utils_infrastructure import LoggerDual
-from src.utils.utils_io import load_cfg_values, save_cfg_values, log_module_exception, to_long_path, pretty_path, folder_or_zip_has_valid_logs, detect_pre_post_subfolders, write_compared_folders_file, ensure_logs_available, attach_output_log_mirror
+from src.utils.utils_io import load_cfg_values, save_cfg_values, log_module_exception, to_long_path, pretty_path, folder_or_zip_has_valid_logs, detect_pre_post_subfolders, write_compared_folders_file, ensure_logs_available, attach_output_log_mirror, materialize_step0_zip_runs_as_folders
 
 from src.utils.utils_parsing import normalize_csv_list, parse_arfcn_csv_to_set, infer_parent_timestamp_and_market
 
@@ -50,8 +51,8 @@ from src.modules.CleanUp.FinalCleanUp import FinalCleanUp
 # ================================ VERSIONING ================================ #
 
 TOOL_NAME           = "SSB_RetuningAutomations"
-TOOL_VERSION        = "0.6.2"
-TOOL_DATE           = "2026-02-02"
+TOOL_VERSION        = "0.6.3"
+TOOL_DATE           = "2026-02-03"
 TOOL_NAME_VERSION   = f"{TOOL_NAME}_v{TOOL_VERSION}"
 COPYRIGHT_TEXT      = "©️ 2025-2026 - Jaime Tur (jaime.tur@ericsson.com)"
 TOOL_DESCRIPTION    = textwrap.dedent(f"""
@@ -189,7 +190,7 @@ class GuiResult:
 
     # ConfigurationAudit: enable/disable profiles audit (integrated into ConfigurationAudit)
     profiles_audit: bool
-    
+
     # ConfigurationAudit: export correction command files (slow)
     export_correction_cmd: bool
 
@@ -261,7 +262,7 @@ def gui_config_dialog(
     # --- Center window ONCE with fixed size ---
     try:
         root.update_idletasks()
-        w, h = 880, 800  # tamaño objetivo del launcher
+        w, h = 880, 820  # tamaño objetivo del launcher
         sw = root.winfo_screenwidth()
         sh = root.winfo_screenheight()
         x = (sw - w) // 2
@@ -299,38 +300,62 @@ def gui_config_dialog(
     cmb = ttk.Combobox(frm, textvariable=module_var, values=MODULE_NAMES, state="readonly", width=50)
     cmb.grid(row=0, column=1, columnspan=2, sticky="ew", **pad)
 
-    def browse_single():
-        path = filedialog.askdirectory(title="Select input folder", initialdir=input_var.get() or os.getcwd())
-        if path:
-            input_var.set(path)
-
     # Single-input frame
     single_frame = ttk.Frame(frm)
 
-    # Spacer row so single_frame has similar height to dual_frame
-    ttk.Label(single_frame, text="").grid(row=0, column=0, columnspan=3, sticky="w")
+    # Spacer row
+    ttk.Label(single_frame, text="").grid(row=0, column=0, columnspan=4, sticky="w")
 
-    ttk.Label(single_frame, text="Input folder:").grid(row=1, column=0, sticky="w", **pad)
-    ttk.Entry(single_frame, textvariable=input_var, width=100).grid(row=1, column=1, sticky="ew", **pad)
-    ttk.Button(single_frame, text="Browse…", command=browse_single).grid(row=1, column=2, sticky="ew", **pad)
+    input_label = ttk.Label(single_frame, text="Input folder:")
+    input_label.grid(row=1, column=0, sticky="w", **pad)
 
-    # Spacer row so single_frame has similar height to dual_frame
-    ttk.Label(single_frame, text="").grid(row=2, column=0, columnspan=3, sticky="w")
+    ttk.Entry(single_frame, textvariable=input_var, width=100).grid(row=1, column=1, columnspan=2, sticky="ew", **pad)
+
+    btn_browse = ttk.Button(
+        single_frame,
+        text="Browse…",
+        command=lambda: (browse_input_folders_replace(module_var, input_var, root, MODULE_NAMES), _refresh_add_other_state())
+    )
+
+    btn_browse.grid(row=1, column=3, sticky="ew", **pad)
+
+    def _refresh_add_other_state():
+        sel = module_var.get()
+        # Solo módulos 1, 3 y 4
+        multi_modules = (MODULE_NAMES[1], MODULE_NAMES[3], MODULE_NAMES[4])
+
+        # Habilitar solo si ya hay al menos una carpeta seleccionada
+        raw_paths = [p.strip() for p in re.split(r"[;\n]+", input_var.get() or "") if p.strip()]
+        has_first = bool(raw_paths)
+
+        btn_add.config(state=("normal" if (sel in multi_modules and has_first) else "disabled"))
+
+    btn_add = ttk.Button(
+        single_frame,
+        text="Add Other…",
+        state="disabled",
+        command=lambda: (browse_input_folders_add(module_var, input_var, root, MODULE_NAMES), _refresh_add_other_state())
+    )
+    btn_add.grid(row=2, column=3, sticky="ew", **pad)
 
     # Dual-input frame (only for module 2)
     dual_frame = ttk.Frame(frm)
-    ttk.Label(dual_frame, text="Pre input folder:").grid(row=0, column=0, sticky="w", **pad)
-    ttk.Entry(dual_frame, textvariable=input_pre_var, width=100).grid(row=0, column=1, sticky="ew", **pad)
+
+    # Spacer row
+    ttk.Label(dual_frame, text="").grid(row=0, column=0, columnspan=3, sticky="w")
+
+    ttk.Label(dual_frame, text="Pre input folder:").grid(row=1, column=0, sticky="w", **pad)
+    ttk.Entry(dual_frame, textvariable=input_pre_var, width=100).grid(row=1, column=1, sticky="ew", **pad)
 
     def browse_pre():
         path = filedialog.askdirectory(title="Select PRE input folder", initialdir=input_pre_var.get() or os.getcwd())
         if path:
             input_pre_var.set(path)
 
-    ttk.Button(dual_frame, text="Browse…", command=browse_pre).grid(row=0, column=2, sticky="ew", **pad)
+    ttk.Button(dual_frame, text="Browse…", command=browse_pre).grid(row=2, column=2, sticky="ew", **pad)
 
-    ttk.Label(dual_frame, text="Post input folder:").grid(row=1, column=0, sticky="w", **pad)
-    ttk.Entry(dual_frame, textvariable=input_post_var, width=80).grid(row=1, column=1, sticky="ew", **pad)
+    ttk.Label(dual_frame, text="Post input folder:").grid(row=2, column=0, sticky="w", **pad)
+    ttk.Entry(dual_frame, textvariable=input_post_var, width=80).grid(row=2, column=1, sticky="ew", **pad)
 
     def browse_post():
         path = filedialog.askdirectory(title="Select POST input folder", initialdir=input_post_var.get() or os.getcwd())
@@ -344,17 +369,46 @@ def gui_config_dialog(
         Switch between single-input and dual-input mode depending on module.
 
         - Module 2 (Consistency Check Pre/Post) uses dual-input.
-        - Module 3 (Bulk) and the rest use single-input, with per-module defaults.
+        - Module 1 (Configuration Audit) supports multi-input on the single frame.
+        - Module 0/3/4 remain single-input for now.
         """
         single_frame.grid_forget()
         dual_frame.grid_forget()
         sel = module_var.get()
+
         if is_consistency_module(sel):
             dual_frame.grid(row=1, column=0, columnspan=3, sticky="ew")
+            return
+
+        single_frame.grid(row=1, column=0, columnspan=3, sticky="ew")
+
+        # Restore per-module default input, if any
+        if sel in module_single_defaults:
+            input_var.set(module_single_defaults[sel])
+
+        # Configure UI based on module
+        multi_modules = (MODULE_NAMES[1], MODULE_NAMES[3], MODULE_NAMES[4])
+        if sel in multi_modules:
+            input_label.config(text="Input folder(s):")
         else:
-            single_frame.grid(row=1, column=0, columnspan=3, sticky="ew")
-            if sel in module_single_defaults:
-                input_var.set(module_single_defaults[sel])
+            input_label.config(text="Input folder:")
+            btn_add.config(state="disabled")
+
+            # Si venía con multi-input, deja solo la primera para módulos no-multi
+            raw_paths = [p.strip() for p in re.split(r"[;\n]+", input_var.get() or "") if p.strip()]
+            if raw_paths:
+                input_var.set(raw_paths[0])
+
+        # If a multi-input value was left from other modules, keep only the first path for module 0
+            if sel == MODULE_NAMES[0]:
+                raw_paths = [p.strip() for p in re.split(r"[;\n]+", input_var.get() or "") if p.strip()]
+                if raw_paths:
+                    input_var.set(raw_paths[0])
+
+        # Decide el estado real del botón según si ya hay primera carpeta seleccionada
+        _refresh_add_other_state()
+
+
 
     cmb.bind("<<ComboboxSelected>>", refresh_input_mode)
     refresh_input_mode()
@@ -632,6 +686,8 @@ def parse_args() -> argparse.Namespace:
     )
     # Single-input (most modules)
     parser.add_argument("--input", help="Input folder to process (single-input modules)")
+    # Multi-input (ConfigurationAudit only)
+    parser.add_argument("--inputs", nargs="+", help="Input folders to process (configuration-audit only). Example: --module configuration-audit --inputs dir1 dir2 dir3")
     # Dual-input (consistency-check manual)
     parser.add_argument("--input-pre", help="PRE input folder (only for consistency-check manual)")
     parser.add_argument("--input-post", help="POST input folder (only for consistency-check manual)")
@@ -668,6 +724,23 @@ def parse_args() -> argparse.Namespace:
     return args
 
 
+def ask_recursive_search_for_missing_logs_multi(missing_dirs: List[str], module_name: str) -> bool:
+    """
+    Show ONE dialog listing all input folders missing valid logs, and ask the user if we should search recursively in ALL.
+    """
+    if not missing_dirs:
+        return False
+
+    title = "Missing valid logs in input folder"
+    folders_txt = "\n".join([f"- {pretty_path(p)}" for p in missing_dirs])
+    message = (
+        f"{module_name} No valid *.log/*.logs/*.txt files with 'SubNetwork' rows were found in these input folders:\n"
+        f"{folders_txt}\n\n"
+        "Do you want to search recursively in all subfolders and run "
+        "Configuration Audit only in those that contain valid logs?"
+    )
+    return ask_yes_no_dialog(title, message, default=False)
+
 
 # ============================== RUNNERS (TASKS) ============================= #
 def run_configuration_audit(
@@ -689,6 +762,7 @@ def run_configuration_audit(
     fast_excel_autofit_rows: int = 50,  # <<< NEW: limit rows used to estimate column widths (xlsxwriter only)
     fast_excel_autofit_max_width: int = 60,  # <<< NEW: cap column width (xlsxwriter only)
     module_name_override: Optional[str] = None,  # <<< NEW
+    recursive_if_missing_logs: Optional[bool] = None,  # <<< NEW: None=ask, True=force recursive, False=skip
 ) -> Optional[str]:
     """
     Run ConfigurationAudit on a folder or recursively on all its subfolders
@@ -1013,8 +1087,12 @@ def run_configuration_audit(
         "Configuration Audit only in those that contain valid logs?"
     )
 
-    if not ask_yes_no_dialog(title, message, default=False):
-        print(f"{module_name} [WARNING] Recursive search cancelled by user.")
+    if recursive_if_missing_logs is None:
+        if not ask_yes_no_dialog(title, message, default=False):
+            print(f"{module_name} [WARNING] Recursive search cancelled by user.")
+            return None
+    elif recursive_if_missing_logs is False:
+        print(f"{module_name} [WARNING] Recursive search skipped (forced) for '{pretty_path(base_dir_fs)}'.")
         return None
 
     # 3) Recursive search: only keep subfolders with valid logs
@@ -1232,6 +1310,50 @@ def run_consistency_checks(
                 except Exception:
                     pass
             return None
+
+        # Special case: base folder contains Step0 ZIP files directly (no subfolders).
+        # Convert them into Step0 "run" folders so auto-detection works as usual.
+        step0_zip_files: List[str] = []
+        try:
+            has_any_subdir = any(e.is_dir() for e in os.scandir(base_dir_fs))
+        except Exception:
+            has_any_subdir = False
+
+        if not has_any_subdir:
+            try:
+                for fn in os.listdir(base_dir_fs):
+                    fn_low = str(fn).lower()
+                    if not fn_low.endswith(".zip"):
+                        continue
+                    if "step0" not in fn_low:
+                        continue
+                    if any(tok in fn_low for tok in BLACKLIST):
+                        continue
+                    if re.match(r"^\d{8}_(\d{4}|\d{1,2}(?:am|pm)).*step0", fn_low, flags=re.IGNORECASE):
+                        step0_zip_files.append(str(fn))
+            except Exception:
+                step0_zip_files = []
+
+            if step0_zip_files:
+                preview = "\n".join([f"  - {f}" for f in sorted(step0_zip_files)])
+                msg_lines = [
+                    "No subfolders were found under the selected root folder, but Step0 ZIP files were detected.",
+                    "",
+                    "Do you want the tool to prepare a Batch structure automatically?",
+                    "It will create one folder per ZIP (same name as the ZIP, without extension) and move each ZIP inside its folder.",
+                    "",
+                    "Detected ZIP files:",
+                    preview,
+                    "",
+                    "After that, the Bulk auto-detection will continue exactly as it does today.",
+                ]
+
+                if ask_yes_no_dialog_custom("Step0 ZIP files detected", "\n".join(msg_lines), default=True):
+                    moved = materialize_step0_zip_runs_as_folders(base_folder=base_dir_fs, zip_filenames=step0_zip_files, remove_zip_extension=True, module_name=module_name)
+                    if moved:
+                        print(f"{module_name} [INFO] Prepared {moved} Step0 ZIP file(s) as run folders under: '{pretty_path(base_dir_fs)}'")
+                    else:
+                        print(f"{module_name} [WARNING] Step0 ZIP files were detected but none could be moved/prepared (folders may already exist).")
 
         # Auto-detect PRE/POST base runs and markets
         base_pre, base_post, detected_market_pairs = detect_pre_post_subfolders(base_dir_fs, BLACKLIST=BLACKLIST)
@@ -1717,6 +1839,7 @@ def resolve_module_callable(name: str):
     return None
 
 
+
 # =============================== EXECUTION CORE ============================= #
 def execute_module(
     module_fn,
@@ -1752,13 +1875,109 @@ def execute_module(
 
     try:
         if module_fn is run_consistency_checks:
-            module_fn(input_dir=input_dir, input_pre_dir=input_pre_dir, input_post_dir=input_post_dir, n77_ssb_pre=n77_ssb_pre, n77_ssb_post=n77_ssb_post, n77b_ssb=n77b_ssb, ca_freq_filters_csv=ca_freq_filters_csv, cc_freq_filters_csv=cc_freq_filters_csv, allowed_n77_ssb_pre_csv=allowed_n77_ssb_pre_csv, allowed_n77_arfcn_pre_csv=allowed_n77_arfcn_pre_csv, allowed_n77_ssb_post_csv=allowed_n77_ssb_post_csv, allowed_n77_arfcn_post_csv=allowed_n77_arfcn_post_csv, profiles_audit=profiles_audit, export_correction_cmd_post=export_correction_cmd, fast_excel_export=fast_excel_export, mode=selected_module)
+            # Batch support for module 3 (bulk) when multiple base folders are provided in input_dir
+            is_bulk = ("bulk" in (selected_module or "").lower()) or (str(selected_module).strip() == MODULE_NAMES[3])
+            input_list: List[str] = []
+            if is_bulk:
+                if isinstance(input_dir, (list, tuple)):
+                    input_list = [str(p).strip() for p in input_dir if str(p).strip()]
+                else:
+                    raw = str(input_dir or "").strip()
+                    if raw:
+                        input_list = [p.strip() for p in re.split(r"[;\n]+", raw) if p.strip()]
+            if is_bulk and len(input_list) > 1:
+                total = len(input_list)
+                for idx, one_dir in enumerate(input_list, start=1):
+                    print(f"[Consistency Checks (Bulk Pre/Post Auto-Detection)] [INFO] ({idx}/{total}) Processing base folder: '{pretty_path(one_dir)}'")
+                    module_fn(input_dir=one_dir, input_pre_dir=input_pre_dir, input_post_dir=input_post_dir, n77_ssb_pre=n77_ssb_pre, n77_ssb_post=n77_ssb_post, n77b_ssb=n77b_ssb, ca_freq_filters_csv=ca_freq_filters_csv, cc_freq_filters_csv=cc_freq_filters_csv, allowed_n77_ssb_pre_csv=allowed_n77_ssb_pre_csv, allowed_n77_arfcn_pre_csv=allowed_n77_arfcn_pre_csv, allowed_n77_ssb_post_csv=allowed_n77_ssb_post_csv, allowed_n77_arfcn_post_csv=allowed_n77_arfcn_post_csv, profiles_audit=profiles_audit, export_correction_cmd_post=export_correction_cmd, fast_excel_export=fast_excel_export, mode=selected_module)
+            else:
+                module_fn(input_dir=input_dir, input_pre_dir=input_pre_dir, input_post_dir=input_post_dir, n77_ssb_pre=n77_ssb_pre, n77_ssb_post=n77_ssb_post, n77b_ssb=n77b_ssb, ca_freq_filters_csv=ca_freq_filters_csv, cc_freq_filters_csv=cc_freq_filters_csv, allowed_n77_ssb_pre_csv=allowed_n77_ssb_pre_csv, allowed_n77_arfcn_pre_csv=allowed_n77_arfcn_pre_csv, allowed_n77_ssb_post_csv=allowed_n77_ssb_post_csv, allowed_n77_arfcn_post_csv=allowed_n77_arfcn_post_csv, profiles_audit=profiles_audit, export_correction_cmd_post=export_correction_cmd, fast_excel_export=fast_excel_export, mode=selected_module)
 
         elif module_fn is run_configuration_audit:
-            module_fn(input_dir, ca_freq_filters_csv=ca_freq_filters_csv, n77_ssb_pre=n77_ssb_pre, n77_ssb_post=n77_ssb_post, n77b_ssb=n77b_ssb, allowed_n77_ssb_pre_csv=allowed_n77_ssb_pre_csv, allowed_n77_arfcn_pre_csv=allowed_n77_arfcn_pre_csv, allowed_n77_ssb_post_csv=allowed_n77_ssb_post_csv, allowed_n77_arfcn_post_csv=allowed_n77_arfcn_post_csv, profiles_audit=profiles_audit, export_correction_cmd=export_correction_cmd, fast_excel_export=fast_excel_export)
+            input_list: List[str] = []
+            if isinstance(input_dir, (list, tuple)):
+                input_list = [str(p).strip() for p in input_dir if str(p).strip()]
+            else:
+                raw = str(input_dir or "").strip()
+                if raw:
+                    input_list = [p.strip() for p in re.split(r"[;\n]+", raw) if p.strip()]
+
+            # Normalize to long paths for stable comparisons and display
+            input_list = [to_long_path(p) for p in (input_list or []) if p]
+
+            # NEW: ask ONCE for all folders that do NOT have valid logs
+            missing_dirs: List[str] = []
+            for p in input_list:
+                try:
+                    if not folder_or_zip_has_valid_logs(p):
+                        missing_dirs.append(p)
+                except Exception:
+                    missing_dirs.append(p)
+
+            recursive_answer: Optional[bool] = None
+            if missing_dirs:
+                recursive_answer = ask_recursive_search_for_missing_logs_multi(missing_dirs, "[Configuration Audit]")
+
+            if not input_list:
+                module_fn(
+                    input_dir,
+                    ca_freq_filters_csv=ca_freq_filters_csv,
+                    n77_ssb_pre=n77_ssb_pre,
+                    n77_ssb_post=n77_ssb_post,
+                    n77b_ssb=n77b_ssb,
+                    allowed_n77_ssb_pre_csv=allowed_n77_ssb_pre_csv,
+                    allowed_n77_arfcn_pre_csv=allowed_n77_arfcn_pre_csv,
+                    allowed_n77_ssb_post_csv=allowed_n77_ssb_post_csv,
+                    allowed_n77_arfcn_post_csv=allowed_n77_arfcn_post_csv,
+                    profiles_audit=profiles_audit,
+                    export_correction_cmd=export_correction_cmd,
+                    fast_excel_export=fast_excel_export,
+                    recursive_if_missing_logs=None,
+                )
+            else:
+                total = len(input_list)
+                for idx, one_dir in enumerate(input_list, start=1):
+                    if total > 1:
+                        print(f"[Configuration Audit] [INFO] ({idx}/{total}) Processing input folder: '{pretty_path(one_dir)}'")
+
+                    recursive_if_missing_logs = None
+                    if one_dir in missing_dirs:
+                        recursive_if_missing_logs = bool(recursive_answer)
+
+                    module_fn(
+                        one_dir,
+                        ca_freq_filters_csv=ca_freq_filters_csv,
+                        n77_ssb_pre=n77_ssb_pre,
+                        n77_ssb_post=n77_ssb_post,
+                        n77b_ssb=n77b_ssb,
+                        allowed_n77_ssb_pre_csv=allowed_n77_ssb_pre_csv,
+                        allowed_n77_arfcn_pre_csv=allowed_n77_arfcn_pre_csv,
+                        allowed_n77_ssb_post_csv=allowed_n77_ssb_post_csv,
+                        allowed_n77_arfcn_post_csv=allowed_n77_arfcn_post_csv,
+                        profiles_audit=profiles_audit,
+                        export_correction_cmd=export_correction_cmd,
+                        fast_excel_export=fast_excel_export,
+                        recursive_if_missing_logs=recursive_if_missing_logs,
+                    )
+
 
         elif module_fn is run_final_cleanup:
-            module_fn(input_dir, n77_ssb_pre, n77_ssb_post)
+            input_list: List[str] = []
+            if isinstance(input_dir, (list, tuple)):
+                input_list = [str(p).strip() for p in input_dir if str(p).strip()]
+            else:
+                raw = str(input_dir or "").strip()
+                if raw:
+                    input_list = [p.strip() for p in re.split(r"[;\n]+", raw) if p.strip()]
+
+            if len(input_list) > 1:
+                total = len(input_list)
+                for idx, one_dir in enumerate(input_list, start=1):
+                    print(f"[Final Clean-Up] [INFO] ({idx}/{total}) Processing input folder: '{pretty_path(one_dir)}'")
+                    module_fn(one_dir, n77_ssb_pre, n77_ssb_post)
+            else:
+                module_fn(input_dir, n77_ssb_pre, n77_ssb_post)
+
 
         else:
             module_fn(input_dir, n77_ssb_pre, n77_ssb_post)
@@ -2123,11 +2342,12 @@ def main():
 
     # Configuration Audit (module 1)
     if module_fn is run_configuration_audit:
-        input_dir = args.input or default_input_audit
+        input_dir = args.inputs if args.inputs else (args.input or default_input_audit)
         if not input_dir:
-            print("[ERROR] Error: --input is required for configuration-audit in CLI mode.\n")
+            print("[ERROR] Error: --input/--inputs is required for configuration-audit in CLI mode.\n")
             parser.print_help()
             return
+
 
         execute_module(
             module_fn,

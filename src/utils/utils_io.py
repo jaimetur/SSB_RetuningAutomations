@@ -293,6 +293,56 @@ def detect_pre_post_subfolders(base_folder: str, BLACKLIST: tuple) -> Tuple[Opti
 
     return base_pre, base_post, market_pairs
 
+def materialize_step0_zip_runs_as_folders(base_folder: str, zip_filenames: List[str], remove_zip_extension: bool = True, module_name: str = "[Miscellaneous]") -> int:
+    """
+    Convert Step0 ZIP files located directly under base_folder into Step0 "run" folders.
+
+    For each ZIP:
+      - Create a folder under base_folder named after the ZIP (optionally without .zip)
+      - Move the ZIP inside that folder
+
+    Returns:
+        Number of ZIP files moved.
+    """
+    moved = 0
+    base_folder_fs = to_long_path(base_folder) if base_folder else base_folder
+    if not base_folder_fs or not os.path.isdir(base_folder_fs):
+        return 0
+
+    for zip_name in zip_filenames or []:
+        try:
+            if not zip_name or not str(zip_name).lower().endswith(".zip"):
+                continue
+
+            src_zip = os.path.join(base_folder_fs, zip_name)
+            if not os.path.isfile(src_zip):
+                continue
+
+            target_folder_name = os.path.splitext(zip_name)[0] if remove_zip_extension else zip_name
+            if not target_folder_name:
+                continue
+
+            dst_dir = os.path.join(base_folder_fs, target_folder_name)
+            os.makedirs(dst_dir, exist_ok=True)
+
+            dst_zip = os.path.join(dst_dir, zip_name)
+
+            # Skip if already moved
+            if os.path.isfile(dst_zip):
+                continue
+
+            shutil.move(src_zip, dst_zip)
+            moved += 1
+
+        except Exception as ex:
+            try:
+                print(f"{module_name} [WARNING] Failed to move ZIP '{zip_name}' into its run folder: {ex}")
+            except Exception:
+                pass
+            continue
+
+    return moved
+
 
 def read_text_with_encoding(path: str) -> Tuple[List[str], Optional[str]]:
     # <<< Ensure Windows long path compatibility >>>
@@ -627,8 +677,13 @@ def to_long_path(path: str) -> str:
 def pretty_path(path: str) -> str:
     """Remove Windows long-path prefix (\\?\\) for logging/display."""
     if os.name == "nt" and isinstance(path, str) and path.startswith("\\\\?\\"):
+        # Handle UNC long-path: \\?\UNC\server\share\...  ->  \\server\share\...
+        if path.startswith("\\\\?\\UNC\\"):
+            return "\\\\" + path[len("\\\\?\\UNC\\"):]
+        # Normal long-path: \\?\C:\... -> C:\...
         return path[4:]
     return path
+
 
 def attach_output_log_mirror(output_dir: str, copy_existing_log: bool = True, start_marker: Optional[str] = None) -> None:
     """

@@ -4,6 +4,27 @@
 
 ---
 
+## Release: v0.6.3
+- ### Release Date: 2026-02-03
+
+- ### Main Changes:
+  
+  - #### 🚨 Breaking Changes:
+
+  - #### 🌟 New Features:
+    - Now `ConfigurationAudit` module supports multiple Input folders from GUI (using Add button or selecting several folders within the same subfolder) and also from CLI (using `--inputs` argument instead of `--input`) to process all of them in batch mode.
+
+  - #### 🚀 Enhancements:
+    - `ConfigurationAudit` module now detects Market name properly even if it is not delimited by `_` but if it appears after `Step0_` (i.e: 20260114_0728_Step0_Mkt188 → Market Mkt188)
+
+  - #### 🐛 Bug fixes:
+    - Minor bug fixing.
+    
+  - #### 📚 Documentation: 
+    - Updated documentation with latest changes.
+
+---
+
 ## Release: v0.6.2
 - ### Release Date: 2026-02-01
 

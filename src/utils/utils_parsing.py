@@ -398,7 +398,10 @@ def infer_parent_timestamp_and_market(start_path: str, max_levels: int = 6) -> t
         return f"{date_str}_{hhmm}"
 
     def _extract_market(name: str) -> Optional[str]:
-        m = re.search(r"(?i)step0_(?P<mkt>[^_]+)_", name)
+        # Accept both:
+        #   - ..._Step0_<Market>_...
+        #   - ..._Step0_<Market>        (market can be the final token)
+        m = re.search(r"(?i)step0_(?P<mkt>[^_]+)(?:_|$)", name)
         market = m.group("mkt") if m else None
         market_norm = (market or "").strip()
         market_low = market_norm.lower()
