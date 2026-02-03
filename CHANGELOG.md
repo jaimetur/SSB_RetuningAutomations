@@ -23,8 +23,8 @@
       - lt all
       - alt
     - Enhanced GU_Relations and NR_Relations sheets from `ConsistencyCheck` module with additional columns to allign with `ConfigurationAudit` module:
-      - ExternalGNodeBFunction/ExternalGNBCUCPFunction
-      - ExternalGUtranCell/ExternalNRCellCU
+      - ExternalGNodeBFunction / ExternalGNBCUCPFunction
+      - ExternalGUtranCell / ExternalNRCellCU
       - GNodeB_SSB_Target
       - Correction_Cmd
     - Changed timestamp of outputfiles for PRE in `ConsistencyCheck` module to match with the original folder. 
