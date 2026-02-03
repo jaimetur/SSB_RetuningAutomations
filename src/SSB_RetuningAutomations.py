@@ -550,19 +550,21 @@ def gui_config_dialog(
     ttk.Label(right_frame, text="Consistency Checks Filters (Empty = No Filter):").grid(row=3, column=0, sticky="w")
     ttk.Entry(right_frame, textvariable=cc_filters_csv_var, width=40).grid(row=4, column=0, sticky="ew")
 
-    # ConfigurationAudit Options
-    configuration_audit_options_label = ttk.Label(right_frame, text="Configuration Audit Options:")
-    frequency_audit_chk = ttk.Checkbutton(right_frame, text="NR/LTE Frequency Audits", variable=frequency_audit_var)
+    # ConfigurationAudit/ConsistencyCheck Options
+    configuration_audit_options_label = ttk.Label(right_frame, text="=== Configuration Audit / Consistency Check Options ===")
+    frequency_audit_chk = ttk.Checkbutton(right_frame, text="NR/LTE Frequency Audits (integrated in Configuration Audit)", variable=frequency_audit_var)
     profiles_audit_chk = ttk.Checkbutton(right_frame, text="Profiles Audit (integrated in Configuration Audit)", variable=profiles_audit_var)
-    export_correction_cmd_chk = ttk.Checkbutton(right_frame, text="Export Correction Cmd text files (slow)", variable=export_correction_cmd_var)
-    global_options_label = ttk.Label(right_frame, text="Global Options:")
-    fast_excel_export_chk = ttk.Checkbutton(right_frame, text="Fast Excel export (xlsxwriter)", variable=fast_excel_export_var)
-    frequency_audit_chk.grid(row=7, column=0, sticky="w")
-    profiles_audit_chk.grid(row=8, column=0, sticky="w")
+    export_correction_cmd_chk = ttk.Checkbutton(right_frame, text="Export Correction Commands text files (slow)", variable=export_correction_cmd_var)
     configuration_audit_options_label.grid(row=6, column=0, sticky="w", pady=(10, 0))
-    export_correction_cmd_chk.grid(row=9, column=0, sticky="w")
+    frequency_audit_chk.grid(row=7, column=0, sticky="w", padx=(10, 0))
+    profiles_audit_chk.grid(row=8, column=0, sticky="w", padx=(10, 0))
+    export_correction_cmd_chk.grid(row=9, column=0, sticky="w", padx=(10, 0))
+
+    # Global Options
+    global_options_label = ttk.Label(right_frame, text="=== Global Options ===")
+    fast_excel_export_chk = ttk.Checkbutton(right_frame, text="Fast Excel export (xlsxwriter)", variable=fast_excel_export_var)
     global_options_label.grid(row=10, column=0, sticky="w", pady=(10, 0))
-    fast_excel_export_chk.grid(row=11, column=0, sticky="w")
+    fast_excel_export_chk.grid(row=11, column=0, sticky="w", padx=(10, 0))
 
     def refresh_export_correction_cmd_option(*_e):
         """Show the export option only when it is relevant (ConfigurationAudit / ConsistencyChecks)."""
