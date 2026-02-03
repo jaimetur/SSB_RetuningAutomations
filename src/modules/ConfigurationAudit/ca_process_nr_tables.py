@@ -14,6 +14,19 @@ def process_nr_cell_du(df_nr_cell_du, add_row, allowed_n77_ssb_pre_set, allowed_
             node_col = resolve_column_case_insensitive(df_nr_cell_du, ["NodeId"])
             ssb_col = resolve_column_case_insensitive(df_nr_cell_du, ["ssbFrequency"])
 
+            # NEW: In NRCellDU, ssbFrequency can be 0 while the real SSB is stored in ssbFrequencyAutoSelected.
+            # Normalize ssbFrequency so this check always uses the real SSB value.
+            ssb_auto_col = resolve_column_case_insensitive(df_nr_cell_du, ["ssbFrequencyAutoSelected"])
+            if ssb_col and ssb_auto_col:
+                try:
+                    ssb_num = pd.to_numeric(df_nr_cell_du[ssb_col], errors="coerce")
+                    auto_num = pd.to_numeric(df_nr_cell_du[ssb_auto_col], errors="coerce")
+                    mask = (ssb_num.fillna(0) == 0) & auto_num.notna() & (auto_num != 0)
+                    if bool(mask.any()):
+                        df_nr_cell_du.loc[mask, ssb_col] = auto_num.loc[mask].astype(int)
+                except Exception:
+                    pass
+
             if node_col and ssb_col:
                 work = df_nr_cell_du[[node_col, ssb_col]].copy()
 

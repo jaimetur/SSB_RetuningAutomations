@@ -13,9 +13,16 @@
 
   - #### 🌟 New Features:
     - Now `ConfigurationAudit` module supports multiple Input folders from GUI (using Add button or selecting several folders within the same subfolder) and also from CLI (using `--inputs` argument instead of `--input`) to process all of them in batch mode.
+    - `NRCellDU` now updates `ssbFrequency` column when the value is 0 and `ssbFrequencyAutoSelected` is not 0. 
 
   - #### 🚀 Enhancements:
-    - `ConfigurationAudit` module now detects Market name properly even if it is not delimited by `_` but if it appears after `Step0_` (i.e: 20260114_0728_Step0_Mkt188 → Market Mkt188)
+    - `ConfigurationAudit` module now detects Market name properly even if it is not delimited by `_` but if it appears after `Step0_` (i.e: 20260114_0728_Step0_Mkt188 → Market Mkt188).
+    - Enhanced Correction_Cmd columns in `ConsistencyCheck` module to add the fix commands of header/footter of avery node text file:
+      - confb+
+      - gs+
+      - lt all
+      - alt
+    - Changed timestamp of outputfiles for PRE in `ConsistencyCheck` module to match with the original folder. 
 
   - #### 🐛 Bug fixes:
     - Minor bug fixing.

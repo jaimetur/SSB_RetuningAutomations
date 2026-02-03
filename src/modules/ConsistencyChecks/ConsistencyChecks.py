@@ -489,6 +489,21 @@ class ConsistencyChecks:
                 rest = [c for c in df.columns if c not in seen]
                 return df[[*(c for c in front if c in df.columns), *keys, *rest]]
 
+            try:
+                ext_gnb_series
+            except NameError:
+                ext_gnb_series = pd.Series("", index=pre_common.index)
+
+            try:
+                ext_cell_series
+            except NameError:
+                ext_cell_series = pd.Series("", index=pre_common.index)
+
+            try:
+                gnodeb_target_series
+            except NameError:
+                gnodeb_target_series = pd.Series("Unknown", index=pre_common.index)
+
             rows = []
             for k in discrepancy_keys:
                 row = {}
@@ -1021,7 +1036,7 @@ class ConsistencyChecks:
                             unknown_by_pair = (grp["FreqDiff_Unknown"].sum().astype(int).to_dict() if "FreqDiff_Unknown" in pair_stats.columns else {})
                             pairs_present = set(grp.size().index.tolist())
                         else:
-                            params_by_pair, freq_by_pair, pairs_present = {}, {}, set()
+                            params_by_pair, freq_by_pair, unknown_by_pair, pairs_present = {}, {}, {}, set()
 
                         def pair_counts(df_pairs: pd.DataFrame) -> Dict[tuple, int]:
                             if df_pairs is None or df_pairs.empty:

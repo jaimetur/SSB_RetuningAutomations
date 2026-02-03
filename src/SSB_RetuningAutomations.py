@@ -352,7 +352,7 @@ def gui_config_dialog(
         if path:
             input_pre_var.set(path)
 
-    ttk.Button(dual_frame, text="Browse…", command=browse_pre).grid(row=2, column=2, sticky="ew", **pad)
+    ttk.Button(dual_frame, text="Browse…", command=browse_pre).grid(row=1, column=2, sticky="ew", **pad)
 
     ttk.Label(dual_frame, text="Post input folder:").grid(row=2, column=0, sticky="w", **pad)
     ttk.Entry(dual_frame, textvariable=input_post_var, width=80).grid(row=2, column=1, sticky="ew", **pad)
@@ -362,7 +362,7 @@ def gui_config_dialog(
         if path:
             input_post_var.set(path)
 
-    ttk.Button(dual_frame, text="Browse…", command=browse_post).grid(row=1, column=2, sticky="ew", **pad)
+    ttk.Button(dual_frame, text="Browse…", command=browse_post).grid(row=2, column=2, sticky="ew", **pad)
 
     def refresh_input_mode(*_e):
         """
@@ -1417,11 +1417,21 @@ def run_consistency_checks(
             post_dir_fs = to_long_path(post_dir)
 
             # Timestamp/Market inference for FILE names (folder remains execution timestamp)
-            parent_ts, parent_market = infer_parent_timestamp_and_market(post_dir_fs)
-            file_ts = parent_ts or exec_timestamp
-            base_file_suffix = f"{file_ts}_v{TOOL_VERSION}"
+            pre_parent_ts, pre_parent_market = infer_parent_timestamp_and_market(pre_dir_fs)
+            post_parent_ts, post_parent_market = infer_parent_timestamp_and_market(post_dir_fs)
+
+            cc_file_ts = (post_parent_ts or pre_parent_ts or exec_timestamp)
+            cc_base_file_suffix = f"{cc_file_ts}_v{TOOL_VERSION}"
+            parent_market = post_parent_market or pre_parent_market or ""
+
             market_for_files = market_label if market_label and market_label != "GLOBAL" else (parent_market or "")
-            file_versioned_suffix = f"{market_for_files}_{base_file_suffix}" if market_for_files else base_file_suffix
+            file_versioned_suffix = f"{market_for_files}_{cc_base_file_suffix}" if market_for_files else cc_base_file_suffix
+
+            # NEW: Use different timestamps for PRE/POST audit artifacts, and place _Pre/_Post AFTER the timestamp
+            pre_file_ts = pre_parent_ts or cc_file_ts
+            post_file_ts = post_parent_ts or cc_file_ts
+            base_file_suffix_pre = f"{pre_file_ts}_Pre_v{TOOL_VERSION}"
+            base_file_suffix_post = f"{post_file_ts}_Post_v{TOOL_VERSION}"
 
             pre_resolved = ensure_logs_available(pre_dir_fs)
             post_resolved = ensure_logs_available(post_dir_fs)
@@ -1453,9 +1463,8 @@ def run_consistency_checks(
                     print(f"{module_name} {market_tag} [WARNING] Failed to write FoldersCompared.txt: {ex}")
 
                 # Ensure PRE/POST audit files do not overwrite each other inside shared output_dir
-                market_for_files = market_label if market_label and market_label != "GLOBAL" else (parent_market or "")
-                audit_pre_suffix = f"{market_for_files}_Pre_{base_file_suffix}" if market_for_files else f"Pre_{base_file_suffix}"
-                audit_post_suffix = f"{market_for_files}_Post_{base_file_suffix}" if market_for_files else f"Post_{base_file_suffix}"
+                audit_pre_suffix = f"{market_for_files}_{base_file_suffix_pre}" if market_for_files else base_file_suffix_pre
+                audit_post_suffix = f"{market_for_files}_{base_file_suffix_post}" if market_for_files else base_file_suffix_post
 
                 # --- Run Configuration Audit for PRE and POST ---
                 def _try_parse_audit_folder_ts(folder_name: str) -> Optional[datetime]:

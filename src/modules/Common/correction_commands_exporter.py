@@ -321,6 +321,23 @@ def export_relations_commands(output_dir: str, dfs_by_category: Dict[str, pd.Dat
                 if not raw_cmds:
                     continue
 
+                # NEW: Relations exports must include file wrappers ONCE per node file.
+                # Excel rows may already contain wrappers, so strip them before reordering 'del ...' lines.
+                def _strip_wrappers_block(s: str) -> str:
+                    wrappers = {"confb+", "gs+", "lt all", "alt"}
+                    block = str(s).replace("\r\n", "\n").replace("\r", "\n").strip("\n")
+                    lines = [ln.rstrip() for ln in block.split("\n") if ln.strip() != ""]
+                    while lines and lines[0].strip().lower() in wrappers:
+                        lines.pop(0)
+                    while lines and lines[-1].strip().lower() == "alt":
+                        lines.pop()
+                    return "\n".join(lines).strip()
+
+                raw_cmds = [_strip_wrappers_block(c) for c in raw_cmds]
+                raw_cmds = [c for c in raw_cmds if str(c).strip()]
+                if not raw_cmds:
+                    continue
+
                 ordered_blocks = _reorder_cmds_del_first(raw_cmds)
                 if not ordered_blocks:
                     continue
@@ -328,11 +345,16 @@ def export_relations_commands(output_dir: str, dfs_by_category: Dict[str, pd.Dat
                 del_lines = [b for b in ordered_blocks if _DEL_LINE_RE.match(b)]
                 rest_blocks = [b for b in ordered_blocks if not _DEL_LINE_RE.match(b)]
 
+                file_header = ["confb+", "gs+", "lt all", "alt"]
+                file_footer = ["alt"]
+
                 pieces: List[str] = []
+                pieces.append("\n".join(file_header).strip())
                 if del_lines:
                     pieces.append("\n".join(del_lines).strip())
                 if rest_blocks:
                     pieces.append("\n\n".join(rest_blocks).strip())
+                pieces.append("\n".join(file_footer).strip())
 
                 final_text = "\n\n".join([p for p in pieces if p.strip()]).strip()
                 if not final_text:

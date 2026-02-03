@@ -508,6 +508,24 @@ class ConfigurationAudit:
 
                 # ---- Build pivots ----
                 df_nr_cell_du = concat_or_empty(mo_collectors["NRCellDU"])
+
+                # NEW: In NRCellDU, ssbFrequency can be 0 while the real SSB is stored in ssbFrequencyAutoSelected.
+                # Replace ssbFrequency=0 by ssbFrequencyAutoSelected so ALL downstream checks/pivots use the real SSB.
+                try:
+                    if df_nr_cell_du is not None and not df_nr_cell_du.empty:
+                        freq_col = next((c for c in df_nr_cell_du.columns if str(c).strip().lower() == "ssbfrequency"), None)
+                        auto_col = next((c for c in df_nr_cell_du.columns if str(c).strip().lower() == "ssbfrequencyautoselected"), None)
+
+                        if freq_col and auto_col:
+                            freq_num = pd.to_numeric(df_nr_cell_du[freq_col], errors="coerce")
+                            auto_num = pd.to_numeric(df_nr_cell_du[auto_col], errors="coerce")
+
+                            mask = (freq_num.fillna(0) == 0) & auto_num.notna() & (auto_num != 0)
+                            if bool(mask.any()):
+                                df_nr_cell_du.loc[mask, freq_col] = auto_num.loc[mask].astype(int)
+                except Exception:
+                    pass
+
                 pivot_nr_cells_du = safe_pivot_count(df=df_nr_cell_du, index_field="NodeId", columns_field="ssbFrequency", values_field="NRCellDUId", add_margins=True, margins_name="Total")
                 pivot_nr_cells_du = apply_frequency_column_filter(pivot_nr_cells_du, freq_filters)
                 pivot_nr_cells_du = add_lowmid_mmwave_to_nr_celldu(pivot_nr_cells_du)

@@ -20,6 +20,29 @@ This module centralizes the logic used by ConsistencyChecks so that:
 #  BUILD CORRECTION COMMANDS
 # ----------------------------------------------------------------------
 
+def _strip_file_wrappers_block(s: str) -> str:
+    # Remove file wrappers from a multi-line command block (used to avoid duplicates in *_disc).
+    wrappers = {"confb+", "gs+", "lt all", "alt"}
+    block = str(s or "").replace("\r\n", "\n").replace("\r", "\n").strip("\n")
+    lines = [ln.rstrip() for ln in block.split("\n") if ln.strip() != ""]
+    while lines and lines[0].strip().lower() in wrappers:
+        lines.pop(0)
+    while lines and lines[-1].strip().lower() == "alt":
+        lines.pop()
+    return "\n".join(lines).strip()
+
+
+def _wrap_with_relations_wrappers(body: str, include_gs: bool = True) -> str:
+    # Add file wrappers to a multi-line command block so it looks like Audit in the Excel cell.
+    text = str(body or "").replace("\r\n", "\n").replace("\r", "\n").strip()
+    if not text:
+        return ""
+    header = "confb+\n"
+    if include_gs:
+        header += "gs+\n"
+    header += "lt all\nalt\n"
+    return f"{header}{text}\nalt"
+
 # ----------------------------------------------------------------------
 #  GU  -  NEW
 # ----------------------------------------------------------------------
@@ -257,7 +280,7 @@ def build_correction_command_gu_missing_relations(
         ]
         # keep non-empty
         lines = [p for p in parts if p]
-        return "\n".join(lines)
+        return _wrap_with_relations_wrappers("\n".join(lines), include_gs=True)
 
     df["Correction_Cmd"] = df.apply(lambda r: _build_correction_command(r, _get_rel_row(r)), axis=1)
 
@@ -310,10 +333,15 @@ def build_correction_command_gu_discrepancies(
         Safely returns empty string if both parts are empty.
         """
         del_cmd = (del_cmd or "").strip()
-        create_cmd = (create_cmd or "").strip()
+        create_cmd = _strip_file_wrappers_block(create_cmd or "")
+
         if del_cmd and create_cmd:
-            return f"{del_cmd}\n{create_cmd}"
-        return del_cmd or create_cmd
+            return _wrap_with_relations_wrappers(f"{del_cmd}\n{create_cmd}", include_gs=True)
+        if del_cmd:
+            return _wrap_with_relations_wrappers(del_cmd, include_gs=True)
+        if create_cmd:
+            return _wrap_with_relations_wrappers(create_cmd, include_gs=True)
+        return ""
 
     work["Correction_Cmd"] = [
         _build_correction_command(d, c) for d, c in zip(del_cmds, create_cmds)
@@ -575,7 +603,7 @@ def build_correction_command_nr_missing_relations(
             ),
         ]
         lines = [p for p in parts if p]
-        return "\n".join(lines)
+        return _wrap_with_relations_wrappers("\n".join(lines), include_gs=True)
 
     df["Correction_Cmd"] = df.apply(lambda r: _build_correction_command(r, _get_rel_row(r)), axis=1)
 
@@ -658,10 +686,15 @@ def build_correction_command_nr_discrepancies(
         Safely returns empty string if both parts are empty.
         """
         del_cmd = (del_cmd or "").strip()
-        create_cmd = (create_cmd or "").strip()
+        create_cmd = _strip_file_wrappers_block(create_cmd or "")
+
         if del_cmd and create_cmd:
-            return f"{del_cmd}\n{create_cmd}"
-        return del_cmd or create_cmd
+            return _wrap_with_relations_wrappers(f"{del_cmd}\n{create_cmd}", include_gs=True)
+        if del_cmd:
+            return _wrap_with_relations_wrappers(del_cmd, include_gs=True)
+        if create_cmd:
+            return _wrap_with_relations_wrappers(create_cmd, include_gs=True)
+        return ""
 
     work["Correction_Cmd"] = [
         _build_correction_command(d, c) for d, c in zip(del_cmds, create_cmds)
