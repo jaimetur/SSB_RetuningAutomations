@@ -62,9 +62,8 @@ def build_summary_audit(
         module_name,
         profiles_tables: Dict[str, pd.DataFrame] | None = None,
         profiles_audit: bool = False,
+        frequency_audit: bool = False,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-
-
     """
     Build a synthetic 'SummaryAudit' table with high-level checks:
 
@@ -310,13 +309,15 @@ def build_summary_audit(
     nodes_post_all = set(nodes_id_post or set()) | set(nodes_name_post or set())
 
     # NR Tables
-    process_nr_freq(df_nr_freq, has_value, add_row, is_old, n77_ssb_pre, is_new, n77_ssb_post, series_only_not_old_not_new, nodes_pre_all, nodes_post_all)
+    if frequency_audit:
+        process_nr_freq(df_nr_freq, has_value, add_row, is_old, n77_ssb_pre, is_new, n77_ssb_post, series_only_not_old_not_new, nodes_pre_all, nodes_post_all)
     process_nr_freq_rel(df_nr_freq_rel, is_old, add_row, n77_ssb_pre, is_new, n77_ssb_post, series_only_not_old_not_new, param_mismatch_rows_nr, nodes_pre_all, nodes_post_all)
     process_nr_sector_carrier(df_nr_sector_carrier, add_row, allowed_n77_arfcn_pre_set, all_n77_arfcn_in_pre, allowed_n77_arfcn_post_set, all_n77_arfcn_in_post, nodes_pre_all, nodes_post_all)
     process_nr_cell_relation(df_nr_cell_rel, extract_freq_from_nrfreqrelationref, n77_ssb_pre, n77_ssb_post, add_row, nodes_pre_all, nodes_post_all)
 
     # LTE Tables
-    process_gu_sync_signal_freq(df_gu_sync_signal_freq, has_value, add_row, is_old, n77_ssb_pre, is_new, n77_ssb_post, series_only_not_old_not_new, nodes_pre_all, nodes_post_all)
+    if frequency_audit:
+        process_gu_sync_signal_freq(df_gu_sync_signal_freq, has_value, add_row, is_old, n77_ssb_pre, is_new, n77_ssb_post, series_only_not_old_not_new, nodes_pre_all, nodes_post_all)
     process_gu_freq_rel(df_gu_freq_rel, is_old, add_row, n77_ssb_pre, is_new, n77_ssb_post, series_only_not_old_not_new, param_mismatch_rows_gu, nodes_pre_all, nodes_post_all)
     process_gu_cell_relation(df_gu_cell_rel, n77_ssb_pre, n77_ssb_post, add_row, nodes_pre_all, nodes_post_all)
 

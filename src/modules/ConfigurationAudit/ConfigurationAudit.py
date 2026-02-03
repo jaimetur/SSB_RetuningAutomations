@@ -90,7 +90,8 @@ class ConfigurationAudit:
             tables_order: Optional[List[str]] = None,  # optional sheet ordering
             filter_frequencies: Optional[List[str]] = None,  # substrings to filter pivot columns
             output_dir: Optional[str] = None,  # <<< NEW: optional dedicated output folder
-            profiles_audit: bool = False,  # <<< NEW: enable Profiles audit logic
+            profiles_audit: bool = True,  # <<< NEW: enable Profiles audit logic
+            frequency_audit: bool = True,  # <<< NEW: show/hide NR/LTE frequency audits in SummaryAudit (NRFrequency, GUtranSyncSignalFrequency)
             show_phase_starts: bool = False,  # <<< NEW: show only START lines (no END lines)
             show_phase_timings: bool = True,  # <<< NEW: show timings as [INFO]
             slow_file_seconds_threshold: float = 10.0,  # <<< NEW: report per-file parsing when a file is slow
@@ -619,6 +620,7 @@ class ConfigurationAudit:
                     module_name=module_name,
                     profiles_tables=profiles_tables if profiles_audit else None,
                     profiles_audit=profiles_audit,
+                    frequency_audit=frequency_audit,
                 )
 
                 # Cache in-memory outputs for callers that want to avoid re-reading the Excel from disk (e.g., ConsistencyChecks)

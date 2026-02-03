@@ -227,6 +227,7 @@ SSB_RetuningAutomations.exe/bin --module <module-name> [options]
 
 --module                  Module to run: configuration-audit | consistency-check | consistency-check-bulk| final-cleanup
 --input                   Input folder to process (single-input modules)
+--inputs                  Input folders to process module in batch mode. Example: "--module configuration-audit --inputs dir1 dir2 dir3"
 --input-pre               PRE input folder (only for consistency-check)
 --input-post              POST input folder (only for consistency-check)
    
@@ -242,6 +243,8 @@ SSB_RetuningAutomations.exe/bin --module <module-name> [options]
    
 --ca-freq-filters         Comma-separated list of frequency substrings to filter pivot columns in Configuration Audit module
 --cc-freq-filters         Comma-separated list of frequency substrings to filter relations in Consistency Check module
+   
+--frequency-audit        Enable/disable Frequency Audit (integrated into Configuration Audit). Default Value: Enabled (use --no-frequency-audit to disable it)
    
 --profiles-audit          Enable/disable Profiles Audit (integrated into Configuration Audit). Default Value: Enabled (use --no-profiles-audit to disable it)
 

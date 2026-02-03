@@ -15,6 +15,7 @@
     - Now `ConfigurationAudit`, `ConsistencyCheck (bulk)` and `Final Clean-up` modules supports multiple Input folders from GUI (using Add button or selecting several folders within the same subfolder) and also from CLI (using `--inputs` argument instead of `--input`) to process all of them in batch mode.
     - Now `ConfigurationAudit`, `ConsistencyCheck (bulk)` and `Final Clean-up` modules supports multi-select valid `Step0` subfolders.
     - `NRCellDU` now updates `ssbFrequency` column when the value is 0 and `ssbFrequencyAutoSelected` is not 0. 
+    - New Flag on GUI (NR/LTE Frequency Audits" and CLI (`--frequency-audit`) to Include/Exclude `NRFrequency' and `GUtranSyncSignalFrequency` Categories on SummaryAudit and PPT.
     - Included Tool logo on GUI launcher dialog.
 
   - #### 🚀 Enhancements:
@@ -30,6 +31,8 @@
       - GNodeB_SSB_Target
       - Correction_Cmd
     - Changed timestamp of output files for PRE in `ConsistencyCheck` module to match with the original folder. 
+    - `CoonsistencyCheck` module, now ignore columns ["timeOfCreation", "mobilityStatusNR"] from Param Discrepancies checks.
+    - Enhanced main launcher dialog layout.
 
   - #### 🐛 Bug fixes:
     - Fix bug in `ConsistencyCheck` module where the SSB-Unknown mask was not being applied to `Summary_CellRelation` sheet so the stats show in this table did not match with the real discrepancies shown in `_disc` table. 

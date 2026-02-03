@@ -133,9 +133,10 @@ CONFIG_KEY_ALLOWED_N77_ARFCN_PRE        = "allowed_n77_arfcn_pre_csv"
 CONFIG_KEY_ALLOWED_N77_SSB_POST         = "allowed_n77_ssb_post_csv"
 CONFIG_KEY_ALLOWED_N77_ARFCN_POST       = "allowed_n77_arfcn_post_csv"
 CONFIG_KEY_PROFILES_AUDIT               = "profiles_audit"
+CONFIG_KEY_FREQUENCY_AUDIT              = "frequency_audit"
 CONFIG_KEY_EXPORT_CORRECTION_CMD        = "export_correction_cmd"
 CONFIG_KEY_FAST_EXCEL_EXPORT            = "fast_excel_export"
-CONFIG_KEY_NETWORK_FREQUENCIES         = "network_frequencies"
+CONFIG_KEY_NETWORK_FREQUENCIES          = "network_frequencies"
 
 
 # Logic Map -> Key in config
@@ -156,6 +157,7 @@ CFG_FIELD_MAP = {
     "allowed_n77_ssb_post":     CONFIG_KEY_ALLOWED_N77_SSB_POST,
     "allowed_n77_arfcn_post":   CONFIG_KEY_ALLOWED_N77_ARFCN_POST,
     "profiles_audit":           CONFIG_KEY_PROFILES_AUDIT,
+    "frequency_audit":          CONFIG_KEY_FREQUENCY_AUDIT,
     "export_correction_cmd":    CONFIG_KEY_EXPORT_CORRECTION_CMD,
     "fast_excel_export":        CONFIG_KEY_FAST_EXCEL_EXPORT,
     "network_frequencies":      CONFIG_KEY_NETWORK_FREQUENCIES,
@@ -190,6 +192,9 @@ class GuiResult:
 
     # ConfigurationAudit: enable/disable profiles audit (integrated into ConfigurationAudit)
     profiles_audit: bool
+
+    # ConfigurationAudit: enable/disable NR/LTE Frequency Audits inside SummaryAudit
+    frequency_audit: bool
 
     # ConfigurationAudit: export correction command files (slow)
     export_correction_cmd: bool
@@ -227,6 +232,7 @@ def gui_config_dialog(
     default_allowed_n77_arfcn_csv: str = DEFAULT_ALLOWED_N77_ARFCN_PRE_CSV,
     default_allowed_n77_ssb_post_csv: str = DEFAULT_ALLOWED_N77_SSB_POST_CSV,
     default_allowed_n77_arfcn_post_csv: str = DEFAULT_ALLOWED_N77_ARFCN_POST_CSV,
+    default_frequency_audit: bool = True,
     default_profiles_audit: bool = True,
     default_export_correction_cmd: bool = True,
     default_fast_excel_export: bool = False,
@@ -332,6 +338,7 @@ def gui_config_dialog(
     allowed_n77_ssb_post_var = tk.StringVar(value=normalize_csv_list(default_allowed_n77_ssb_post_csv))
     allowed_n77_arfcn_post_var = tk.StringVar(value=normalize_csv_list(default_allowed_n77_arfcn_post_csv))
     profiles_audit_var = tk.BooleanVar(value=bool(default_profiles_audit))
+    frequency_audit_var = tk.BooleanVar(value=bool(default_frequency_audit))
     export_correction_cmd_var = tk.BooleanVar(value=bool(default_export_correction_cmd))
     fast_excel_export_var = tk.BooleanVar(value=bool(default_fast_excel_export))
     result: Optional[GuiResult] = None
@@ -345,7 +352,7 @@ def gui_config_dialog(
 
 
     # Row 0: module
-    module_label = ttk.Label(frm, text="Module to run:")
+    module_label = ttk.Label(frm, text="Module to execute:")
     if launcher_logo_img is not None:
         module_label.config(image=launcher_logo_img, compound="left", padding=(0, 0, 8, 0))
     module_label.grid(row=0, column=0, sticky="w", **pad)
@@ -545,15 +552,17 @@ def gui_config_dialog(
 
     # ConfigurationAudit Options
     configuration_audit_options_label = ttk.Label(right_frame, text="Configuration Audit Options:")
+    frequency_audit_chk = ttk.Checkbutton(right_frame, text="NR/LTE Frequency Audits", variable=frequency_audit_var)
     profiles_audit_chk = ttk.Checkbutton(right_frame, text="Profiles Audit (integrated in Configuration Audit)", variable=profiles_audit_var)
     export_correction_cmd_chk = ttk.Checkbutton(right_frame, text="Export Correction Cmd text files (slow)", variable=export_correction_cmd_var)
     global_options_label = ttk.Label(right_frame, text="Global Options:")
     fast_excel_export_chk = ttk.Checkbutton(right_frame, text="Fast Excel export (xlsxwriter)", variable=fast_excel_export_var)
-    profiles_audit_chk.grid(row=7, column=0, sticky="w")
+    frequency_audit_chk.grid(row=7, column=0, sticky="w")
+    profiles_audit_chk.grid(row=8, column=0, sticky="w")
     configuration_audit_options_label.grid(row=6, column=0, sticky="w", pady=(10, 0))
-    export_correction_cmd_chk.grid(row=8, column=0, sticky="w")
-    global_options_label.grid(row=9, column=0, sticky="w", pady=(10, 0))
-    fast_excel_export_chk.grid(row=10, column=0, sticky="w")
+    export_correction_cmd_chk.grid(row=9, column=0, sticky="w")
+    global_options_label.grid(row=10, column=0, sticky="w", pady=(10, 0))
+    fast_excel_export_chk.grid(row=11, column=0, sticky="w")
 
     def refresh_export_correction_cmd_option(*_e):
         """Show the export option only when it is relevant (ConfigurationAudit / ConsistencyChecks)."""
@@ -562,11 +571,13 @@ def gui_config_dialog(
 
         if needs_export_option:
             configuration_audit_options_label.grid()
+            frequency_audit_chk.grid()
             profiles_audit_chk.grid()
             export_correction_cmd_chk.grid()
             fast_excel_export_chk.grid()
         else:
             configuration_audit_options_label.grid_remove()
+            frequency_audit_chk.grid_remove()
             profiles_audit_chk.grid_remove()
             export_correction_cmd_chk.grid_remove()
             fast_excel_export_chk.grid_remove()
@@ -678,6 +689,7 @@ def gui_config_dialog(
                 allowed_n77_ssb_post_csv=normalized_allowed_n77_ssb_post,
                 allowed_n77_arfcn_post_csv=normalized_allowed_n77_arfcn_post,
                 profiles_audit=bool(profiles_audit_var.get()),
+                frequency_audit=bool(frequency_audit_var.get()),
                 export_correction_cmd=bool(export_correction_cmd_var.get()),
                 fast_excel_export=bool(fast_excel_export_var.get()),
             )
@@ -709,6 +721,7 @@ def gui_config_dialog(
                 allowed_n77_arfcn_pre_csv=normalized_allowed_n77_arfcn_pre,
                 allowed_n77_ssb_post_csv=normalized_allowed_n77_ssb_post,
                 allowed_n77_arfcn_post_csv=normalized_allowed_n77_arfcn_post,
+                frequency_audit=bool(frequency_audit_var.get()),
                 profiles_audit=bool(profiles_audit_var.get()),
                 export_correction_cmd=bool(export_correction_cmd_var.get()),
                 fast_excel_export=bool(fast_excel_export_var.get()),
@@ -768,7 +781,7 @@ def parse_args() -> argparse.Namespace:
     # Single-input (most modules)
     parser.add_argument("--input", help="Input folder to process (single-input modules)")
     # Multi-input (ConfigurationAudit only)
-    parser.add_argument("--inputs", nargs="+", help="Input folders to process (configuration-audit only). Example: --module configuration-audit --inputs dir1 dir2 dir3")
+    parser.add_argument("--inputs", nargs="+", help="Input folders to process module in batch mode. Example: --module configuration-audit --inputs dir1 dir2 dir3")
     # Dual-input (consistency-check manual)
     parser.add_argument("--input-pre", help="PRE input folder (only for consistency-check manual)")
     parser.add_argument("--input-post", help="POST input folder (only for consistency-check manual)")
@@ -791,6 +804,9 @@ def parse_args() -> argparse.Namespace:
 
     # Profiles Audit
     parser.add_argument("--profiles-audit", dest="profiles_audit", action=argparse.BooleanOptionalAction, default=True, help="Enable/disable Profiles Audit (integrated into Configuration Audit). Default Value: Enabled (use --no-profiles-audit to disable it)")
+
+    # ConfigurationAudit: show/hide NR/LTE Frequency Audits in SummaryAudit
+    parser.add_argument("--frequency-audit", dest="frequency_audit", action=argparse.BooleanOptionalAction, default=True, help="Enable/disable NR/LTE Frequency Audits in SummaryAudit (NRFrequency, GUtranSyncSignalFrequency). Default Value: Disabled (use --frequency-audit to enable it)")
 
     # ConfigurationAudit: export correction commands (text files)
     parser.add_argument("--export-correction-cmd", dest="export_correction_cmd", action=argparse.BooleanOptionalAction, default=True, help="Enable/disable exporting correction command to text files (slow). Default Value: Enabled (use --no-export-correction-cmd to disable it)")
@@ -838,6 +854,7 @@ def run_configuration_audit(
     market_label: Optional[str] = None,
     external_output_dir: Optional[str] = None,
     profiles_audit: bool = True,  # <<< NEW (default now True because module 4 was removed and the logic have been incorporated to Default Configuration Audit)
+    frequency_audit: bool = True,  # <<< NEW: show/hide NR/LTE frequency audits in SummaryAudit (NRFrequency, GUtranSyncSignalFrequency)
     export_correction_cmd: bool = True,  # <<< NEW: when called from ConsistencyChecks, disable for PRE and enable for POST
     fast_excel_export: bool = False,  # <<< NEW: use xlsxwriter engine (faster, reduced styling)
     fast_excel_autofit_rows: int = 50,  # <<< NEW: limit rows used to estimate column widths (xlsxwriter only)
@@ -933,6 +950,7 @@ def run_configuration_audit(
     print(f"{module_name} [INFO] Allowed N77 ARFCN set (Post) = {sorted(allowed_n77_arfcn_post)}")
 
     print(f"{module_name} [INFO] CA freq filters (CSV)        = {ca_freq_filters_csv if ca_freq_filters_csv else '<none>'}")
+    print(f"{module_name} [INFO] Freequency Audit enabled     = {bool(frequency_audit)}")
     print(f"{module_name} [INFO] Profiles Audit enabled       = {bool(profiles_audit)}")
     print(f"{module_name} [INFO] Export correction commands   = {bool(export_correction_cmd)} (Folder='Correction_Cmd_CA')")
     print(f"{module_name} [INFO] Fast Excel export            = {bool(fast_excel_export)} (AutofitRows={fast_excel_autofit_rows}, MaxWidth={fast_excel_autofit_max_width})")
@@ -1109,7 +1127,7 @@ def run_configuration_audit(
                     app = ConfigurationAudit(n77_ssb_pre=local_n77_ssb_pre, n77_ssb_post=local_n77_ssb_post)
 
         # Include output_dir in kwargs passed to ConfigurationAudit.run
-        kwargs = dict(module_name=module_name, versioned_suffix=file_versioned_suffix, tables_order=TABLES_ORDER, output_dir=output_dir, profiles_audit=profiles_audit, export_correction_cmd=export_correction_cmd, correction_cmd_folder_name="Correction_Cmd_CA", fast_excel_export=fast_excel_export, fast_excel_autofit_rows=fast_excel_autofit_rows, fast_excel_autofit_max_width=fast_excel_autofit_max_width)
+        kwargs = dict(module_name=module_name, versioned_suffix=file_versioned_suffix, tables_order=TABLES_ORDER, output_dir=output_dir, profiles_audit=profiles_audit, frequency_audit=frequency_audit, export_correction_cmd=export_correction_cmd, correction_cmd_folder_name="Correction_Cmd_CA", fast_excel_export=fast_excel_export, fast_excel_autofit_rows=fast_excel_autofit_rows, fast_excel_autofit_max_width=fast_excel_autofit_max_width)
 
         # Provide ZIP context to ConfigurationAudit so Summary.LogPath can point to "<zip>/<log>"
         if resolved and resolved.zip_path:
@@ -1945,6 +1963,7 @@ def execute_module(
     allowed_n77_arfcn_pre_csv: str = "",
     allowed_n77_ssb_post_csv: str = "",
     allowed_n77_arfcn_post_csv: str = "",
+    frequency_audit: bool = True,
     profiles_audit: bool = True,
     export_correction_cmd: bool = True,
     fast_excel_export: bool = False,
@@ -1979,9 +1998,9 @@ def execute_module(
                 total = len(input_list)
                 for idx, one_dir in enumerate(input_list, start=1):
                     print(f"[Consistency Checks (Bulk Pre/Post Auto-Detection)] [INFO] ({idx}/{total}) Processing base folder: '{pretty_path(one_dir)}'")
-                    module_fn(input_dir=one_dir, input_pre_dir=input_pre_dir, input_post_dir=input_post_dir, n77_ssb_pre=n77_ssb_pre, n77_ssb_post=n77_ssb_post, n77b_ssb=n77b_ssb, ca_freq_filters_csv=ca_freq_filters_csv, cc_freq_filters_csv=cc_freq_filters_csv, allowed_n77_ssb_pre_csv=allowed_n77_ssb_pre_csv, allowed_n77_arfcn_pre_csv=allowed_n77_arfcn_pre_csv, allowed_n77_ssb_post_csv=allowed_n77_ssb_post_csv, allowed_n77_arfcn_post_csv=allowed_n77_arfcn_post_csv, profiles_audit=profiles_audit, export_correction_cmd_post=export_correction_cmd, fast_excel_export=fast_excel_export, mode=selected_module)
+                    module_fn(input_dir=one_dir, input_pre_dir=input_pre_dir, input_post_dir=input_post_dir, n77_ssb_pre=n77_ssb_pre, n77_ssb_post=n77_ssb_post, n77b_ssb=n77b_ssb, ca_freq_filters_csv=ca_freq_filters_csv, cc_freq_filters_csv=cc_freq_filters_csv, allowed_n77_ssb_pre_csv=allowed_n77_ssb_pre_csv, allowed_n77_arfcn_pre_csv=allowed_n77_arfcn_pre_csv, allowed_n77_ssb_post_csv=allowed_n77_ssb_post_csv, allowed_n77_arfcn_post_csv=allowed_n77_arfcn_post_csv, frequency_audit=frequency_audit, profiles_audit=profiles_audit, export_correction_cmd_post=export_correction_cmd, fast_excel_export=fast_excel_export, mode=selected_module)
             else:
-                module_fn(input_dir=input_dir, input_pre_dir=input_pre_dir, input_post_dir=input_post_dir, n77_ssb_pre=n77_ssb_pre, n77_ssb_post=n77_ssb_post, n77b_ssb=n77b_ssb, ca_freq_filters_csv=ca_freq_filters_csv, cc_freq_filters_csv=cc_freq_filters_csv, allowed_n77_ssb_pre_csv=allowed_n77_ssb_pre_csv, allowed_n77_arfcn_pre_csv=allowed_n77_arfcn_pre_csv, allowed_n77_ssb_post_csv=allowed_n77_ssb_post_csv, allowed_n77_arfcn_post_csv=allowed_n77_arfcn_post_csv, profiles_audit=profiles_audit, export_correction_cmd_post=export_correction_cmd, fast_excel_export=fast_excel_export, mode=selected_module)
+                module_fn(input_dir=input_dir, input_pre_dir=input_pre_dir, input_post_dir=input_post_dir, n77_ssb_pre=n77_ssb_pre, n77_ssb_post=n77_ssb_post, n77b_ssb=n77b_ssb, ca_freq_filters_csv=ca_freq_filters_csv, cc_freq_filters_csv=cc_freq_filters_csv, allowed_n77_ssb_pre_csv=allowed_n77_ssb_pre_csv, allowed_n77_arfcn_pre_csv=allowed_n77_arfcn_pre_csv, allowed_n77_ssb_post_csv=allowed_n77_ssb_post_csv, allowed_n77_arfcn_post_csv=allowed_n77_arfcn_post_csv, frequency_audit=frequency_audit, profiles_audit=profiles_audit, export_correction_cmd_post=export_correction_cmd, fast_excel_export=fast_excel_export, mode=selected_module)
 
         elif module_fn is run_configuration_audit:
             input_list: List[str] = []
@@ -2019,6 +2038,7 @@ def execute_module(
                     allowed_n77_arfcn_pre_csv=allowed_n77_arfcn_pre_csv,
                     allowed_n77_ssb_post_csv=allowed_n77_ssb_post_csv,
                     allowed_n77_arfcn_post_csv=allowed_n77_arfcn_post_csv,
+                    frequency_audit=frequency_audit,
                     profiles_audit=profiles_audit,
                     export_correction_cmd=export_correction_cmd,
                     fast_excel_export=fast_excel_export,
@@ -2044,6 +2064,7 @@ def execute_module(
                         allowed_n77_arfcn_pre_csv=allowed_n77_arfcn_pre_csv,
                         allowed_n77_ssb_post_csv=allowed_n77_ssb_post_csv,
                         allowed_n77_arfcn_post_csv=allowed_n77_arfcn_post_csv,
+                        frequency_audit=frequency_audit,
                         profiles_audit=profiles_audit,
                         export_correction_cmd=export_correction_cmd,
                         fast_excel_export=fast_excel_export,
@@ -2160,6 +2181,7 @@ def main():
             "allowed_n77_ssb_post",
             "allowed_n77_arfcn_post",
             "profiles_audit",
+            "frequency_audit",
             "export_correction_cmd",
             "fast_excel_export",
             "network_frequencies",
@@ -2186,6 +2208,7 @@ def main():
         persisted_allowed_ssb_post         = cfg["allowed_n77_ssb_post"]
         persisted_allowed_arfcn_post       = cfg["allowed_n77_arfcn_post"]
         persisted_profiles_audit           = parse_cfg_bool(cfg.get("profiles_audit", ""), default=True)
+        persisted_frequency_audit          = parse_cfg_bool(cfg.get("frequency_audit", ""), default=False)
         persisted_export_correction_cmd    = parse_cfg_bool(cfg.get("export_correction_cmd", ""), default=True)
         persisted_fast_excel_export        = parse_cfg_bool(cfg.get("fast_excel_export", ""), default=False)
 
@@ -2246,6 +2269,7 @@ def main():
     default_allowed_n77_ssb_post_csv = normalize_csv_list(args.allowed_n77_ssb_post or persisted_allowed_ssb_post or DEFAULT_ALLOWED_N77_SSB_POST_CSV)
     default_allowed_n77_arfcn_post_csv = normalize_csv_list(args.allowed_n77_arfcn_post or persisted_allowed_arfcn_post or DEFAULT_ALLOWED_N77_ARFCN_POST_CSV)
 
+    default_frequency_audit = persisted_frequency_audit
     default_profiles_audit = persisted_profiles_audit
 
     default_export_correction_cmd = persisted_export_correction_cmd
@@ -2255,6 +2279,7 @@ def main():
 
     # CLI must NOT rely on persisted values for boolean flags.
     cli_profiles_audit = bool(args.profiles_audit)
+    cli_frequency_audit = bool(args.frequency_audit)
     cli_export_correction_cmd = bool(args.export_correction_cmd)
     cli_fast_excel_export = bool(args.fast_excel_export) if args.fast_excel_export is not None else False
 
@@ -2285,6 +2310,7 @@ def main():
                 default_allowed_n77_arfcn_csv=default_allowed_n77_arfcn_pre_csv,
                 default_allowed_n77_ssb_post_csv=default_allowed_n77_ssb_post_csv,
                 default_allowed_n77_arfcn_post_csv=default_allowed_n77_arfcn_post_csv,
+                default_frequency_audit=default_frequency_audit,
                 default_profiles_audit=default_profiles_audit,
                 default_export_correction_cmd=default_export_correction_cmd,
                 default_fast_excel_export=default_fast_excel_export,
@@ -2326,6 +2352,7 @@ def main():
                 allowed_n77_ssb_post=sel.allowed_n77_ssb_post_csv,
                 allowed_n77_arfcn_post=sel.allowed_n77_arfcn_post_csv,
                 profiles_audit=("1" if sel.profiles_audit else "0"),
+                frequency_audit=("1" if sel.frequency_audit else "0"),
                 export_correction_cmd=("1" if sel.export_correction_cmd else "0"),
                 fast_excel_export=("1" if sel.fast_excel_export else "0"),
             )
@@ -2386,6 +2413,7 @@ def main():
                     allowed_n77_ssb_post_csv=sel.allowed_n77_ssb_post_csv,
                     allowed_n77_arfcn_post_csv=sel.allowed_n77_arfcn_post_csv,
                     profiles_audit=sel.profiles_audit,
+                    frequency_audit=sel.frequency_audit,
                     export_correction_cmd=sel.export_correction_cmd,
                     fast_excel_export=sel.fast_excel_export,
                     selected_module=sel.module,
@@ -2452,6 +2480,7 @@ def main():
             allowed_n77_ssb_post_csv=allowed_n77_ssb_post_csv,
             allowed_n77_arfcn_post_csv=allowed_n77_arfcn_post_csv,
             profiles_audit=cli_profiles_audit,
+            frequency_audit=cli_frequency_audit,
             export_correction_cmd=cli_export_correction_cmd,
             fast_excel_export=cli_fast_excel_export,
             selected_module=args.module,

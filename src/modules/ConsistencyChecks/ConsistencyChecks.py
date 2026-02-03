@@ -378,7 +378,8 @@ class ConsistencyChecks:
 
             # NEW: ignore timeOfCreation differences for GU discrepancies
             if table_name == "GUtranCellRelation":
-                shared_cols = [c for c in shared_cols if c != "timeOfCreation"]
+                ignore_columns = ["timeOfCreation", "mobilityStatusNR"]
+                shared_cols = [c for c in shared_cols if c not in ignore_columns]
 
             any_diff_mask = pd.Series(False, index=pre_common.index)
             diff_cols_per_row = {k: [] for k in pre_common.index}
@@ -740,34 +741,34 @@ class ConsistencyChecks:
             print(f"\n{module_name} {market_tag} [INFO] === {table_name} ===")
             print(f"{module_name} {market_tag} [INFO] Key: {key_cols} | Freq column: {freq_col}")
 
-            freq_disc_count = 0
-            ssb_unknown_count = 0
             param_disc_count = 0
+            freq_disc_ssb_post_count = 0
+            freq_disc_ssb_unknown_count = 0
             try:
                 if not pair_stats.empty:
                     if "ParamDiff" in pair_stats.columns:
                         param_disc_count = int(pd.to_numeric(pair_stats["ParamDiff"], errors="coerce").fillna(0).astype(int).sum())
                     if "FreqDiff_SSBPost" in pair_stats.columns:
-                        freq_disc_count = int(pd.to_numeric(pair_stats["FreqDiff_SSBPost"], errors="coerce").fillna(0).astype(int).sum())
+                        freq_disc_ssb_post_count = int(pd.to_numeric(pair_stats["FreqDiff_SSBPost"], errors="coerce").fillna(0).astype(int).sum())
                     elif "FreqDiff" in pair_stats.columns:
-                        freq_disc_count = int(pd.to_numeric(pair_stats["FreqDiff"], errors="coerce").fillna(0).astype(int).sum())
+                        freq_disc_ssb_post_count = int(pd.to_numeric(pair_stats["FreqDiff"], errors="coerce").fillna(0).astype(int).sum())
                     if "FreqDiff_Unknown" in pair_stats.columns:
-                        ssb_unknown_count = int(pd.to_numeric(pair_stats["FreqDiff_Unknown"], errors="coerce").fillna(0).astype(int).sum())
+                        freq_disc_ssb_unknown_count = int(pd.to_numeric(pair_stats["FreqDiff_Unknown"], errors="coerce").fillna(0).astype(int).sum())
             except Exception:
-                freq_disc_count = 0
-                ssb_unknown_count = 0
+                freq_disc_ssb_post_count = 0
+                freq_disc_ssb_unknown_count = 0
                 param_disc_count = 0
 
             relations_with_discrepancies = int(len(discrepancies))
-            total_discrepancies = int(param_disc_count) + int(freq_disc_count) + int(ssb_unknown_count)
+            total_discrepancies = int(param_disc_count) + int(freq_disc_ssb_post_count) + int(freq_disc_ssb_unknown_count)
 
-            print(f"{module_name} {market_tag} [INFO] - Total Discrepancies (one relation can have more that one type of discrepancy): {total_discrepancies}")
-            print(f"{module_name} {market_tag} [INFO]   - Param Discrepancies: {param_disc_count}")
-            print(f"{module_name} {market_tag} [INFO]   - Frequency Discrepancies (SSB-Post): {freq_disc_count}")
-            print(f"{module_name} {market_tag} [INFO]   - SSB Unknown: {ssb_unknown_count}")
-            print(f"{module_name} {market_tag} [INFO] - Relations with Discrepancies (uniques): {relations_with_discrepancies}")
             print(f"{module_name} {market_tag} [INFO] - New Relations in Post: {len(new_in_post_clean)}")
             print(f"{module_name} {market_tag} [INFO] - Missing Relations in Post: {len(missing_in_post_clean)}")
+            print(f"{module_name} {market_tag} [INFO] - Relations with Discrepancies (uniques): {relations_with_discrepancies}")
+            print(f"{module_name} {market_tag} [INFO]   - Total Discrepancies split (one relation can have more that one type of discrepancy): {total_discrepancies}")
+            print(f"{module_name} {market_tag} [INFO]     - Param Discrepancies: {param_disc_count}")
+            print(f"{module_name} {market_tag} [INFO]     - Frequency Discrepancies (SSB-Post): {freq_disc_ssb_post_count}")
+            print(f"{module_name} {market_tag} [INFO]     - Frequency Discrepancies (SSB-Unknown): {freq_disc_ssb_unknown_count}")
 
             # Print the relation names that match the pattern and will be excluded
             if rel_series is not None and not rel_series.empty and pattern_nodes:
