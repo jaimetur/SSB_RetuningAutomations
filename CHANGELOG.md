@@ -15,6 +15,7 @@
     - Now `ConfigurationAudit`, `ConsistencyCheck (bulk)` and `Final Clean-up` modules supports multiple Input folders from GUI (using Add button or selecting several folders within the same subfolder) and also from CLI (using `--inputs` argument instead of `--input`) to process all of them in batch mode.
     - Now `ConfigurationAudit`, `ConsistencyCheck (bulk)` and `Final Clean-up` modules supports multi-select valid `Step0` subfolders.
     - `NRCellDU` now updates `ssbFrequency` column when the value is 0 and `ssbFrequencyAutoSelected` is not 0. 
+    - Included Tool logo on GUI launcher dialog.
 
   - #### 🚀 Enhancements:
     - `ConfigurationAudit` module now detects Market name properly even if it is not delimited by `_` but if it appears after `Step0_` (i.e: 20260114_0728_Step0_Mkt188 → Market Mkt188).

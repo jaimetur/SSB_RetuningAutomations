@@ -37,7 +37,7 @@ if str(_PROJECT_ROOT_DIR) not in sys.path:
 # Import our different Classes
 from src.utils.utils_datetime import format_duration_hms
 from src.utils.utils_dialog import tk, ttk, filedialog, messagebox, ask_reopen_launcher, ask_yes_no_dialog, ask_yes_no_dialog_custom, browse_input_folders, select_step0_subfolders, get_multi_step0_items, select_step0_subfolders, get_multi_step0_items
-from src.utils.utils_infrastructure import LoggerDual
+from src.utils.utils_infrastructure import LoggerDual, get_resource_path
 from src.utils.utils_io import load_cfg_values, save_cfg_values, log_module_exception, to_long_path, pretty_path, folder_or_zip_has_valid_logs, detect_pre_post_subfolders, write_compared_folders_file, ensure_logs_available, attach_output_log_mirror, materialize_step0_zip_runs_as_folders
 
 from src.utils.utils_parsing import normalize_csv_list, parse_arfcn_csv_to_set, infer_parent_timestamp_and_market
@@ -261,7 +261,7 @@ def gui_config_dialog(
 
     # --- Center window ONCE with fixed size ---
     WIDTH = 940
-    HEIGHT = 820
+    HEIGHT = 920
     # NOTE: Centering must happen after all widgets are created and Tk has computed the final layout.
     def _center_window_fixed(win: "tk.Tk", width: int, height: int) -> None:
         try:
@@ -273,6 +273,49 @@ def gui_config_dialog(
             win.geometry(f"{width}x{height}+{x}+{y}")
         except Exception:
             pass
+
+    # --- Optional launcher logo (shown on row 0) ---
+    def _load_launcher_logo_png(logo_file: str, max_size_px: int = 26) -> Optional["tk.PhotoImage"]:
+        """
+        Load a PNG logo for ttk widgets. Uses PIL for resizing if available.
+        Returns None if the file cannot be loaded.
+        """
+        try:
+            if not logo_file or not os.path.isfile(logo_file):
+                return None
+        except Exception:
+            return None
+
+        try:
+            try:
+                from PIL import Image, ImageTk  # type: ignore
+                img = Image.open(logo_file)
+                img = img.convert("RGBA")
+                w0, h0 = img.size
+                if w0 > 0 and h0 > 0:
+                    scale = min(max_size_px / float(w0), max_size_px / float(h0), 1.0)
+                    new_w = max(int(w0 * scale), 1)
+                    new_h = max(int(h0 * scale), 1)
+                    if (new_w, new_h) != (w0, h0):
+                        img = img.resize((new_w, new_h), Image.LANCZOS)
+                return ImageTk.PhotoImage(img)
+            except Exception:
+                # Fallback: Tk PhotoImage (no resizing)
+                return tk.PhotoImage(file=logo_file)
+        except Exception:
+            return None
+
+    # Try binary layout first: ./assets/logos/logo_02.png next to the executable
+    LOGO_NAME = "logo_02.png"
+    launcher_logo_path = get_resource_path(f"assets/logos/{LOGO_NAME}")
+    if not os.path.isfile(launcher_logo_path):
+        # Fallback for source layout: project root has ./assets, main module lives in ./src
+        launcher_logo_path = get_resource_path(os.path.join("..", "assets", "logos", LOGO_NAME))
+    launcher_logo_img = _load_launcher_logo_png(launcher_logo_path, max_size_px=150)
+    try:
+        root._launcher_logo_img = launcher_logo_img  # Keep a reference to avoid garbage collection
+    except Exception:
+        pass
 
     # Vars
     module_var = tk.StringVar(value=MODULE_NAMES[1])
@@ -302,7 +345,10 @@ def gui_config_dialog(
 
 
     # Row 0: module
-    ttk.Label(frm, text="Module to run:").grid(row=0, column=0, sticky="w", **pad)
+    module_label = ttk.Label(frm, text="Module to run:")
+    if launcher_logo_img is not None:
+        module_label.config(image=launcher_logo_img, compound="left", padding=(0, 0, 8, 0))
+    module_label.grid(row=0, column=0, sticky="w", **pad)
     cmb = ttk.Combobox(frm, textvariable=module_var, values=MODULE_NAMES, state="readonly", width=50)
     cmb.grid(row=0, column=1, columnspan=2, sticky="ew", **pad)
 
