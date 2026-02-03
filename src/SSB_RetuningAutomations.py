@@ -261,9 +261,24 @@ def gui_config_dialog(
         MODULE_NAMES[4]: default_input_final_cleanup or default_input or "",
     }
 
+    # Load Tool logo: Try binary layout first: ./assets/logos/logo_02.png next to the executable
+    LOGO_NAME = "logo_02.png"
+    launcher_logo_path = get_resource_path(f"assets/logos/{LOGO_NAME}")
+    if not os.path.isfile(launcher_logo_path):
+        # Fallback for source layout: project root has ./assets, main module lives in ./src
+        launcher_logo_path = get_resource_path(os.path.join("..", "assets", "logos", LOGO_NAME))
+
     root = tk.Tk()
     root.title(f"🛠️ {TOOL_NAME_VERSION} -- 1️⃣ Select Module. 2️⃣ Configure Paths & Freqs. 3️⃣ Press Run to execute...")
     root.resizable(False, False)
+
+    # --- Window icon (title bar) ---
+    try:
+        icon_img = tk.PhotoImage(file=launcher_logo_path)
+        root.iconphoto(True, icon_img)  # True => Also applies to children toplevels
+        root._icon_img_ref = icon_img  # avoid GC to delete it
+    except Exception as e:
+        print(f"[WARN] Could not set window icon: {e} ({launcher_logo_path})")
 
     # --- Center window ONCE with fixed size ---
     WIDTH = 940
@@ -311,12 +326,7 @@ def gui_config_dialog(
         except Exception:
             return None
 
-    # Try binary layout first: ./assets/logos/logo_02.png next to the executable
-    LOGO_NAME = "logo_02.png"
-    launcher_logo_path = get_resource_path(f"assets/logos/{LOGO_NAME}")
-    if not os.path.isfile(launcher_logo_path):
-        # Fallback for source layout: project root has ./assets, main module lives in ./src
-        launcher_logo_path = get_resource_path(os.path.join("..", "assets", "logos", LOGO_NAME))
+    # Add logo to Launcher
     launcher_logo_img = _load_launcher_logo_png(launcher_logo_path, max_size_px=150)
     try:
         root._launcher_logo_img = launcher_logo_img  # Keep a reference to avoid garbage collection
