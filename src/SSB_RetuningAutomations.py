@@ -36,7 +36,7 @@ if str(_PROJECT_ROOT_DIR) not in sys.path:
 
 # Import our different Classes
 from src.utils.utils_datetime import format_duration_hms
-from src.utils.utils_dialog import tk, ttk, filedialog, messagebox, ask_reopen_launcher, ask_yes_no_dialog, ask_yes_no_dialog_custom, browse_input_folders, select_step0_subfolders, get_multi_step0_items, select_step0_subfolders, get_multi_step0_items
+from src.utils.utils_dialog import tk, ttk, filedialog, messagebox, ask_reopen_launcher, ask_yes_no_dialog, ask_yes_no_dialog_custom, browse_input_folders, select_step0_subfolders, get_multi_step0_items, select_existing_configuration_audits_to_rerun
 from src.utils.utils_infrastructure import LoggerDual, get_resource_path
 from src.utils.utils_io import load_cfg_values, save_cfg_values, log_module_exception, to_long_path, pretty_path, folder_or_zip_has_valid_logs, detect_pre_post_subfolders, write_compared_folders_file, ensure_logs_available, attach_output_log_mirror, materialize_step0_zip_runs_as_folders
 
@@ -873,6 +873,7 @@ def run_configuration_audit(
     fast_excel_autofit_max_width: int = 60,  # <<< NEW: cap column width (xlsxwriter only)
     module_name_override: Optional[str] = None,  # <<< NEW
     recursive_if_missing_logs: Optional[bool] = None,  # <<< NEW: None=ask, True=force recursive, False=skip
+    skip_existing_audit_prompt: bool = False,  # <<< NEW: used by batch wrapper to avoid per-folder Yes/No dialogs
 ) -> Optional[str]:
     """
     Run ConfigurationAudit on a folder or recursively on all its subfolders
@@ -1046,7 +1047,7 @@ def run_configuration_audit(
         except Exception:
             return None
 
-    def run_for_folder(folder: str, is_batch_mode: bool = False) -> Optional[str]:
+    def run_for_folder(folder: str, is_batch_mode: bool = False, force_rerun_existing: bool = False) -> Optional[str]:
 
         """
         Run ConfigurationAudit for a single folder that is already known
@@ -1072,17 +1073,20 @@ def run_configuration_audit(
                     print(f"{module_name} [INFO] Skipping Audit (same version already exists): '{pretty_path(existing_excel)}'")
                     return existing_excel
 
-                title = "Existing ConfigurationAudit detected"
-                message = (
-                    f"A ConfigurationAudit (same version) already exists for this folder:\n\n"
-                    f"'{pretty_path(existing_excel)}'\n\n"
-                    f"Do you want to run ConfigurationAudit again?"
-                )
-                if not ask_yes_no_dialog(title, message, default=False):
-                    print(f"{module_name} [INFO] Reusing existing Audit (user selected): '{pretty_path(existing_excel)}'")
-                    return existing_excel
+                if skip_existing_audit_prompt:
+                    print(f"{module_name} [INFO] Re-running Audit (batch selection) despite existing: '{pretty_path(existing_excel)}'")
+                else:
+                    title = "Existing ConfigurationAudit detected"
+                    message = (
+                        f"A ConfigurationAudit (same version) already exists for this folder:\n\n"
+                        f"'{pretty_path(existing_excel)}'\n\n"
+                        f"Do you want to run ConfigurationAudit again?"
+                    )
+                    if not ask_yes_no_dialog(title, message, default=False):
+                        print(f"{module_name} [INFO] Reusing existing Audit (user selected): '{pretty_path(existing_excel)}'")
+                        return existing_excel
 
-                print(f"{module_name} [INFO] Re-running Audit (user selected) despite existing: '{pretty_path(existing_excel)}'")
+                    print(f"{module_name} [INFO] Re-running Audit (user selected) despite existing: '{pretty_path(existing_excel)}'")
 
         # Use timestamp (and optional standardized market) from parent folder for FILE names only
         parent_ts, parent_market = infer_parent_timestamp_and_market(folder_fs)
@@ -2014,6 +2018,7 @@ def execute_module(
             else:
                 module_fn(input_dir=input_dir, input_pre_dir=input_pre_dir, input_post_dir=input_post_dir, n77_ssb_pre=n77_ssb_pre, n77_ssb_post=n77_ssb_post, n77b_ssb=n77b_ssb, ca_freq_filters_csv=ca_freq_filters_csv, cc_freq_filters_csv=cc_freq_filters_csv, allowed_n77_ssb_pre_csv=allowed_n77_ssb_pre_csv, allowed_n77_arfcn_pre_csv=allowed_n77_arfcn_pre_csv, allowed_n77_ssb_post_csv=allowed_n77_ssb_post_csv, allowed_n77_arfcn_post_csv=allowed_n77_arfcn_post_csv, frequency_audit=frequency_audit, profiles_audit=profiles_audit, export_correction_cmd_post=export_correction_cmd, fast_excel_export=fast_excel_export, mode=selected_module)
 
+
         elif module_fn is run_configuration_audit:
             input_list: List[str] = []
             if isinstance(input_dir, (list, tuple)):
@@ -2039,49 +2044,112 @@ def execute_module(
             if missing_dirs:
                 recursive_answer = ask_recursive_search_for_missing_logs_multi(missing_dirs, "[Configuration Audit]")
 
+            def _find_existing_ca_excel_same_version_for_batch(folder_fs: str) -> Optional[str]:
+                """Return newest ConfigurationAudit Excel matching current TOOL_VERSION inside folder_fs."""
+                try:
+                    candidates: List[Tuple[datetime, str]] = []
+                    version_tag = f"v{TOOL_VERSION}"
+
+                    def _extract_dt_from_folder_name(name: str) -> Optional[datetime]:
+                        m = re.search(r"(\d{8}_\d{4})", name)
+                        if not m:
+                            return None
+                        try:
+                            return datetime.strptime(m.group(1), "%Y%m%d_%H%M")
+                        except Exception:
+                            return None
+
+                    for e in os.scandir(folder_fs):
+                        if not e.is_dir():
+                            continue
+                        name = e.name or ""
+                        if not name.startswith("ConfigurationAudit_"):
+                            continue
+                        if version_tag not in name:
+                            continue
+
+                        excel_files: List[str] = []
+                        try:
+                            for f in os.scandir(e.path):
+                                if not f.is_file():
+                                    continue
+                                fn = f.name or ""
+                                if not fn.startswith("ConfigurationAudit_") or not fn.lower().endswith(".xlsx"):
+                                    continue
+                                try:
+                                    if os.path.getsize(to_long_path(f.path)) <= 0:
+                                        continue
+                                except Exception:
+                                    continue
+                                excel_files.append(f.path)
+                        except Exception:
+                            excel_files = []
+
+                        if not excel_files:
+                            continue
+
+                        excel_files.sort()
+                        dt = _extract_dt_from_folder_name(name)
+                        if dt is None:
+                            try:
+                                dt = datetime.fromtimestamp(os.path.getmtime(to_long_path(e.path)))
+                            except Exception:
+                                dt = datetime.fromtimestamp(0)
+
+                        candidates.append((dt, to_long_path(excel_files[-1])))
+
+                    if not candidates:
+                        return None
+
+                    candidates.sort(key=lambda x: x[0], reverse=True)
+                    return candidates[0][1]
+                except Exception:
+                    return None
+
+            existing_by_folder: Dict[str, str] = {}
+            existing_items: List[Tuple[str, str]] = []
+            if len(input_list) > 1:
+                print(f"[Configuration Audit] [INFO] Analyzing {len(input_list)} input folder(s) to detect existing ConfigurationAudit outputs (same version)...")
+                for p in input_list:
+                    try:
+                        if not os.path.isdir(p):
+                            continue
+                        if not folder_or_zip_has_valid_logs(p):
+                            continue
+                        exl = _find_existing_ca_excel_same_version_for_batch(p)
+                        if exl:
+                            existing_by_folder[p] = exl
+                            existing_items.append((p, exl))
+                    except Exception:
+                        continue
+                if existing_items:
+                    print(f"[Configuration Audit] [INFO] Detected {len(existing_items)} input folder(s) with an existing ConfigurationAudit (same version). Opening selection dialog...")
+
+            rerun_set = set()
+            if existing_items:
+                selected = select_existing_configuration_audits_to_rerun(None, existing_items, default_pattern="*")
+                if selected is None:
+                    print("[Configuration Audit] [WARNING] Batch start cancelled by user (existing audits selection).")
+                    return
+                rerun_set = set(to_long_path(x) for x in (selected or []) if x)
+
             if not input_list:
-                module_fn(
-                    input_dir,
-                    ca_freq_filters_csv=ca_freq_filters_csv,
-                    n77_ssb_pre=n77_ssb_pre,
-                    n77_ssb_post=n77_ssb_post,
-                    n77b_ssb=n77b_ssb,
-                    allowed_n77_ssb_pre_csv=allowed_n77_ssb_pre_csv,
-                    allowed_n77_arfcn_pre_csv=allowed_n77_arfcn_pre_csv,
-                    allowed_n77_ssb_post_csv=allowed_n77_ssb_post_csv,
-                    allowed_n77_arfcn_post_csv=allowed_n77_arfcn_post_csv,
-                    frequency_audit=frequency_audit,
-                    profiles_audit=profiles_audit,
-                    export_correction_cmd=export_correction_cmd,
-                    fast_excel_export=fast_excel_export,
-                    recursive_if_missing_logs=None,
-                )
+                module_fn(input_dir, ca_freq_filters_csv=ca_freq_filters_csv, n77_ssb_pre=n77_ssb_pre, n77_ssb_post=n77_ssb_post, n77b_ssb=n77b_ssb, allowed_n77_ssb_pre_csv=allowed_n77_ssb_pre_csv, allowed_n77_arfcn_pre_csv=allowed_n77_arfcn_pre_csv, allowed_n77_ssb_post_csv=allowed_n77_ssb_post_csv, allowed_n77_arfcn_post_csv=allowed_n77_arfcn_post_csv, frequency_audit=frequency_audit, profiles_audit=profiles_audit, export_correction_cmd=export_correction_cmd, fast_excel_export=fast_excel_export, recursive_if_missing_logs=None, skip_existing_audit_prompt=False)
             else:
                 total = len(input_list)
                 for idx, one_dir in enumerate(input_list, start=1):
                     if total > 1:
                         print(f"[Configuration Audit] [INFO] ({idx}/{total}) Processing input folder: '{pretty_path(one_dir)}'")
 
+                    if one_dir in existing_by_folder and one_dir not in rerun_set:
+                        print(f"[Configuration Audit] [INFO] Reusing existing Audit (batch selection): '{pretty_path(existing_by_folder[one_dir])}'")
+                        continue
+
                     recursive_if_missing_logs = None
                     if one_dir in missing_dirs:
                         recursive_if_missing_logs = bool(recursive_answer)
 
-                    module_fn(
-                        one_dir,
-                        ca_freq_filters_csv=ca_freq_filters_csv,
-                        n77_ssb_pre=n77_ssb_pre,
-                        n77_ssb_post=n77_ssb_post,
-                        n77b_ssb=n77b_ssb,
-                        allowed_n77_ssb_pre_csv=allowed_n77_ssb_pre_csv,
-                        allowed_n77_arfcn_pre_csv=allowed_n77_arfcn_pre_csv,
-                        allowed_n77_ssb_post_csv=allowed_n77_ssb_post_csv,
-                        allowed_n77_arfcn_post_csv=allowed_n77_arfcn_post_csv,
-                        frequency_audit=frequency_audit,
-                        profiles_audit=profiles_audit,
-                        export_correction_cmd=export_correction_cmd,
-                        fast_excel_export=fast_excel_export,
-                        recursive_if_missing_logs=recursive_if_missing_logs,
-                    )
+                    module_fn(one_dir, ca_freq_filters_csv=ca_freq_filters_csv, n77_ssb_pre=n77_ssb_pre, n77_ssb_post=n77_ssb_post, n77b_ssb=n77b_ssb, allowed_n77_ssb_pre_csv=allowed_n77_ssb_pre_csv, allowed_n77_arfcn_pre_csv=allowed_n77_arfcn_pre_csv, allowed_n77_ssb_post_csv=allowed_n77_ssb_post_csv, allowed_n77_arfcn_post_csv=allowed_n77_arfcn_post_csv, frequency_audit=frequency_audit, profiles_audit=profiles_audit, export_correction_cmd=export_correction_cmd, fast_excel_export=fast_excel_export, recursive_if_missing_logs=recursive_if_missing_logs, skip_existing_audit_prompt=(total > 1))
 
 
         elif module_fn is run_final_cleanup:
