@@ -285,9 +285,10 @@ class ConsistencyChecks:
             print(f"{module_name} {market_tag} [WARNING] No tables loaded. Skipping comparison (likely missing Pre/Post folders).")
             return {}
 
-        # NEW: load node numeric identifiers from nodes with Retuning frpm POST Configuration Audit (SummaryAudit sheet)
-        nodes_id_pre, nodes_name_pre = load_nodes_names_and_id_from_summary_audit(post_summary_df if post_summary_df is not None else audit_post_excel, stage="Pre", module_name=module_name)
-        nodes_id_post, nodes_name_post = load_nodes_names_and_id_from_summary_audit(post_summary_df if post_summary_df is not None else audit_post_excel, stage="Post", module_name=module_name)
+        # NEW: load node numeric identifiers ALWAYS from POST ConfigurationAudit (SummaryAudit sheet)
+        src_post_audit = post_summary_df if isinstance(post_summary_df, pd.DataFrame) else self.audit_post_excel or audit_post_excel
+        nodes_id_pre, nodes_name_pre = load_nodes_names_and_id_from_summary_audit(src_post_audit, stage="Pre", module_name=module_name)
+        nodes_id_post, nodes_name_post = load_nodes_names_and_id_from_summary_audit(src_post_audit, stage="Post", module_name=module_name)
 
         results: Dict[str, Dict[str, pd.DataFrame]] = {}
 
@@ -570,7 +571,7 @@ class ConsistencyChecks:
                     if target_val == "SSB-Post":
                         row["DiffColumns"] = "SSB Post-Retuning keeps equal than SSB Pre-Retuning"
                     else:
-                        row["DiffColumns"] = "SSB Target Unknown"
+                        row["DiffColumns"] = "SSB Post-Retuning keeps equal than SSB Pre-Retuning (SSB Target Unknown)"
                 else:
                     row["DiffColumns"] = ", ".join(sorted(difflist))
 
@@ -642,13 +643,19 @@ class ConsistencyChecks:
             new_in_post_clean = self._filter_rows_by_freq_list(new_in_post_clean)
             missing_in_post_clean = self._filter_rows_by_freq_list(missing_in_post_clean)
 
+            # TODO: With the block below Summary table will not count those relations whose SSB target is Unknown. Comment this block if you want to count also SSB-Unknown in Summary table.
+            # Do not count parameter discrepancies when SSB target is Unknown (only applies to GU/NR cell relations)
+            param_diff_series = any_diff_mask.reindex(pre_common.index).astype(bool)
+            if table_name in ("NRCellRelation", "GUtranCellRelation"):
+                param_diff_series = param_diff_series & (gnodeb_target_series.astype(str).str.strip() != "Unknown")
+
             # Pair stats
             freq_diff_series = freq_rule_mask.reindex(pre_common.index).astype(bool)
             pair_stats = pd.DataFrame(
                 {
                     "Freq_Pre": pre_freq_base.reindex(pre_common.index).fillna("").replace("", "<empty>"),
                     "Freq_Post": post_freq_base.reindex(pre_common.index).fillna("").replace("", "<empty>"),
-                    "ParamDiff": any_diff_mask.reindex(pre_common.index).astype(bool),
+                    "ParamDiff": param_diff_series,
                     "FreqDiff": freq_diff_series,
                     "FreqDiff_SSBPost": freq_diff_series & (gnodeb_target_series.astype(str).str.strip() == "SSB-Post"),
                     "FreqDiff_Unknown": freq_diff_series & (gnodeb_target_series.astype(str).str.strip() == "Unknown"),
@@ -656,6 +663,8 @@ class ConsistencyChecks:
                 },
                 index=pre_common.index,
             )
+            pair_stats = self._filter_rows_by_freq_list(pair_stats)
+
 
             # all_relations (merge último PRE/POST, manteniendo Freq_Pre/Freq_Post)
             pre_latest = pre_norm.copy()
@@ -772,7 +781,7 @@ class ConsistencyChecks:
         return results
 
     # ----------------------------- SUMMARY AUDIT COMPARISSON ----------------------------- #
-    def summaryaudit_comparison(self, module_name: str = "", market_tag: str = "GLOBL") -> Optional[pd.DataFrame]:
+    def summaryaudit_comparison(self, module_name: str = "", market_tag: str = "GLOBAL") -> Optional[pd.DataFrame]:
         """
         Build a comparison DataFrame from PRE and POST ConfigurationAudit SummaryAudit sheets.
 
@@ -898,7 +907,6 @@ class ConsistencyChecks:
 
     # ----------------------------- OUTPUT TO EXCEL ----------------------------- #
     def save_outputs_excel(self, output_dir: str, results: Optional[Dict[str, Dict[str, pd.DataFrame]]] = None, versioned_suffix: Optional[str] = None, module_name: str = "", market_tag: str = "GLOBAL", fast_excel_export: bool = False, fast_excel_autofit_rows: int = 200, fast_excel_autofit_max_width: int = 60) -> None:
-        import os
         import tempfile
         import shutil
 
@@ -986,14 +994,14 @@ class ConsistencyChecks:
                             "Relations_Post": meta.get("post_rows", 0),
                             "Parameters_Discrepancies": params_disc,
                             "Freq_Discrepancies": freq_disc,
-                            "SSB_Unknown": ssb_unknown,
+                            "Freq_Discrepancies (SSB_Unknown)": ssb_unknown,
                             "New_Relations": len(bucket.get("new_in_post", pd.DataFrame())),
                             "Missing_Relations": len(bucket.get("missing_in_post", pd.DataFrame())),
                             "SourceFile_Pre": pretty_path(meta.get("pre_source_file", "")),
                             "SourceFile_Post": pretty_path(meta.get("post_source_file", "")),
                         })
 
-                summary_df = pd.DataFrame(summary_rows) if summary_rows else pd.DataFrame(columns=["Table", "KeyColumns", "FreqColumn", "Relations_Pre", "Relations_Post", "Parameters_Discrepancies", "Freq_Discrepancies", "SSB_Unknown", "New_Relations", "Missing_Relations", "SourceFile_Pre", "SourceFile_Post"])
+                summary_df = pd.DataFrame(summary_rows) if summary_rows else pd.DataFrame(columns=["Table", "KeyColumns", "FreqColumn", "Relations_Pre", "Relations_Post", "Parameters_Discrepancies", "Freq_Discrepancies", "Freq_Discrepancies (SSB_Unknown)", "New_Relations", "Missing_Relations", "SourceFile_Pre", "SourceFile_Post"])
                 summary_df.to_excel(writer, sheet_name="Summary", index=False)
                 written_sheet_dfs["Summary"] = summary_df
 
@@ -1065,12 +1073,12 @@ class ConsistencyChecks:
                                 "Relations_Post": int(post_counts.get(fpost, 0)),
                                 "Parameters_Discrepancies": int(params_by_pair.get((fpre, fpost), 0)),
                                 "Freq_Discrepancies": int(freq_by_pair.get((fpre, fpost), 0)),
-                                "SSB_Unknown": int(unknown_by_pair.get((fpre, fpost), 0)),
+                                "Freq_Discrepancies (SSB_Unknown)": int(unknown_by_pair.get((fpre, fpost), 0)),
                                 "New_Relations": int(new_by_pair.get((fpre, fpost), 0)),
                                 "Missing_Relations": int(miss_by_pair.get((fpre, fpost), 0)),
                             })
 
-                detailed_df = pd.DataFrame(detailed_rows) if detailed_rows else pd.DataFrame(columns=["Table", "KeyColumns", "FreqColumn", "Freq_Pre", "Freq_Post", "Relations_Pre", "Relations_Post", "Parameters_Discrepancies", "Freq_Discrepancies", "SSB_Unknown", "New_Relations", "Missing_Relations"])
+                detailed_df = pd.DataFrame(detailed_rows) if detailed_rows else pd.DataFrame(columns=["Table", "KeyColumns", "FreqColumn", "Freq_Pre", "Freq_Post", "Relations_Pre", "Relations_Post", "Parameters_Discrepancies", "Freq_Discrepancies", "Freq_Discrepancies (SSB_Unknown)", "New_Relations", "Missing_Relations"])
                 detailed_df.to_excel(writer, sheet_name="Summary_CellRelation", index=False)
                 written_sheet_dfs["Summary_CellRelation"] = detailed_df
 
@@ -1114,6 +1122,148 @@ class ConsistencyChecks:
                 # Collect all dataframes that contain Correction_Cmd to export them later
                 correction_cmd_sources: Dict[str, pd.DataFrame] = {}
 
+                # NEW: Helpers to add Audit-like columns at the end of all GU/NR outputs (_relations/_disc/_unknown/_missing/_new)
+                try:
+                    # ALWAYS derive both node-id lists from POST audit only
+                    src_post_audit = self.audit_post_summary_audit_df if isinstance(self.audit_post_summary_audit_df, pd.DataFrame) else self.audit_post_excel
+                    nodes_id_pre, _ = load_nodes_names_and_id_from_summary_audit(src_post_audit, stage="Pre", module_name=module_name)
+                    nodes_id_post, _ = load_nodes_names_and_id_from_summary_audit(src_post_audit, stage="Post", module_name=module_name)
+
+                except Exception:
+                    nodes_id_pre, nodes_id_post = [], []
+
+                def _extract_kv_from_ref(ref_value: object, key: str) -> str:
+                    text = str(ref_value or "")
+                    m = re.search(rf"{re.escape(key)}=([^,]+)", text)
+                    return m.group(1).strip() if m else ""
+
+                def _detect_gnodeb_target(ext_id: object) -> str:
+                    val = str(ext_id) if ext_id is not None else ""
+                    if nodes_id_pre and any(n in val for n in nodes_id_pre):
+                        return "SSB-Pre"
+                    if nodes_id_post and any(n in val for n in nodes_id_post):
+                        return "SSB-Post"
+                    return "Unknown"
+
+                def _pick_ref_col(df: pd.DataFrame, candidates: List[str]) -> Optional[str]:
+                    if df is None or df.empty:
+                        return None
+                    for c in candidates:
+                        if c in df.columns:
+                            return c
+                    return None
+
+                def _build_relation_extras_map(rel_df: pd.DataFrame, table_name: str, key_cols: List[str]) -> pd.DataFrame:
+                    if rel_df is None or rel_df.empty or not key_cols:
+                        if table_name == "NRCellRelation":
+                            return pd.DataFrame(columns=key_cols + ["ExternalGNBCUCPFunction", "ExternalNRCellCU", "GNodeB_SSB_Target"])
+                        return pd.DataFrame(columns=key_cols + ["ExternalGNodeBFunction", "ExternalGUtranCell", "GNodeB_SSB_Target"])
+
+                    if table_name == "NRCellRelation":
+                        ref_col = _pick_ref_col(rel_df, ["nRCellRef", "NRCellRef", "neighborCellRef"])
+                        out = rel_df[key_cols].copy()
+                        if ref_col:
+                            out["ExternalGNBCUCPFunction"] = rel_df[ref_col].map(lambda v: _extract_kv_from_ref(v, "ExternalGNBCUCPFunction"))
+                            out["ExternalNRCellCU"] = rel_df[ref_col].map(lambda v: _extract_kv_from_ref(v, "ExternalNRCellCU"))
+                        else:
+                            out["ExternalGNBCUCPFunction"] = ""
+                            out["ExternalNRCellCU"] = ""
+                        out["GNodeB_SSB_Target"] = out["ExternalGNBCUCPFunction"].map(_detect_gnodeb_target)
+                        return out.drop_duplicates(subset=key_cols, keep="first")
+                    else:
+                        ref_col = _pick_ref_col(rel_df, ["neighborCellRef", "nCellRef", "NCellRef"])
+                        out = rel_df[key_cols].copy()
+                        if ref_col:
+                            out["ExternalGNodeBFunction"] = rel_df[ref_col].map(lambda v: _extract_kv_from_ref(v, "ExternalGNodeBFunction"))
+                            out["ExternalGUtranCell"] = rel_df[ref_col].map(lambda v: _extract_kv_from_ref(v, "ExternalGUtranCell"))
+                        else:
+                            out["ExternalGNodeBFunction"] = ""
+                            out["ExternalGUtranCell"] = ""
+                        out["GNodeB_SSB_Target"] = out["ExternalGNodeBFunction"].map(_detect_gnodeb_target)
+                        return out.drop_duplicates(subset=key_cols, keep="first")
+
+                def _inject_cmds_into_relations(rel_df: pd.DataFrame, cmd_dfs: List[pd.DataFrame], key_cols: List[str]) -> pd.DataFrame:
+                    if rel_df is None or rel_df.empty or not key_cols:
+                        if rel_df is None:
+                            rel_df = pd.DataFrame()
+                        if "Correction_Cmd" not in rel_df.columns:
+                            rel_df["Correction_Cmd"] = ""
+                        return rel_df
+
+                    frames = []
+                    for d in cmd_dfs:
+                        if d is None or d.empty or "Correction_Cmd" not in d.columns:
+                            continue
+                        keep_cols = [c for c in key_cols if c in d.columns]
+                        if not keep_cols:
+                            continue
+                        frames.append(d[keep_cols + ["Correction_Cmd"]].copy())
+
+                    if not frames:
+                        if "Correction_Cmd" not in rel_df.columns:
+                            rel_df["Correction_Cmd"] = ""
+                        return rel_df
+
+                    cmd_all = pd.concat(frames, ignore_index=True)
+                    cmd_all["Correction_Cmd"] = cmd_all["Correction_Cmd"].astype(str)
+                    cmd_all = cmd_all[cmd_all["Correction_Cmd"].str.strip().astype(bool)]
+                    if cmd_all.empty:
+                        if "Correction_Cmd" not in rel_df.columns:
+                            rel_df["Correction_Cmd"] = ""
+                        return rel_df
+
+                    # Priority is defined by concatenation order; keep first occurrence per key
+                    cmd_all = cmd_all.drop_duplicates(subset=key_cols, keep="first")
+
+                    rel_df2 = rel_df.copy()
+                    rel_df2 = rel_df2.merge(cmd_all, on=key_cols, how="left", suffixes=("", "__cmd"))
+
+                    if "Correction_Cmd__cmd" in rel_df2.columns:
+                        base = rel_df2["Correction_Cmd"].astype(str) if "Correction_Cmd" in rel_df2.columns else pd.Series("", index=rel_df2.index)
+                        add = rel_df2["Correction_Cmd__cmd"].fillna("").astype(str)
+                        base_is_empty = base.str.strip().eq("") | base.str.strip().str.lower().eq("nan")
+                        rel_df2["Correction_Cmd"] = base.where(~base_is_empty, add)
+                        rel_df2.drop(columns=["Correction_Cmd__cmd"], inplace=True, errors="ignore")
+
+                    return rel_df2
+
+                def _ensure_and_reorder_cc_columns(df: pd.DataFrame, table_name: str, extras_map: pd.DataFrame, key_cols: List[str]) -> pd.DataFrame:
+                    if df is None:
+                        df = pd.DataFrame()
+                    out = df.copy()
+
+                    if table_name == "NRCellRelation":
+                        external_cols = ["ExternalGNBCUCPFunction", "ExternalNRCellCU"]
+                    else:
+                        external_cols = ["ExternalGNodeBFunction", "ExternalGUtranCell"]
+
+                    for c in external_cols:
+                        if c not in out.columns:
+                            out[c] = ""
+                    if "GNodeB_SSB_Target" not in out.columns:
+                        out["GNodeB_SSB_Target"] = "Unknown"
+                    if "Correction_Cmd" not in out.columns:
+                        out["Correction_Cmd"] = ""
+
+                    # Fill missing External*/Target using rel_df-derived map (if keys are present)
+                    if extras_map is not None and not extras_map.empty and key_cols and all(c in out.columns for c in key_cols):
+                        merged = out.merge(extras_map, on=key_cols, how="left", suffixes=("", "__map"))
+                        for c in external_cols + ["GNodeB_SSB_Target"]:
+                            map_c = f"{c}__map"
+                            if map_c in merged.columns:
+                                base = merged[c].astype(str)
+                                add = merged[map_c].fillna("").astype(str)
+                                base_is_empty = base.str.strip().eq("") | base.str.strip().str.lower().eq("nan")
+                                merged[c] = base.where(~base_is_empty, add)
+                                merged.drop(columns=[map_c], inplace=True, errors="ignore")
+                        out = merged
+
+                    # Reorder: ensure the required columns are at the end in the requested order
+                    tail_cols = external_cols + ["GNodeB_SSB_Target", "Correction_Cmd"]
+                    head_cols = [c for c in out.columns if c not in tail_cols]
+                    return out[head_cols + tail_cols]
+
+
                 # GU sheets
                 if results and "GUtranCellRelation" in results:
                     b = results["GUtranCellRelation"]
@@ -1123,12 +1273,14 @@ class ConsistencyChecks:
                     gu_new_df = enforce_gu_columns(b.get("new_in_post"))
 
                     freq_only_text = "SSB Post-Retuning keeps equal than SSB Pre-Retuning"
-                    unknown_text = "SSB Target Unknown"
+                    unknown_text = "SSB Post-Retuning keeps equal than SSB Pre-Retuning (SSB Target Unknown)"
 
                     diff_txt = gu_disc_df["DiffColumns"].astype(str).str.strip() if "DiffColumns" in gu_disc_df.columns else pd.Series("", index=gu_disc_df.index)
                     tgt_txt = gu_disc_df["GNodeB_SSB_Target"].astype(str).str.strip() if "GNodeB_SSB_Target" in gu_disc_df.columns else pd.Series("", index=gu_disc_df.index)
 
+                    # Mask for relations whose SSB Target is Unknown
                     mask_unknown = diff_txt.eq(unknown_text) | tgt_txt.eq("Unknown")
+
                     mask_freq_only = diff_txt.eq(freq_only_text) & tgt_txt.eq("SSB-Post") & (~tgt_txt.eq("Unknown"))
                     mask_param_only = (~mask_freq_only) & (~mask_unknown)
 
@@ -1142,41 +1294,87 @@ class ConsistencyChecks:
                     gu_freq_disc_cmd_df = build_correction_command_gu_discrepancies(gu_freq_disc_df, gu_rel_df, self.n77_ssb_pre, self.n77_ssb_post)
                     gu_param_disc_cmd_df = build_correction_command_gu_discrepancies(gu_param_disc_df, gu_rel_df, self.n77_ssb_pre, self.n77_ssb_post)
 
+                    # NEW: Ensure Audit-like columns exist in all GU sheets and appear at the end in the requested order
+                    gu_key_cols = [c for c in ["NodeId", "EUtranCellFDDId", "GUtranCellRelationId"] if c in gu_rel_df.columns]
+                    gu_extras_map = _build_relation_extras_map(gu_rel_df, "GUtranCellRelation", gu_key_cols)
+
+                    # Populate Correction_Cmd also in GU_relations using priority: freq_disc -> param_disc -> missing -> new
+                    gu_rel_df = _inject_cmds_into_relations(gu_rel_df, [gu_freq_disc_cmd_df, gu_param_disc_cmd_df, gu_missing_df, gu_new_df], gu_key_cols)
+
+                    gu_rel_df = _ensure_and_reorder_cc_columns(gu_rel_df, "GUtranCellRelation", gu_extras_map, gu_key_cols)
+                    gu_param_disc_cmd_df = _ensure_and_reorder_cc_columns(gu_param_disc_cmd_df, "GUtranCellRelation", gu_extras_map, gu_key_cols)
+                    gu_freq_disc_cmd_df = _ensure_and_reorder_cc_columns(gu_freq_disc_cmd_df, "GUtranCellRelation", gu_extras_map, gu_key_cols)
+                    gu_unknown_df = _ensure_and_reorder_cc_columns(gu_unknown_df, "GUtranCellRelation", gu_extras_map, gu_key_cols)
+                    gu_missing_df = _ensure_and_reorder_cc_columns(gu_missing_df, "GUtranCellRelation", gu_extras_map, gu_key_cols)
+                    gu_new_df = _ensure_and_reorder_cc_columns(gu_new_df, "GUtranCellRelation", gu_extras_map, gu_key_cols)
+
+                    # NEW: Keep GU_relations coherent with GU_* tables. Discrepancy tables already have the final GNodeB_SSB_Target computed in comparePrePost().
+                    # If GU_relations ends up with Unknown due to missing audit ids or ref parsing, fill it from the discrepancy tables (source of truth).
+                    gu_disc_target_map = pd.concat([gu_param_disc_cmd_df, gu_freq_disc_cmd_df, gu_unknown_df], ignore_index=True)
+                    gu_keep_cols = [c for c in gu_key_cols + ["ExternalGNodeBFunction", "ExternalGUtranCell", "GNodeB_SSB_Target"] if c in gu_disc_target_map.columns]
+                    gu_disc_target_map = gu_disc_target_map[gu_keep_cols].copy() if gu_keep_cols else pd.DataFrame()
+                    if not gu_disc_target_map.empty and gu_key_cols:
+                        gu_disc_target_map = gu_disc_target_map.drop_duplicates(subset=gu_key_cols, keep="first")
+                    if not gu_disc_target_map.empty and gu_key_cols and all(c in gu_rel_df.columns for c in gu_key_cols):
+                        gu_merged = gu_rel_df.merge(gu_disc_target_map, on=gu_key_cols, how="left", suffixes=("", "__disc"))
+                        for col in ["ExternalGNodeBFunction", "ExternalGUtranCell", "GNodeB_SSB_Target"]:
+                            disc_col = f"{col}__disc"
+                            if disc_col in gu_merged.columns:
+                                base = gu_merged[col].astype(str) if col in gu_merged.columns else pd.Series("", index=gu_merged.index)
+                                add = gu_merged[disc_col].fillna("").astype(str)
+                                base_is_empty = base.str.strip().eq("") | base.str.strip().str.lower().eq("nan")
+                                if col == "GNodeB_SSB_Target":
+                                    base_is_empty = base_is_empty | base.str.strip().eq("Unknown")
+                                gu_merged[col] = base.where(~base_is_empty, add)
+                                gu_merged.drop(columns=[disc_col], inplace=True, errors="ignore")
+                        gu_rel_df = gu_merged
+
                     correction_cmd_sources["GU_missing"] = gu_missing_df
                     correction_cmd_sources["GU_new"] = gu_new_df
                     correction_cmd_sources["GU_freq_disc"] = gu_freq_disc_cmd_df
                     correction_cmd_sources["GU_param_disc"] = gu_param_disc_cmd_df
 
-                    gu_rel_df.to_excel(writer, sheet_name="GU_relations", index=False);
+                    gu_rel_df.to_excel(writer, sheet_name="GU_relations", index=False)
                     written_sheet_dfs["GU_relations"] = gu_rel_df
-                    gu_param_disc_cmd_df.to_excel(writer, sheet_name="GU_param_disc", index=False);
+                    gu_param_disc_cmd_df.to_excel(writer, sheet_name="GU_param_disc", index=False)
                     written_sheet_dfs["GU_param_disc"] = gu_param_disc_cmd_df
-                    gu_freq_disc_cmd_df.to_excel(writer, sheet_name="GU_freq_disc", index=False);
+                    gu_freq_disc_cmd_df.to_excel(writer, sheet_name="GU_freq_disc", index=False)
                     written_sheet_dfs["GU_freq_disc"] = gu_freq_disc_cmd_df
-                    gu_unknown_df.to_excel(writer, sheet_name="GU_unknown", index=False);
-                    written_sheet_dfs["GU_unknown"] = gu_unknown_df
-                    gu_missing_df.to_excel(writer, sheet_name="GU_missing", index=False);
+                    gu_unknown_df.to_excel(writer, sheet_name="GU_freq_disc_unknown", index=False)
+                    written_sheet_dfs["GU_freq_disc_unknown"] = gu_unknown_df
+                    gu_missing_df.to_excel(writer, sheet_name="GU_missing", index=False)
                     written_sheet_dfs["GU_missing"] = gu_missing_df
-                    gu_new_df.to_excel(writer, sheet_name="GU_new", index=False);
+                    gu_new_df.to_excel(writer, sheet_name="GU_new", index=False)
                     written_sheet_dfs["GU_new"] = gu_new_df
                 else:
-                    df0 = pd.DataFrame();
-                    df0.to_excel(writer, sheet_name="GU_relations", index=False);
+                    df0 = enforce_gu_columns(pd.DataFrame())
+                    df1 = enforce_gu_columns(pd.DataFrame())
+                    df2 = enforce_gu_columns(pd.DataFrame())
+                    df3 = enforce_gu_columns(pd.DataFrame())
+                    df4 = enforce_gu_columns(pd.DataFrame())
+                    df5 = enforce_gu_columns(pd.DataFrame())
+
+                    gu_key_cols = [c for c in ["NodeId", "EUtranCellFDDId", "GUtranCellRelationId"] if c in df0.columns]
+                    gu_extras_map = _build_relation_extras_map(df0, "GUtranCellRelation", gu_key_cols)
+
+                    df0 = _ensure_and_reorder_cc_columns(df0, "GUtranCellRelation", gu_extras_map, gu_key_cols)
+                    df1 = _ensure_and_reorder_cc_columns(df1, "GUtranCellRelation", gu_extras_map, gu_key_cols)
+                    df2 = _ensure_and_reorder_cc_columns(df2, "GUtranCellRelation", gu_extras_map, gu_key_cols)
+                    df3 = _ensure_and_reorder_cc_columns(df3, "GUtranCellRelation", gu_extras_map, gu_key_cols)
+                    df4 = _ensure_and_reorder_cc_columns(df4, "GUtranCellRelation", gu_extras_map, gu_key_cols)
+                    df5 = _ensure_and_reorder_cc_columns(df5, "GUtranCellRelation", gu_extras_map, gu_key_cols)
+
+                    df0.to_excel(writer, sheet_name="GU_relations", index=False)
                     written_sheet_dfs["GU_relations"] = df0
-                    df1 = enforce_gu_columns(pd.DataFrame());
-                    df1.to_excel(writer, sheet_name="GU_param_disc", index=False);
+                    df1.to_excel(writer, sheet_name="GU_param_disc", index=False)
                     written_sheet_dfs["GU_param_disc"] = df1
-                    df2 = enforce_gu_columns(pd.DataFrame());
-                    df2.to_excel(writer, sheet_name="GU_freq_disc", index=False);
+                    df2.to_excel(writer, sheet_name="GU_freq_disc", index=False)
                     written_sheet_dfs["GU_freq_disc"] = df2
-                    df3 = enforce_gu_columns(pd.DataFrame());
-                    df3.to_excel(writer, sheet_name="GU_unknown", index=False);
-                    written_sheet_dfs["GU_unknown"] = df3
-                    df4 = enforce_gu_columns(pd.DataFrame());
-                    df4.to_excel(writer, sheet_name="GU_missing", index=False);
+                    df3.to_excel(writer, sheet_name="GU_freq_disc_unknown", index=False)
+                    written_sheet_dfs["GU_freq_disc_unknown"] = df3
+                    df4.to_excel(writer, sheet_name="GU_missing", index=False)
                     written_sheet_dfs["GU_missing"] = df4
-                    df5 = enforce_gu_columns(pd.DataFrame());
-                    df5.to_excel(writer, sheet_name="GU_new", index=False);
+                    df5.to_excel(writer, sheet_name="GU_new", index=False)
                     written_sheet_dfs["GU_new"] = df5
 
                 # NR sheets
@@ -1188,12 +1386,14 @@ class ConsistencyChecks:
                     nr_new_df = enforce_nr_columns(b.get("new_in_post"))
 
                     freq_only_text = "SSB Post-Retuning keeps equal than SSB Pre-Retuning"
-                    unknown_text = "SSB Target Unknown"
+                    unknown_text = "SSB Post-Retuning keeps equal than SSB Pre-Retuning (SSB Target Unknown)"
 
                     diff_txt = nr_disc_df["DiffColumns"].astype(str).str.strip() if "DiffColumns" in nr_disc_df.columns else pd.Series("", index=nr_disc_df.index)
                     tgt_txt = nr_disc_df["GNodeB_SSB_Target"].astype(str).str.strip() if "GNodeB_SSB_Target" in nr_disc_df.columns else pd.Series("", index=nr_disc_df.index)
 
+                    # Mask for relations whose SSB Target is Unknown
                     mask_unknown = diff_txt.eq(unknown_text) | tgt_txt.eq("Unknown")
+
                     mask_freq_only = diff_txt.eq(freq_only_text) & tgt_txt.eq("SSB-Post") & (~tgt_txt.eq("Unknown"))
                     mask_param_only = (~mask_freq_only) & (~mask_unknown)
 
@@ -1206,41 +1406,94 @@ class ConsistencyChecks:
                     nr_freq_disc_cmd_df = build_correction_command_nr_discrepancies(nr_freq_disc_df, nr_rel_df, self.n77_ssb_pre, self.n77_ssb_post)
                     nr_param_disc_cmd_df = build_correction_command_nr_discrepancies(nr_param_disc_df, nr_rel_df, self.n77_ssb_pre, self.n77_ssb_post)
 
+                    # NEW: Populate Correction_Cmd also in NR_relations sheet (Audit-like)
+                    nr_key_cols = []
+                    try:
+                        nr_key_cols = list(b.get("meta", {}).get("key_cols", []))
+                    except Exception:
+                        nr_key_cols = []
+
+                    # NEW: Ensure Audit-like columns exist in all NR sheets and appear at the end in the requested order
+                    nr_key_cols = [c for c in ["NodeId", "NRCellCUId", "NRCellRelationId"] if c in nr_rel_df.columns]
+                    nr_extras_map = _build_relation_extras_map(nr_rel_df, "NRCellRelation", nr_key_cols)
+
+                    # Populate Correction_Cmd also in NR_relations using priority: freq_disc -> param_disc -> missing -> new
+                    nr_rel_df = _inject_cmds_into_relations(nr_rel_df, [nr_freq_disc_cmd_df, nr_param_disc_cmd_df, nr_missing_df, nr_new_df], nr_key_cols)
+
+                    nr_rel_df = _ensure_and_reorder_cc_columns(nr_rel_df, "NRCellRelation", nr_extras_map, nr_key_cols)
+                    nr_param_disc_cmd_df = _ensure_and_reorder_cc_columns(nr_param_disc_cmd_df, "NRCellRelation", nr_extras_map, nr_key_cols)
+                    nr_freq_disc_cmd_df = _ensure_and_reorder_cc_columns(nr_freq_disc_cmd_df, "NRCellRelation", nr_extras_map, nr_key_cols)
+                    nr_unknown_df = _ensure_and_reorder_cc_columns(nr_unknown_df, "NRCellRelation", nr_extras_map, nr_key_cols)
+                    nr_missing_df = _ensure_and_reorder_cc_columns(nr_missing_df, "NRCellRelation", nr_extras_map, nr_key_cols)
+                    nr_new_df = _ensure_and_reorder_cc_columns(nr_new_df, "NRCellRelation", nr_extras_map, nr_key_cols)
+
+                    # NEW: Keep NR_relations coherent with NR_* tables. Discrepancy tables already have the final GNodeB_SSB_Target computed in comparePrePost().
+                    # If NR_relations ends up with Unknown due to missing audit ids or ref parsing, fill it from the discrepancy tables (source of truth).
+                    nr_disc_target_map = pd.concat([nr_param_disc_cmd_df, nr_freq_disc_cmd_df, nr_unknown_df], ignore_index=True)
+                    nr_keep_cols = [c for c in nr_key_cols + ["ExternalGNBCUCPFunction", "ExternalNRCellCU", "GNodeB_SSB_Target"] if c in nr_disc_target_map.columns]
+                    nr_disc_target_map = nr_disc_target_map[nr_keep_cols].copy() if nr_keep_cols else pd.DataFrame()
+                    if not nr_disc_target_map.empty and nr_key_cols:
+                        nr_disc_target_map = nr_disc_target_map.drop_duplicates(subset=nr_key_cols, keep="first")
+                    if not nr_disc_target_map.empty and nr_key_cols and all(c in nr_rel_df.columns for c in nr_key_cols):
+                        nr_merged = nr_rel_df.merge(nr_disc_target_map, on=nr_key_cols, how="left", suffixes=("", "__disc"))
+                        for col in ["ExternalGNBCUCPFunction", "ExternalNRCellCU", "GNodeB_SSB_Target"]:
+                            disc_col = f"{col}__disc"
+                            if disc_col in nr_merged.columns:
+                                base = nr_merged[col].astype(str) if col in nr_merged.columns else pd.Series("", index=nr_merged.index)
+                                add = nr_merged[disc_col].fillna("").astype(str)
+                                base_is_empty = base.str.strip().eq("") | base.str.strip().str.lower().eq("nan")
+                                if col == "GNodeB_SSB_Target":
+                                    base_is_empty = base_is_empty | base.str.strip().eq("Unknown")
+                                nr_merged[col] = base.where(~base_is_empty, add)
+                                nr_merged.drop(columns=[disc_col], inplace=True, errors="ignore")
+                        nr_rel_df = nr_merged
+
                     correction_cmd_sources["NR_missing"] = nr_missing_df
                     correction_cmd_sources["NR_new"] = nr_new_df
                     correction_cmd_sources["NR_freq_disc"] = nr_freq_disc_cmd_df
                     correction_cmd_sources["NR_param_disc"] = nr_param_disc_cmd_df
 
-                    nr_rel_df.to_excel(writer, sheet_name="NR_relations", index=False);
+                    nr_rel_df.to_excel(writer, sheet_name="NR_relations", index=False)
                     written_sheet_dfs["NR_relations"] = nr_rel_df
-                    nr_param_disc_cmd_df.to_excel(writer, sheet_name="NR_param_disc", index=False);
+                    nr_param_disc_cmd_df.to_excel(writer, sheet_name="NR_param_disc", index=False)
                     written_sheet_dfs["NR_param_disc"] = nr_param_disc_cmd_df
-                    nr_freq_disc_cmd_df.to_excel(writer, sheet_name="NR_freq_disc", index=False);
+                    nr_freq_disc_cmd_df.to_excel(writer, sheet_name="NR_freq_disc", index=False)
                     written_sheet_dfs["NR_freq_disc"] = nr_freq_disc_cmd_df
-                    nr_unknown_df.to_excel(writer, sheet_name="NR_unknown", index=False);
-                    written_sheet_dfs["NR_unknown"] = nr_unknown_df
-                    nr_missing_df.to_excel(writer, sheet_name="NR_missing", index=False);
+                    nr_unknown_df.to_excel(writer, sheet_name="NR_freq_disc_unknown", index=False)
+                    written_sheet_dfs["NR_freq_disc_unknown"] = nr_unknown_df
+                    nr_missing_df.to_excel(writer, sheet_name="NR_missing", index=False)
                     written_sheet_dfs["NR_missing"] = nr_missing_df
-                    nr_new_df.to_excel(writer, sheet_name="NR_new", index=False);
+                    nr_new_df.to_excel(writer, sheet_name="NR_new", index=False)
                     written_sheet_dfs["NR_new"] = nr_new_df
                 else:
-                    df0 = pd.DataFrame();
-                    df0.to_excel(writer, sheet_name="NR_relations", index=False);
+                    df0 = enforce_nr_columns(pd.DataFrame())
+                    df1 = enforce_nr_columns(pd.DataFrame())
+                    df2 = enforce_nr_columns(pd.DataFrame())
+                    df3 = enforce_nr_columns(pd.DataFrame())
+                    df4 = enforce_nr_columns(pd.DataFrame())
+                    df5 = enforce_nr_columns(pd.DataFrame())
+
+                    nr_key_cols = [c for c in ["NodeId", "NRCellCUId", "NRCellRelationId"] if c in df0.columns]
+                    nr_extras_map = _build_relation_extras_map(df0, "NRCellRelation", nr_key_cols)
+
+                    df0 = _ensure_and_reorder_cc_columns(df0, "NRCellRelation", nr_extras_map, nr_key_cols)
+                    df1 = _ensure_and_reorder_cc_columns(df1, "NRCellRelation", nr_extras_map, nr_key_cols)
+                    df2 = _ensure_and_reorder_cc_columns(df2, "NRCellRelation", nr_extras_map, nr_key_cols)
+                    df3 = _ensure_and_reorder_cc_columns(df3, "NRCellRelation", nr_extras_map, nr_key_cols)
+                    df4 = _ensure_and_reorder_cc_columns(df4, "NRCellRelation", nr_extras_map, nr_key_cols)
+                    df5 = _ensure_and_reorder_cc_columns(df5, "NRCellRelation", nr_extras_map, nr_key_cols)
+
+                    df0.to_excel(writer, sheet_name="NR_relations", index=False)
                     written_sheet_dfs["NR_relations"] = df0
-                    df1 = enforce_nr_columns(pd.DataFrame());
-                    df1.to_excel(writer, sheet_name="NR_param_disc", index=False);
+                    df1.to_excel(writer, sheet_name="NR_param_disc", index=False)
                     written_sheet_dfs["NR_param_disc"] = df1
-                    df2 = enforce_nr_columns(pd.DataFrame());
-                    df2.to_excel(writer, sheet_name="NR_freq_disc", index=False);
+                    df2.to_excel(writer, sheet_name="NR_freq_disc", index=False)
                     written_sheet_dfs["NR_freq_disc"] = df2
-                    df3 = enforce_nr_columns(pd.DataFrame());
-                    df3.to_excel(writer, sheet_name="NR_unknown", index=False);
-                    written_sheet_dfs["NR_unknown"] = df3
-                    df4 = enforce_nr_columns(pd.DataFrame());
-                    df4.to_excel(writer, sheet_name="NR_missing", index=False);
+                    df3.to_excel(writer, sheet_name="NR_freq_disc_unknown", index=False)
+                    written_sheet_dfs["NR_freq_disc_unknown"] = df3
+                    df4.to_excel(writer, sheet_name="NR_missing", index=False)
                     written_sheet_dfs["NR_missing"] = df4
-                    df5 = enforce_nr_columns(pd.DataFrame());
-                    df5.to_excel(writer, sheet_name="NR_new", index=False);
+                    df5.to_excel(writer, sheet_name="NR_new", index=False)
                     written_sheet_dfs["NR_new"] = df5
 
                 # Export text files (outside GU/NR blocks)

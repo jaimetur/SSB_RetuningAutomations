@@ -13,14 +13,34 @@ def base_series(s: pd.Series) -> pd.Series:
 
 
 def extract_gu_freq_base(s: pd.Series) -> pd.Series:
-    base = base_series(s)
-    fallback = s.astype(str).str.extract(r"(\d+)", expand=False)
-    return base.where(base != "", fallback).fillna("").astype(str)
+    # GUtranFreqRelation reference can be numeric (e.g. "647328") or embedded in a DN (e.g. "GUtranFreqRelationId=647328" or "GUtranFreqRelationId=auto2244997_120")
+    s_str = s.astype(str)
+
+    # Try to extract the token from "GUtranFreqRelationId=..." or "GUtranFreqRelation=..."
+    token = s_str.str.extract(r"(?i)gutranfreqrelation(?:id)?\s*=\s*([^,\s]+)", expand=False)
+    token = token.fillna("").astype(str).str.strip().str.rstrip(".,);")
+    token_non_empty = token.where(token != "", pd.NA)
+
+    # If the whole cell is already a valid token (numeric or auto...), keep it
+    direct_token = s_str.str.strip().str.rstrip(".,);")
+    direct_token = direct_token.where(direct_token.str.match(r"(?i)^(?:\d+|auto[^,\s]+)$"), pd.NA)
+
+    # Last resort: extract some digits (better than returning the full DN)
+    fallback_digits = s_str.str.extract(r"(\d+)", expand=False)
+
+    return token_non_empty.fillna(direct_token).fillna(fallback_digits).fillna("").astype(str)
 
 
 def extract_nr_freq_base(s: pd.Series) -> pd.Series:
-    got = s.astype(str).str.extract(r"NRFreqRelation\s*=\s*(\d+)", expand=False)
-    return got.fillna(base_series(s)).fillna("").astype(str)
+    # NRFreqRelation reference can be numeric (e.g. "NRFreqRelation=647328") or auto-based (e.g. "NRFreqRelation=auto2244997_120")
+    s_str = s.astype(str)
+    token = s_str.str.extract(r"(?i)nrfreqrelation\s*=\s*([^,\s]+)", expand=False)
+    token = token.fillna("").astype(str).str.strip().str.rstrip(".,);")
+
+    # If NRFreqRelation was found, keep it as-is (numeric or auto...). Otherwise fallback to base_series().
+    token_non_empty = token.where(token != "", pd.NA)
+    return token_non_empty.fillna(base_series(s)).fillna("").astype(str)
+
 
 
 def detect_freq_column(table_name: str, columns: List[str]) -> Optional[str]:

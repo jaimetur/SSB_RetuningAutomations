@@ -22,9 +22,17 @@
       - gs+
       - lt all
       - alt
+    - Enhanced GU_Relations and NR_Relations sheets from `ConsistencyCheck` module with additional columns to allign with `ConfigurationAudit` module:
+      - ExternalGNodeBFunction/ExternalGNBCUCPFunction
+      - ExternalGUtranCell/ExternalNRCellCU
+      - GNodeB_SSB_Target
+      - Correction_Cmd
     - Changed timestamp of outputfiles for PRE in `ConsistencyCheck` module to match with the original folder. 
 
   - #### 🐛 Bug fixes:
+    - Fix bug in `ConsistencyCheck` module where the SSB-Unknown mask was not being applied to `Summary_CellRelation` sheet so the stats show in this table did not match with the real discrepancies shown in `_disc` table. 
+    - Fix bug in `ConsistencyCheck` module where the Freq_Pre/Freq_Post was not being properly extracted when the SSB freq was something like `autoXXXXX_YYY` in `Summary_CellRelation` sheet.
+    - Other fixes in `ConsistencyCheck` module to allign stats of Summary table with real discrepancies (filtered by SSB-Post in other tables).
     - Minor bug fixing.
     
   - #### 📚 Documentation: 
