@@ -260,16 +260,19 @@ def gui_config_dialog(
     root.resizable(False, False)
 
     # --- Center window ONCE with fixed size ---
-    try:
-        root.update_idletasks()
-        w, h = 880, 820  # tamaño objetivo del launcher
-        sw = root.winfo_screenwidth()
-        sh = root.winfo_screenheight()
-        x = (sw - w) // 2
-        y = (sh - h) // 2  # CENTRADO real en vertical
-        root.geometry(f"{w}x{h}+{x}+{y}")
-    except Exception:
-        pass
+    WIDTH = 940
+    HEIGHT = 820
+    # NOTE: Centering must happen after all widgets are created and Tk has computed the final layout.
+    def _center_window_fixed(win: "tk.Tk", width: int, height: int) -> None:
+        try:
+            win.update_idletasks()
+            sw = win.winfo_screenwidth()
+            sh = win.winfo_screenheight()
+            x = max((sw - width) // 2, 0)
+            y = max((sh - height) // 2, 0)
+            win.geometry(f"{width}x{height}+{x}+{y}")
+        except Exception:
+            pass
 
     # Vars
     module_var = tk.StringVar(value=MODULE_NAMES[1])
@@ -294,6 +297,9 @@ def gui_config_dialog(
     pad_tight = {'padx': 4, 'pady': 2}
     frm = ttk.Frame(root, padding=12)
     frm.pack(fill="both", expand=True)
+    frm.columnconfigure(1, weight=1)
+    frm.columnconfigure(2, weight=1)
+
 
     # Row 0: module
     ttk.Label(frm, text="Module to run:").grid(row=0, column=0, sticky="w", **pad)
@@ -315,8 +321,14 @@ def gui_config_dialog(
 
     btn_browse.grid(row=1, column=3, sticky="ew", **pad)
 
-    btn_select_subfolders = ttk.Button(single_frame, text="Select Subfolders…", state="disabled", command=lambda: (select_step0_subfolders(module_var, input_var, root, MODULE_NAMES), _refresh_add_other_state()))
-    btn_select_subfolders.grid(row=2, column=2, sticky="ew", **pad)
+    def _on_select_subfolders():
+        ret = select_step0_subfolders(module_var, input_var, root, MODULE_NAMES)
+        if ret is None:
+            return
+        _refresh_add_other_state()
+
+    btn_select_subfolders = ttk.Button(single_frame, text="Select Subfolders…", state="disabled", command=_on_select_subfolders)
+    btn_select_subfolders.grid(row=2, column=3, columnspan=2, sticky="ew", **pad)
 
     def _refresh_add_other_state():
         sel = module_var.get()
@@ -337,33 +349,38 @@ def gui_config_dialog(
 
 
     btn_add = ttk.Button(single_frame, text="Add Other…", state="disabled", command=lambda: (browse_input_folders(module_var, input_var, root, MODULE_NAMES, add_mode=True), _refresh_add_other_state()))
-    btn_add.grid(row=2, column=3, sticky="ew", **pad)
+    btn_add.grid(row=1, column=4, sticky="ew", **pad)
 
     # Dual-input frame (only for module 2)
     dual_frame = ttk.Frame(frm)
 
+    # Make the grid behave like single_frame (label | entry span 2 cols | browse | reserved)
+    dual_frame.columnconfigure(1, weight=1)
+    dual_frame.columnconfigure(2, weight=1)
+
     # Spacer row
-    ttk.Label(dual_frame, text="").grid(row=0, column=0, columnspan=3, sticky="w")
+    ttk.Label(dual_frame, text="").grid(row=0, column=0, columnspan=5, sticky="w")
 
     ttk.Label(dual_frame, text="Pre input folder:").grid(row=1, column=0, sticky="w", **pad)
-    ttk.Entry(dual_frame, textvariable=input_pre_var, width=100).grid(row=1, column=1, sticky="ew", **pad)
+    ttk.Entry(dual_frame, textvariable=input_pre_var, width=100).grid(row=1, column=1, columnspan=2, sticky="ew", **pad)
 
     def browse_pre():
         path = filedialog.askdirectory(title="Select PRE input folder", initialdir=input_pre_var.get() or os.getcwd())
         if path:
             input_pre_var.set(path)
 
-    ttk.Button(dual_frame, text="Browse…", command=browse_pre).grid(row=1, column=2, sticky="ew", **pad)
+    ttk.Button(dual_frame, text="Browse…", command=browse_pre).grid(row=1, column=3, sticky="ew", **pad)
 
     ttk.Label(dual_frame, text="Post input folder:").grid(row=2, column=0, sticky="w", **pad)
-    ttk.Entry(dual_frame, textvariable=input_post_var, width=80).grid(row=2, column=1, sticky="ew", **pad)
+    ttk.Entry(dual_frame, textvariable=input_post_var, width=100).grid(row=2, column=1, columnspan=2, sticky="ew", **pad)
 
     def browse_post():
         path = filedialog.askdirectory(title="Select POST input folder", initialdir=input_post_var.get() or os.getcwd())
         if path:
             input_post_var.set(path)
 
-    ttk.Button(dual_frame, text="Browse…", command=browse_post).grid(row=2, column=2, sticky="ew", **pad)
+    ttk.Button(dual_frame, text="Browse…", command=browse_post).grid(row=2, column=3, sticky="ew", **pad)
+
 
     def refresh_input_mode(*_e):
         """
@@ -660,7 +677,18 @@ def gui_config_dialog(
     ttk.Button(btns, text="Cancel", command=on_cancel).pack(side="right", padx=6)
     ttk.Button(btns, text="Run", command=on_run).pack(side="right")
     root.bind("<Return>", lambda e: on_run())
-    root.bind("<Escape>", lambda e: on_cancel())
+
+    def _on_escape(_e=None):
+        try:
+            grabbed = root.grab_current()
+            if grabbed is not None and grabbed.winfo_toplevel() is not root:
+                return "break"
+        except Exception:
+            pass
+        on_cancel()
+        return "break"
+
+    root.bind("<Escape>", _on_escape)
 
     def center_and_raise():
         """Bring launcher to the foreground, respecting current geometry."""
@@ -676,6 +704,7 @@ def gui_config_dialog(
         except Exception:
             pass
 
+    _center_window_fixed(root, width=WIDTH, height=HEIGHT)
     root.after(0, center_and_raise)
     root.mainloop()
     return result

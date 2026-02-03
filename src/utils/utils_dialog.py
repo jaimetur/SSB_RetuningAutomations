@@ -78,6 +78,19 @@ def ask_yes_no_dialog_custom(title: str, message: str, default: bool = True) -> 
     if tk is None or ttk is None or messagebox is None:
         return _cli_fallback()
 
+    def _center_window(win_obj) -> None:
+        try:
+            win_obj.update_idletasks()
+            w = win_obj.winfo_width()
+            h = win_obj.winfo_height()
+            sw = win_obj.winfo_screenwidth()
+            sh = win_obj.winfo_screenheight()
+            x = max(0, int((sw - w) / 2))
+            y = max(0, int((sh - h) / 2))
+            win_obj.geometry(f"{w}x{h}+{x}+{y}")
+        except Exception:
+            pass
+
     try:
         result = {"value": default}
 
@@ -137,8 +150,9 @@ def ask_yes_no_dialog_custom(title: str, message: str, default: bool = True) -> 
         root.bind("<Return>", lambda _e: on_yes() if default else on_no())
         root.bind("<Escape>", lambda _e: on_no())
 
+        _center_window(root)
+
         try:
-            root.update_idletasks()
             root.lift()
             root.attributes("-topmost", True)
             root.after(200, lambda: root.attributes("-topmost", False))
@@ -158,103 +172,6 @@ def ask_yes_no_dialog_custom(title: str, message: str, default: bool = True) -> 
 
 
 # ============================ STEP0 MULTI-SELECTION HELPERS ================== #
-STEP0_SEARCH_MAX_DEPTH = 6  # How many subfolder levels below each selected input folder to scan for Step0 folders
-STEP0_LOGS_SEARCH_MAX_DEPTH = 6  # How many subfolder levels below a Step0 folder to scan for valid logs/zips
-
-
-def _split_input_paths(raw: str) -> List[str]:
-    return [p.strip() for p in re.split(r"[;\n]+", raw or "") if p.strip()]
-
-
-def _unique_preserve_order(paths: List[str]) -> List[str]:
-    seen = set()
-    out: List[str] = []
-    for p in paths:
-        if not p:
-            continue
-        p_clean = pretty_path(os.path.normpath(p))
-        k = p_clean.lower() if os.name == "nt" else p_clean
-        if k in seen:
-            continue
-        seen.add(k)
-        out.append(p_clean)
-    return out
-
-
-def _is_multi_input_module(sel_module: str, module_names: List[str]) -> bool:
-    if len(module_names) < 5:
-        return False
-    multi_modules = (module_names[1], module_names[3], module_names[4])
-    return sel_module in multi_modules
-
-
-def _build_step0_map(parent_folders: List[str]) -> Dict[str, List[str]]:
-    """
-    Returns a map: parent_folder -> [valid_step0_folder_paths]
-    """
-    def _folder_tree_has_valid_logs(folder: str, max_depth: int = STEP0_LOGS_SEARCH_MAX_DEPTH) -> bool:
-        folder_fs = to_long_path(folder) if folder else folder
-        if not folder_fs or not os.path.isdir(folder_fs):
-            return False
-
-        if folder_or_zip_has_valid_logs(folder_fs):
-            return True
-
-        stack: List[Tuple[str, int]] = [(folder_fs, 0)]
-        while stack:
-            current_fs, depth = stack.pop()
-            if depth >= max_depth:
-                continue
-            try:
-                for e in os.scandir(current_fs):
-                    if not e.is_dir(follow_symlinks=False):
-                        continue
-                    if folder_or_zip_has_valid_logs(e.path):
-                        return True
-                    stack.append((e.path, depth + 1))
-            except Exception:
-                continue
-
-        return False
-
-    def _find_valid_step0_folders_under(parent_folder: str, max_depth: int = STEP0_SEARCH_MAX_DEPTH) -> List[str]:
-        parent_fs = to_long_path(parent_folder) if parent_folder else parent_folder
-        if not parent_fs or not os.path.isdir(parent_fs):
-            return []
-
-        candidates: List[Tuple[object, str]] = []
-        stack: List[Tuple[str, int]] = [(parent_fs, 0)]
-
-        while stack:
-            current_fs, depth = stack.pop()
-            if depth > max_depth:
-                continue
-
-            try:
-                for e in os.scandir(current_fs):
-                    if not e.is_dir(follow_symlinks=False):
-                        continue
-
-                    info = detect_step0_folders(e.name, current_fs)
-                    if info:
-                        if _folder_tree_has_valid_logs(info.path, max_depth=STEP0_LOGS_SEARCH_MAX_DEPTH):
-                            candidates.append((info.datetime_key, pretty_path(os.path.normpath(info.path))))
-                        continue
-
-                    if depth < max_depth:
-                        stack.append((e.path, depth + 1))
-            except Exception:
-                continue
-
-        candidates.sort(key=lambda x: x[0])
-        return [p for _dt, p in candidates]
-
-    step0_map: Dict[str, List[str]] = {}
-    for parent in parent_folders:
-        step0_map[parent] = _find_valid_step0_folders_under(parent, max_depth=STEP0_SEARCH_MAX_DEPTH)
-    return step0_map
-
-
 def get_multi_step0_items(module_var, input_var, module_names: List[str]) -> List[Tuple[str, str]]:
     """
     Return the (parent, step0_folder) items that would be selectable.
@@ -262,6 +179,98 @@ def get_multi_step0_items(module_var, input_var, module_names: List[str]) -> Lis
     Only includes parents that contain *more than one* valid Step0 folder.
     This is used by the launcher to enable/disable the "Select Subfolders" button.
     """
+    STEP0_SEARCH_MAX_DEPTH = 6  # How many subfolder levels below each selected input folder to scan for Step0 folders
+    STEP0_LOGS_SEARCH_MAX_DEPTH = 6  # How many subfolder levels below a Step0 folder to scan for valid logs/zips
+
+    def _split_input_paths(raw: str) -> List[str]:
+        return [p.strip() for p in re.split(r"[;\n]+", raw or "") if p.strip()]
+
+    def _unique_preserve_order(paths: List[str]) -> List[str]:
+        seen = set()
+        out: List[str] = []
+        for p in paths:
+            if not p:
+                continue
+            p_clean = pretty_path(os.path.normpath(p))
+            k = p_clean.lower() if os.name == "nt" else p_clean
+            if k in seen:
+                continue
+            seen.add(k)
+            out.append(p_clean)
+        return out
+
+    def _is_multi_input_module(sel_module: str, names: List[str]) -> bool:
+        if len(names) < 5:
+            return False
+        multi_modules = (names[1], names[3], names[4])
+        return sel_module in multi_modules
+
+    def _build_step0_map(parent_folders: List[str]) -> Dict[str, List[str]]:
+        """
+        Returns a map: parent_folder -> [valid_step0_folder_paths]
+        """
+        def _folder_tree_has_valid_logs(folder: str, max_depth: int = STEP0_LOGS_SEARCH_MAX_DEPTH) -> bool:
+            folder_fs = to_long_path(folder) if folder else folder
+            if not folder_fs or not os.path.isdir(folder_fs):
+                return False
+
+            if folder_or_zip_has_valid_logs(folder_fs):
+                return True
+
+            stack: List[Tuple[str, int]] = [(folder_fs, 0)]
+            while stack:
+                current_fs, depth = stack.pop()
+                if depth >= max_depth:
+                    continue
+                try:
+                    for e in os.scandir(current_fs):
+                        if not e.is_dir(follow_symlinks=False):
+                            continue
+                        if folder_or_zip_has_valid_logs(e.path):
+                            return True
+                        stack.append((e.path, depth + 1))
+                except Exception:
+                    continue
+
+            return False
+
+        def _find_valid_step0_folders_under(parent_folder: str, max_depth: int = STEP0_SEARCH_MAX_DEPTH) -> List[str]:
+            parent_fs = to_long_path(parent_folder) if parent_folder else parent_folder
+            if not parent_fs or not os.path.isdir(parent_fs):
+                return []
+
+            candidates: List[Tuple[object, str]] = []
+            stack: List[Tuple[str, int]] = [(parent_fs, 0)]
+
+            while stack:
+                current_fs, depth = stack.pop()
+                if depth > max_depth:
+                    continue
+
+                try:
+                    for e in os.scandir(current_fs):
+                        if not e.is_dir(follow_symlinks=False):
+                            continue
+
+                        info = detect_step0_folders(e.name, current_fs)
+                        if info:
+                            if _folder_tree_has_valid_logs(info.path, max_depth=STEP0_LOGS_SEARCH_MAX_DEPTH):
+                                candidates.append((info.datetime_key, pretty_path(os.path.normpath(info.path))))
+                            continue
+
+                        if depth < max_depth:
+                            stack.append((e.path, depth + 1))
+                except Exception:
+                    continue
+
+            candidates.sort(key=lambda x: x[0])
+            return [p for _dt, p in candidates]
+
+        step0_map: Dict[str, List[str]] = {}
+        for parent in parent_folders:
+            step0_map[parent] = _find_valid_step0_folders_under(parent, max_depth=STEP0_SEARCH_MAX_DEPTH)
+        return step0_map
+
     sel_module = (module_var.get() or "").strip()
     if not _is_multi_input_module(sel_module, module_names):
         return []
@@ -291,6 +300,98 @@ def select_step0_subfolders(module_var, input_var, root, module_names: List[str]
     - False: no change was required
     - None: a selection dialog was shown and the user cancelled
     """
+    STEP0_SEARCH_MAX_DEPTH = 6  # How many subfolder levels below each selected input folder to scan for Step0 folders
+    STEP0_LOGS_SEARCH_MAX_DEPTH = 6  # How many subfolder levels below a Step0 folder to scan for valid logs/zips
+
+    def _split_input_paths(raw: str) -> List[str]:
+        return [p.strip() for p in re.split(r"[;\n]+", raw or "") if p.strip()]
+
+    def _unique_preserve_order(paths: List[str]) -> List[str]:
+        seen = set()
+        out: List[str] = []
+        for p in paths:
+            if not p:
+                continue
+            p_clean = pretty_path(os.path.normpath(p))
+            k = p_clean.lower() if os.name == "nt" else p_clean
+            if k in seen:
+                continue
+            seen.add(k)
+            out.append(p_clean)
+        return out
+
+    def _is_multi_input_module(sel_module: str, names: List[str]) -> bool:
+        if len(names) < 5:
+            return False
+        multi_modules = (names[1], names[3], names[4])
+        return sel_module in multi_modules
+
+    def _build_step0_map(parent_folders: List[str]) -> Dict[str, List[str]]:
+        """
+        Returns a map: parent_folder -> [valid_step0_folder_paths]
+        """
+        def _folder_tree_has_valid_logs(folder: str, max_depth: int = STEP0_LOGS_SEARCH_MAX_DEPTH) -> bool:
+            folder_fs = to_long_path(folder) if folder else folder
+            if not folder_fs or not os.path.isdir(folder_fs):
+                return False
+
+            if folder_or_zip_has_valid_logs(folder_fs):
+                return True
+
+            stack: List[Tuple[str, int]] = [(folder_fs, 0)]
+            while stack:
+                current_fs, depth = stack.pop()
+                if depth >= max_depth:
+                    continue
+                try:
+                    for e in os.scandir(current_fs):
+                        if not e.is_dir(follow_symlinks=False):
+                            continue
+                        if folder_or_zip_has_valid_logs(e.path):
+                            return True
+                        stack.append((e.path, depth + 1))
+                except Exception:
+                    continue
+
+            return False
+
+        def _find_valid_step0_folders_under(parent_folder: str, max_depth: int = STEP0_SEARCH_MAX_DEPTH) -> List[str]:
+            parent_fs = to_long_path(parent_folder) if parent_folder else parent_folder
+            if not parent_fs or not os.path.isdir(parent_fs):
+                return []
+
+            candidates: List[Tuple[object, str]] = []
+            stack: List[Tuple[str, int]] = [(parent_fs, 0)]
+
+            while stack:
+                current_fs, depth = stack.pop()
+                if depth > max_depth:
+                    continue
+
+                try:
+                    for e in os.scandir(current_fs):
+                        if not e.is_dir(follow_symlinks=False):
+                            continue
+
+                        info = detect_step0_folders(e.name, current_fs)
+                        if info:
+                            if _folder_tree_has_valid_logs(info.path, max_depth=STEP0_LOGS_SEARCH_MAX_DEPTH):
+                                candidates.append((info.datetime_key, pretty_path(os.path.normpath(info.path))))
+                            continue
+
+                        if depth < max_depth:
+                            stack.append((e.path, depth + 1))
+                except Exception:
+                    continue
+
+            candidates.sort(key=lambda x: x[0])
+            return [p for _dt, p in candidates]
+
+        step0_map: Dict[str, List[str]] = {}
+        for parent in parent_folders:
+            step0_map[parent] = _find_valid_step0_folders_under(parent, max_depth=STEP0_SEARCH_MAX_DEPTH)
+        return step0_map
+
     def _match_pattern(text: str, pattern: str) -> bool:
         patt = (pattern or "").strip()
         if not patt:
@@ -313,6 +414,19 @@ def select_step0_subfolders(module_var, input_var, root, module_names: List[str]
         return f"[{base_name}] {rel}"
 
     def _pick_step0_subfolders_dialog(parent_root, items: List[Tuple[str, str]], default_pattern: str = "*Step0*") -> Optional[List[str]]:
+        def _center_window(win_obj) -> None:
+            try:
+                win_obj.update_idletasks()
+                w = win_obj.winfo_width()
+                h = win_obj.winfo_height()
+                sw = win_obj.winfo_screenwidth()
+                sh = win_obj.winfo_screenheight()
+                x = max(0, int((sw - w) / 2))
+                y = max(0, int((sh - h) / 2))
+                win_obj.geometry(f"{w}x{h}+{x}+{y}")
+            except Exception:
+                pass
+
         if tk is None or ttk is None:
             print("\n[Step0 Selector] Tkinter not available. Using CLI fallback.\n")
             for idx, (parent_folder, step0_folder) in enumerate(items, start=1):
@@ -334,21 +448,11 @@ def select_step0_subfolders(module_var, input_var, root, module_names: List[str]
         result: Dict[str, object] = {"selected": None}
 
         win = tk.Toplevel(parent_root)
-        win.title("Select Step0 folders to process")
+        win.title("Subfolders Selection: Select Step0 folders to process")
         win.geometry("1200x650")
         win.resizable(True, True)
 
-        try:
-            win.update_idletasks()
-            w = win.winfo_width()
-            h = win.winfo_height()
-            sw = win.winfo_screenwidth()
-            sh = win.winfo_screenheight()
-            x = max(0, int((sw - w) / 2))
-            y = max(0, int((sh - h) / 2))
-            win.geometry(f"{w}x{h}+{x}+{y}")
-        except Exception:
-            pass
+        _center_window(win)
 
         try:
             win.transient(parent_root)
@@ -404,7 +508,6 @@ def select_step0_subfolders(module_var, input_var, root, module_names: List[str]
         except Exception:
             pass
 
-
         vars_list: List[tk.IntVar] = []
         labels_list: List[str] = []
 
@@ -440,6 +543,10 @@ def select_step0_subfolders(module_var, input_var, root, module_names: List[str]
             result["selected"] = None
             win.destroy()
 
+        def _on_escape(_e=None):
+            on_cancel()
+            return "break"
+
         ttk.Button(footer, text="Select All", command=select_all).pack(side="left", padx=5)
         ttk.Button(footer, text="Select None", command=select_none).pack(side="left", padx=5)
         ttk.Button(footer, text="Select Filtered", command=select_filtered).pack(side="left", padx=5)
@@ -454,7 +561,7 @@ def select_step0_subfolders(module_var, input_var, root, module_names: List[str]
         except Exception:
             pass
 
-        win.bind("<Escape>", lambda _e: on_cancel())
+        win.bind("<Escape>", _on_escape)
         win.wait_window()
         return result["selected"]  # type: ignore
 
@@ -501,7 +608,6 @@ def select_step0_subfolders(module_var, input_var, root, module_names: List[str]
 
 
 # ============================ PUBLIC API (USED BY LAUNCHER) ================== #
-
 def browse_input_folders(module_var, input_var, root, module_names: List[str], add_mode: bool) -> None:
     """
     Native Tk folder picker (single selection).
@@ -510,6 +616,23 @@ def browse_input_folders(module_var, input_var, root, module_names: List[str], a
     """
     if filedialog is None:
         return
+
+    def _split_input_paths(raw: str) -> List[str]:
+        return [p.strip() for p in re.split(r"[;\n]+", raw or "") if p.strip()]
+
+    def _unique_preserve_order(paths: List[str]) -> List[str]:
+        seen = set()
+        out: List[str] = []
+        for p in paths:
+            if not p:
+                continue
+            p_clean = pretty_path(os.path.normpath(p))
+            k = p_clean.lower() if os.name == "nt" else p_clean
+            if k in seen:
+                continue
+            seen.add(k)
+            out.append(p_clean)
+        return out
 
     current = _unique_preserve_order(_split_input_paths(input_var.get() or ""))
     initial_dir = current[-1] if current else os.getcwd()
