@@ -339,6 +339,18 @@ def select_step0_subfolders(module_var, input_var, root, module_names: List[str]
         win.resizable(True, True)
 
         try:
+            win.update_idletasks()
+            w = win.winfo_width()
+            h = win.winfo_height()
+            sw = win.winfo_screenwidth()
+            sh = win.winfo_screenheight()
+            x = max(0, int((sw - w) / 2))
+            y = max(0, int((sh - h) / 2))
+            win.geometry(f"{w}x{h}+{x}+{y}")
+        except Exception:
+            pass
+
+        try:
             win.transient(parent_root)
             win.grab_set()
         except Exception:
@@ -356,8 +368,11 @@ def select_step0_subfolders(module_var, input_var, root, module_names: List[str]
 
         canvas = tk.Canvas(body, highlightthickness=0)
         vscroll = ttk.Scrollbar(body, orient="vertical", command=canvas.yview)
-        canvas.configure(yscrollcommand=vscroll.set)
+        xscroll = ttk.Scrollbar(body, orient="horizontal", command=canvas.xview)
+        canvas.configure(yscrollcommand=vscroll.set, xscrollcommand=xscroll.set)
+
         vscroll.pack(side="right", fill="y")
+        xscroll.pack(side="bottom", fill="x")
         canvas.pack(side="left", fill="both", expand=True)
 
         inner = ttk.Frame(canvas)
@@ -369,14 +384,26 @@ def select_step0_subfolders(module_var, input_var, root, module_names: List[str]
             except Exception:
                 pass
 
-        def _on_canvas_config(_e=None):
+        inner.bind("<Configure>", _on_inner_config)
+
+        def _on_mousewheel(_e):
             try:
-                canvas.itemconfigure(inner_id, width=canvas.winfo_width())
+                canvas.yview_scroll(int(-1 * (_e.delta / 120)), "units")
             except Exception:
                 pass
 
-        inner.bind("<Configure>", _on_inner_config)
-        canvas.bind("<Configure>", _on_canvas_config)
+        def _on_shift_mousewheel(_e):
+            try:
+                canvas.xview_scroll(int(-1 * (_e.delta / 120)), "units")
+            except Exception:
+                pass
+
+        try:
+            canvas.bind_all("<MouseWheel>", _on_mousewheel)
+            canvas.bind_all("<Shift-MouseWheel>", _on_shift_mousewheel)
+        except Exception:
+            pass
+
 
         vars_list: List[tk.IntVar] = []
         labels_list: List[str] = []
