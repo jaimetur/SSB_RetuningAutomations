@@ -728,14 +728,6 @@ def select_step0_subfolders(module_var, input_var, root, module_names: List[str]
         ca = _pick_newest(ca_candidates)
         cc = _pick_newest(cc_candidates)
 
-        # if ca and cc:
-        #     return f"CA: {ca} | CC: {cc}"
-        # if ca:
-        #     return ca
-        # if cc:
-        #     return cc
-        # return ""
-
         return f"CA: {ca} | CC: {cc}"
 
     sel_module = (module_var.get() or "").strip()
