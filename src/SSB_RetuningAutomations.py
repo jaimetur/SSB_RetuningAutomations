@@ -38,7 +38,8 @@ if str(_PROJECT_ROOT_DIR) not in sys.path:
 from src.utils.utils_datetime import format_duration_hms
 from src.utils.utils_dialog import tk, ttk, filedialog, messagebox, ask_reopen_launcher, ask_yes_no_dialog, ask_yes_no_dialog_custom, browse_input_folders, select_step0_subfolders, get_multi_step0_items, pick_checkboxes_dialog
 from src.utils.utils_infrastructure import LoggerDual, get_resource_path
-from src.utils.utils_io import load_cfg_values, save_cfg_values, log_module_exception, to_long_path, pretty_path, folder_or_zip_has_valid_logs, detect_pre_post_subfolders, write_compared_folders_file, ensure_logs_available, attach_output_log_mirror, materialize_step0_zip_runs_as_folders
+from src.utils.utils_io import load_cfg_values, save_cfg_values, log_module_exception, to_long_path, pretty_path, folder_or_zip_has_valid_logs, detect_pre_post_subfolders, write_compared_folders_file, ensure_logs_available, materialize_step0_zip_runs_as_folders
+from src.utils.utils_infrastructure import attach_output_log_mirror
 
 from src.utils.utils_parsing import normalize_csv_list, parse_arfcn_csv_to_set, infer_parent_timestamp_and_market
 
@@ -947,37 +948,6 @@ def run_configuration_audit(
     allowed_n77_ssb_post = parse_arfcn_csv_to_set(csv_text=allowed_n77_ssb_post_csv, default_values=default_n77_ssb_post_list, label="Allowed N77 SSB (Post)")
     allowed_n77_arfcn_post = parse_arfcn_csv_to_set(csv_text=allowed_n77_arfcn_post_csv, default_values=default_n77_post_list, label="Allowed N77 ARFCN (Post)")
 
-    # Print ConfigurationAudit Settings:
-    print(f"{module_name} [INFO] =============================")
-    print(f"{module_name} [INFO] Configuration Audit Settings:")
-    print(f"{module_name} [INFO] =============================")
-    print(f"{module_name} [INFO] Input base folder            = '{pretty_path(base_dir_fs)}'")
-    print(f"{module_name} [INFO] Old N77 SSB                  = {local_n77_ssb_pre}")
-    print(f"{module_name} [INFO] New N77 SSB                  = {local_n77_ssb_post}")
-    if local_n77b_ssb is not None:
-        print(f"{module_name} [INFO] N77B SSB                     = {local_n77b_ssb}")
-    else:
-        print(f"{module_name} [WARNING] N77B SSB not provided or invalid.")
-
-    print(f"{module_name} [INFO] Allowed N77 SSB set (Pre)    = {sorted(allowed_n77_ssb_pre)}")
-    print(f"{module_name} [INFO] Allowed N77 ARFCN set (Pre)  = {sorted(allowed_n77_arfcn_pre)}")
-    print(f"{module_name} [INFO] Allowed N77 SSB set (Post)   = {sorted(allowed_n77_ssb_post)}")
-    print(f"{module_name} [INFO] Allowed N77 ARFCN set (Post) = {sorted(allowed_n77_arfcn_post)}")
-
-    print(f"{module_name} [INFO] CA freq filters (CSV)        = {ca_freq_filters_csv if ca_freq_filters_csv else '<none>'}")
-    print(f"{module_name} [INFO] Freequency Audit enabled     = {bool(frequency_audit)}")
-    print(f"{module_name} [INFO] Profiles Audit enabled       = {bool(profiles_audit)}")
-    print(f"{module_name} [INFO] Export correction commands   = {bool(export_correction_cmd)} (Folder='Correction_Cmd_CA')")
-    print(f"{module_name} [INFO] Fast Excel export            = {bool(fast_excel_export)} (AutofitRows={fast_excel_autofit_rows}, MaxWidth={fast_excel_autofit_max_width})")
-
-    if versioned_suffix:
-        print(f"{module_name} [INFO] Output suffix override       = '{versioned_suffix}'")
-    if market_label:
-        print(f"{module_name} [INFO] Market label                 = '{market_label}'")
-    if external_output_dir:
-        print(f"{module_name} [INFO] External output dir override = '{pretty_path(external_output_dir)}'")
-    print(f"{module_name} [INFO] =============================")
-
     exec_timestamp = datetime.now().strftime("%Y%m%d_%H%M")
     folder_versioned_suffix = f"{exec_timestamp}_v{TOOL_VERSION}"
 
@@ -1055,8 +1025,10 @@ def run_configuration_audit(
         Run ConfigurationAudit for a single folder that is already known
         to contain valid logs.
         """
-        start_marker = f"{module_name} [INFO] === START ConfigurationAudit: '{pretty_path(folder)}' ==="
+        # Start marker for the log per batch in output folder
+        start_marker = f"{module_name} [INFO] === START ConfigurationAudit for: '{pretty_path(folder)}' ==="
         print(start_marker)
+
         print(f"{module_name} [INFO] Running Audit…")
         print(f"{module_name} [INFO] Input folder: '{pretty_path(folder)}'")
         if ca_freq_filters_csv:
@@ -1089,6 +1061,37 @@ def run_configuration_audit(
                         return existing_excel
 
                     print(f"{module_name} [INFO] Re-running Audit (user selected) despite existing: '{pretty_path(existing_excel)}'")
+
+        # Print ConfigurationAudit Settings:
+        print(f"{module_name} [INFO] =============================")
+        print(f"{module_name} [INFO] Configuration Audit Settings:")
+        print(f"{module_name} [INFO] =============================")
+        print(f"{module_name} [INFO] Input base folder            = '{pretty_path(base_dir_fs)}'")
+        print(f"{module_name} [INFO] Old N77 SSB                  = {local_n77_ssb_pre}")
+        print(f"{module_name} [INFO] New N77 SSB                  = {local_n77_ssb_post}")
+        if local_n77b_ssb is not None:
+            print(f"{module_name} [INFO] N77B SSB                     = {local_n77b_ssb}")
+        else:
+            print(f"{module_name} [WARNING] N77B SSB not provided or invalid.")
+
+        print(f"{module_name} [INFO] Allowed N77 SSB set (Pre)    = {sorted(allowed_n77_ssb_pre)}")
+        print(f"{module_name} [INFO] Allowed N77 ARFCN set (Pre)  = {sorted(allowed_n77_arfcn_pre)}")
+        print(f"{module_name} [INFO] Allowed N77 SSB set (Post)   = {sorted(allowed_n77_ssb_post)}")
+        print(f"{module_name} [INFO] Allowed N77 ARFCN set (Post) = {sorted(allowed_n77_arfcn_post)}")
+
+        print(f"{module_name} [INFO] CA freq filters (CSV)        = {ca_freq_filters_csv if ca_freq_filters_csv else '<none>'}")
+        print(f"{module_name} [INFO] Freequency Audit enabled     = {bool(frequency_audit)}")
+        print(f"{module_name} [INFO] Profiles Audit enabled       = {bool(profiles_audit)}")
+        print(f"{module_name} [INFO] Export correction commands   = {bool(export_correction_cmd)} (Folder='Correction_Cmd_CA')")
+        print(f"{module_name} [INFO] Fast Excel export            = {bool(fast_excel_export)} (AutofitRows={fast_excel_autofit_rows}, MaxWidth={fast_excel_autofit_max_width})")
+
+        if versioned_suffix:
+            print(f"{module_name} [INFO] Output suffix override       = '{versioned_suffix}'")
+        if market_label:
+            print(f"{module_name} [INFO] Market label                 = '{market_label}'")
+        if external_output_dir:
+            print(f"{module_name} [INFO] External output dir override = '{pretty_path(external_output_dir)}'")
+        print(f"{module_name} [INFO] =============================")
 
         # Use timestamp (and optional standardized market) from parent folder for FILE names only
         parent_ts, parent_market = infer_parent_timestamp_and_market(folder_fs)
@@ -1124,10 +1127,12 @@ def run_configuration_audit(
             folder_prefix = "ConfigurationAudit"  # keep output naming stable even when profiles_audit=True
             output_dir = os.path.join(folder_fs, f"{folder_prefix}_{folder_versioned_suffix}{suffix}")
 
-        os.makedirs(output_dir, exist_ok=True)
-        attach_output_log_mirror(output_dir, copy_existing_log=True, start_marker=start_marker)
-        print(f"{module_name} [INFO] Output folder: '{pretty_path(output_dir)}'")
-
+        # Attach log mirror early so the whole execution is captured into the per-output folder mirror file
+        try:
+            os.makedirs(output_dir, exist_ok=True)
+        except Exception:
+            pass
+        attach_output_log_mirror(output_dir, copy_existing_log=True, start_marker=start_marker, end_marker=None)
 
         # Progressive fallback in case the installed ConfigurationAudit has an older signature
         try:
@@ -1181,6 +1186,19 @@ def run_configuration_audit(
                         pass
                 except Exception:
                     pass
+
+            print(f"{module_name} [INFO] Output folder: '{pretty_path(output_dir)}'")
+
+            # End marker for the log per batch in putput folder
+            end_marker = f"{module_name} [INFO] === END ConfigurationAudit for: '{pretty_path(output_dir)}' ==="
+            print(end_marker)
+
+            # Stop mirroring after this execution to avoid leaking next batch execution lines into this mirror file
+            try:
+                if hasattr(sys.stdout, "clear_mirror_files") and callable(getattr(sys.stdout, "clear_mirror_files")):
+                    sys.stdout.clear_mirror_files()
+            except Exception:
+                pass
 
             return out
 
@@ -1524,7 +1542,12 @@ def run_consistency_checks(
         for market_label, (pre_dir, post_dir) in sorted(market_pairs.items()):
             # market_tag = f"[Market: {market_label}]" if market_label != "GLOBAL" else ""
             market_tag = f"[Market: {market_label}]"
-            print(f"\n{module_name} [INFO] Processing Market: {market_label}")
+
+            # Start marker for the log per batch in output folder
+            start_marker = f"{module_name} [INFO]  === START ConsistencyCheck for: : {market_label} ==="
+
+            print(f"{module_name} [INFO] Processing Market: {market_label}")
+            print(f"\n{start_marker}")
             print("=" * 80)
             print(f"{module_name} {market_tag} [INFO] Processing PRE/POST pair:")
             print(f"{module_name} {market_tag} [INFO] PRE folder:  '{pretty_path(pre_dir)}'")
@@ -1567,9 +1590,13 @@ def run_consistency_checks(
                     output_dir = os.path.join(post_dir_fs, f"ConsistencyChecks_{folder_versioned_suffix}_{market_label}")
                 else:
                     output_dir = os.path.join(post_dir_fs, f"ConsistencyChecks_{folder_versioned_suffix}")
-                os.makedirs(output_dir, exist_ok=True)
 
-                attach_output_log_mirror(output_dir, copy_existing_log=False)
+                # Attach log mirror early so the whole execution is captured into the per-output folder mirror file
+                try:
+                    os.makedirs(output_dir, exist_ok=True)
+                except Exception:
+                    pass
+                attach_output_log_mirror(output_dir, copy_existing_log=True, start_marker=start_marker, end_marker=None)
 
                 # NEW: write FoldersCompared.txt with the exact PRE/POST folders used
                 try:
@@ -1799,11 +1826,23 @@ def run_consistency_checks(
 
                 app.save_outputs_excel(output_dir=output_dir, results=results, versioned_suffix=file_versioned_suffix, module_name=module_name, market_tag=market_tag, fast_excel_export=fast_excel_export, fast_excel_autofit_rows=fast_excel_autofit_rows, fast_excel_autofit_max_width=fast_excel_autofit_max_width)
 
-                print(f"\n{module_name} {market_tag} [INFO] Outputs saved to: '{pretty_path(output_dir)}'")
                 if results:
                     print(f"{module_name} {market_tag} [INFO] Wrote CellRelation.xlsx and ConsistencyChecks_CellRelation.xlsx (with Summary and details).")
                 else:
                     print(f"{module_name} {market_tag} [INFO] Wrote CellRelation.xlsx (all tables). No comparison Excel because frequencies were not provided.")
+
+                print(f"{module_name} {market_tag} [INFO] Outputs saved to: '{pretty_path(output_dir)}'")
+
+                # End marker for the log per batch in putput folder
+                end_marker = f"{module_name} {market_tag} [INFO] === END ConsistencyCheck for: '{pretty_path(output_dir)}' ==="
+                print(f"\n{end_marker}")
+
+                # Stop mirroring after this execution to avoid leaking next batch execution lines into this mirror file
+                try:
+                    if hasattr(sys.stdout, "clear_mirror_files") and callable(getattr(sys.stdout, "clear_mirror_files")):
+                        sys.stdout.clear_mirror_files()
+                except Exception:
+                    pass
 
             finally:
                 pre_resolved.cleanup()
@@ -2167,6 +2206,7 @@ def execute_module(
             else:
                 total = len(input_list)
                 for idx, one_dir in enumerate(input_list, start=1):
+                    print(f"")
                     if total > 1:
                         print(f"[Configuration Audit] [INFO] ({idx}/{total}) Processing input folder: '{pretty_path(one_dir)}'")
 

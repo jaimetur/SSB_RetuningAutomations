@@ -244,7 +244,7 @@ SSB_RetuningAutomations.exe/bin --module <module-name> [options]
 --ca-freq-filters         Comma-separated list of frequency substrings to filter pivot columns in Configuration Audit module
 --cc-freq-filters         Comma-separated list of frequency substrings to filter relations in Consistency Check module
    
---frequency-audit        Enable/disable Frequency Audit (integrated into Configuration Audit). Default Value: Enabled (use --no-frequency-audit to disable it)
+--frequency-audit         Enable/disable Frequency Audit (integrated into Configuration Audit). Default Value: Enabled (use --no-frequency-audit to disable it)
    
 --profiles-audit          Enable/disable Profiles Audit (integrated into Configuration Audit). Default Value: Enabled (use --no-profiles-audit to disable it)
 

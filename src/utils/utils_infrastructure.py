@@ -1,11 +1,14 @@
 import os, sys
 import platform
 import zipfile
+from typing import Optional
+
 from colorama import Fore
 from datetime import datetime
 from pathlib import Path
 import re
 
+from utils.utils_io import to_long_path
 
 # TAG and TAGS Colored for messages output (in console and log)
 MSG_TAGS = {
@@ -292,4 +295,113 @@ class LoggerDual:
                 fh.close()
             except Exception:
                 pass
+
+
+def attach_output_log_mirror(output_dir: str, copy_existing_log: bool = True, start_marker: Optional[str] = None, end_marker: Optional[str] = None) -> None:
+    """
+    If sys.stdout is LoggerDual, mirror the current log file into the given output folder.
+
+    IMPORTANT:
+    - In batch mode we want ONE mirror per execution folder (not accumulating mirrors).
+    - Optionally copy current log content into the mirror (default True to keep old behavior).
+    - If start_marker is provided, we copy ONLY the log content from the last occurrence of that marker.
+      This is the safest way to get a full per-execution log in batch mode without including previous runs.
+    - If end_marker is provided, we also stop copying at the first occurrence of that end_marker AFTER the chosen start point.
+      This avoids leaking lines from the next execution when running batch logs in a single file.
+    """
+    try:
+        out_dir_fs = to_long_path(output_dir) if output_dir else output_dir
+        if not out_dir_fs:
+            return
+
+        logger_obj = sys.stdout
+        add_fn = getattr(logger_obj, "add_mirror_file", None)
+        clear_fn = getattr(logger_obj, "clear_mirror_files", None)
+        log_path = getattr(logger_obj, "log_path", "")
+        if not callable(add_fn) or not log_path:
+            return
+
+        base_name = os.path.basename(str(log_path))
+        if not base_name:
+            return
+
+        mirror_path = os.path.join(out_dir_fs, base_name)
+
+        try:
+            log_path_fs = to_long_path(str(log_path))
+        except Exception:
+            log_path_fs = str(log_path)
+
+        try:
+            mirror_path_fs = to_long_path(str(mirror_path))
+        except Exception:
+            mirror_path_fs = str(mirror_path)
+
+        # Avoid mirroring into itself
+        try:
+            if os.path.abspath(log_path_fs) == os.path.abspath(mirror_path_fs):
+                return
+        except Exception:
+            pass
+
+        # Ensure only one mirror is active (needed for batch mode per-folder logs)
+        try:
+            if callable(clear_fn):
+                clear_fn()
+        except Exception:
+            pass
+
+        # Ensure folder exists and decide whether to backfill the mirror
+        try:
+            os.makedirs(os.path.dirname(mirror_path_fs), exist_ok=True)
+        except Exception:
+            pass
+
+        if copy_existing_log:
+            try:
+                if os.path.isfile(log_path_fs):
+                    content = ""
+                    if start_marker or end_marker:
+                        try:
+                            start_token = str(start_marker) if start_marker else None
+                            end_token = str(end_marker) if end_marker else None
+
+                            with open(log_path_fs, "r", encoding="utf-8", errors="ignore") as src_fh:
+                                full = src_fh.read()
+
+                            start_idx = 0
+                            if start_token:
+                                idx = full.rfind(start_token)
+                                start_idx = idx if idx >= 0 else 0
+
+                            end_idx = len(full)
+                            if end_token:
+                                idx2 = full.find(end_token, start_idx)
+                                if idx2 >= 0:
+                                    end_idx = idx2 + len(end_token)
+
+                            content = full[start_idx:end_idx]
+                        except Exception:
+                            with open(log_path_fs, "r", encoding="utf-8", errors="ignore") as src_fh:
+                                content = src_fh.read()
+                    else:
+                        with open(log_path_fs, "r", encoding="utf-8", errors="ignore") as src_fh:
+                            content = src_fh.read()
+
+                    with open(mirror_path_fs, "w", encoding="utf-8") as dst_fh:
+                        dst_fh.write(content)
+                        dst_fh.write("\n")
+            except Exception:
+                pass
+        else:
+            # Start a clean per-execution mirror file
+            try:
+                with open(mirror_path_fs, "w", encoding="utf-8") as _dst_fh:
+                    _dst_fh.write("")
+            except Exception:
+                pass
+
+        add_fn(mirror_path_fs)
+    except Exception:
+        return
 
