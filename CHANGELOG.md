@@ -33,6 +33,7 @@
       - Correction_Cmd
     - Changed timestamp of output files for PRE in `ConsistencyCheck` module to match with the original folder. 
     - `CoonsistencyCheck` module, now ignore columns ["timeOfCreation", "mobilityStatusNR"] from Param Discrepancies checks.
+    - Improved Auto-detection of PRE/POST folder in `ConsistencyCheck (bulk)` mode, to supports several levels of subfolders.
     - Enhanced main launcher dialog layout.
 
   - #### 🐛 Bug fixes:

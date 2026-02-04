@@ -1500,7 +1500,39 @@ def run_consistency_checks(
         base_pre, base_post, detected_market_pairs = detect_pre_post_subfolders(base_dir_fs, BLACKLIST=BLACKLIST)
         market_pairs = detected_market_pairs or {}
 
+        # Fallback: if the selected root contains market folders (e.g. Clusters\MktXXX\...), try one level deeper
+        used_fallback = False
         if not base_pre or not base_post:
+            fallback_pairs: Dict[str, Tuple[str, str]] = {}
+            try:
+                for name in sorted(os.listdir(base_dir_fs)):
+                    child = os.path.join(base_dir_fs, name)
+                    if not os.path.isdir(child):
+                        continue
+                    name_low = name.lower()
+                    if any(tok in name_low for tok in BLACKLIST):
+                        continue
+
+                    c_pre, c_post, c_pairs = detect_pre_post_subfolders(child, BLACKLIST=BLACKLIST)
+                    if not c_pre or not c_post:
+                        continue
+
+                    if c_pairs:
+                        for mk, (p, q) in c_pairs.items():
+                            label = name if mk == "GLOBAL" else f"{name} - {mk}"
+                            fallback_pairs[label] = (p, q)
+                    else:
+                        fallback_pairs[name] = (c_pre, c_post)
+            except Exception:
+                fallback_pairs = {}
+
+            if fallback_pairs:
+                used_fallback = True
+                base_pre = None
+                base_post = None
+                market_pairs = fallback_pairs
+
+        if (not market_pairs) and (not base_pre or not base_post):
             msg_lines = [
                 "It was not possible to auto-detect a valid PRE/POST Step0 run",
                 "under the selected root folder:",
@@ -1518,14 +1550,17 @@ def run_consistency_checks(
             return None
 
         # If for some reason no markets were detected, use a single GLOBAL pair
-        if not market_pairs:
+        if not market_pairs and base_pre and base_post:
             market_pairs = {"GLOBAL": (base_pre, base_post)}
 
         # Build confirmation dialog listing all market pairs
         lines: List[str] = []
         lines.append("The following PRE/POST folders have been detected for Bulk Consistency Check:\n")
-        lines.append(f"  PRE  base run : {pretty_path(base_pre)} (auto-detected)")
-        lines.append(f"  POST base run : {pretty_path(base_post)} (auto-detected)")
+        if used_fallback:
+            lines.append(f"  Root folder : {pretty_path(base_dir_fs)} (one-level fallback scan)")
+        else:
+            lines.append(f"  PRE  base run : {pretty_path(base_pre)} (auto-detected)")
+            lines.append(f"  POST base run : {pretty_path(base_post)} (auto-detected)")
         lines.append("")
         lines.append("One Consistency Check will be executed per market:\n")
 
