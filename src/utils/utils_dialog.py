@@ -259,8 +259,20 @@ def pick_checkboxes_dialog(parent_root, items: List[Tuple[object, object]], titl
     is_root_dialog = parent_root is None
     win = tk.Tk() if is_root_dialog else tk.Toplevel(parent_root)
 
-    style = ttk.Style()
-    style.configure("Mono.TCheckbutton", font=("Consolas", 10))  # o "Courier New"
+    # Bind style to this window/root to avoid losing style/font on repeated calls (esp. after destroying Tk roots)
+    style = ttk.Style(win)
+    try:
+        mono_font = tkfont.Font(win, family="Consolas", size=10)  # root as first positional arg
+    except Exception:
+        mono_font = ("Consolas", 10)  # fallback (still works for ttk styles)
+
+    style.configure("Mono.TCheckbutton", font=mono_font)
+
+    # keep reference only if it's a Font object
+    try:
+        win._mono_font_ref = mono_font
+    except Exception:
+        pass
 
     win.title(title)
     win.geometry(geometry)
@@ -442,6 +454,16 @@ def get_multi_step0_items(module_var, input_var, module_names: List[str]) -> Lis
                 return []
 
             candidates: List[Tuple[object, str]] = []
+
+            # Fallback: accept the parent folder itself if it contains "Step0" and has valid logs or a ZIP with valid logs
+            try:
+                parent_base = os.path.basename(parent_fs.rstrip("\\/")) or parent_fs
+                if "step0" in parent_base.lower() and folder_or_zip_has_valid_logs(parent_fs):
+                    from datetime import datetime
+                    candidates.append((datetime(1970, 1, 1, 0, 0), pretty_path(os.path.normpath(parent_fs))))
+            except Exception:
+                pass
+
             stack: List[Tuple[str, int]] = [(parent_fs, 0)]
 
             while stack:
@@ -459,6 +481,17 @@ def get_multi_step0_items(module_var, input_var, module_names: List[str]) -> Lis
                             if _folder_tree_has_valid_logs(info.path, max_depth=STEP0_LOGS_SEARCH_MAX_DEPTH):
                                 candidates.append((info.datetime_key, pretty_path(os.path.normpath(info.path))))
                             continue
+
+                        # Fallback: accept any folder containing "Step0" (case-insensitive) if it contains valid logs or a ZIP with valid logs
+                        name_low = (e.name or "").lower()
+                        if "step0" in name_low and folder_or_zip_has_valid_logs(e.path):
+                            try:
+                                from datetime import datetime
+                                dt_key = datetime(1970, 1, 1, 0, 0)
+                                candidates.append((dt_key, pretty_path(os.path.normpath(e.path))))
+                                continue
+                            except Exception:
+                                pass
 
                         if depth < max_depth:
                             stack.append((e.path, depth + 1))
@@ -485,22 +518,29 @@ def get_multi_step0_items(module_var, input_var, module_names: List[str]) -> Lis
         p = pretty_path(os.path.normpath(path or ""))
         if not p:
             return False
+
         parent_dir = os.path.dirname(p.rstrip("\\/"))
         base_name = os.path.basename(p.rstrip("\\/"))
+
+        # Fallback: if the folder name contains "Step0", treat it as Step0 even if detect_step0_folders() doesn't match.
+        if "step0" in (base_name or "").lower():
+            return True
+
         try:
             return bool(detect_step0_folders(base_name, to_long_path(parent_dir) if parent_dir else parent_dir))
         except Exception:
             return False
 
-    scan_parents = current_paths
-    if len(current_paths) > 1 and any(_is_step0_folder_path(p) for p in current_paths):
-        common_candidates: List[str] = []
-        for p in current_paths:
-            common_candidates.append(os.path.dirname(p.rstrip("\\/")) if _is_step0_folder_path(p) else p)
-        try:
-            scan_parents = [pretty_path(os.path.normpath(os.path.commonpath(common_candidates)))]
-        except Exception:
-            scan_parents = _unique_preserve_order(common_candidates)
+    # Always scan once from the common root of all input paths (avoid per-market scans)
+    common_candidates: List[str] = []
+    for p in current_paths:
+        p_norm = pretty_path(os.path.normpath(p))
+        common_candidates.append(os.path.dirname(p_norm.rstrip("\\/")) if _is_step0_folder_path(p_norm) else p_norm)
+
+    try:
+        scan_parents = [pretty_path(os.path.normpath(os.path.commonpath(common_candidates)))]
+    except Exception:
+        scan_parents = _unique_preserve_order(common_candidates[:1] if common_candidates else [])
 
     step0_map = _build_step0_map(scan_parents)
 
@@ -582,6 +622,16 @@ def select_step0_subfolders(module_var, input_var, root, module_names: List[str]
                 return []
 
             candidates: List[Tuple[object, str]] = []
+
+            # Fallback: accept the parent folder itself if it contains "Step0" and has valid logs or a ZIP with valid logs
+            try:
+                parent_base = os.path.basename(parent_fs.rstrip("\\/")) or parent_fs
+                if "step0" in parent_base.lower() and folder_or_zip_has_valid_logs(parent_fs):
+                    from datetime import datetime
+                    candidates.append((datetime(1970, 1, 1, 0, 0), pretty_path(os.path.normpath(parent_fs))))
+            except Exception:
+                pass
+
             stack: List[Tuple[str, int]] = [(parent_fs, 0)]
 
             while stack:
@@ -599,6 +649,17 @@ def select_step0_subfolders(module_var, input_var, root, module_names: List[str]
                             if _folder_tree_has_valid_logs(info.path, max_depth=STEP0_LOGS_SEARCH_MAX_DEPTH):
                                 candidates.append((info.datetime_key, pretty_path(os.path.normpath(info.path))))
                             continue
+
+                        # Fallback: accept any folder containing "Step0" (case-insensitive) if it contains valid logs or a ZIP with valid logs
+                        name_low = (e.name or "").lower()
+                        if "step0" in name_low and folder_or_zip_has_valid_logs(e.path):
+                            try:
+                                from datetime import datetime
+                                dt_key = datetime(1970, 1, 1, 0, 0)
+                                candidates.append((dt_key, pretty_path(os.path.normpath(e.path))))
+                                continue
+                            except Exception:
+                                pass
 
                         if depth < max_depth:
                             stack.append((e.path, depth + 1))
@@ -651,8 +712,14 @@ def select_step0_subfolders(module_var, input_var, root, module_names: List[str]
         p = pretty_path(os.path.normpath(path or ""))
         if not p:
             return False
+
         parent_dir = os.path.dirname(p.rstrip("\\/"))
         base_name = os.path.basename(p.rstrip("\\/"))
+
+        # Fallback: if the folder name contains "Step0", treat it as Step0 even if detect_step0_folders() doesn't match.
+        if "step0" in (base_name or "").lower():
+            return True
+
         try:
             return bool(detect_step0_folders(base_name, to_long_path(parent_dir) if parent_dir else parent_dir))
         except Exception:
@@ -661,15 +728,16 @@ def select_step0_subfolders(module_var, input_var, root, module_names: List[str]
     existing_paths = current_paths
     existing_keys = set(_path_key(p) for p in existing_paths)
 
-    scan_parents = existing_paths
-    if len(existing_paths) > 1 and any(_is_step0_folder_path(p) for p in existing_paths):
-        common_candidates: List[str] = []
-        for p in existing_paths:
-            common_candidates.append(os.path.dirname(p.rstrip("\\/")) if _is_step0_folder_path(p) else p)
-        try:
-            scan_parents = [pretty_path(os.path.normpath(os.path.commonpath(common_candidates)))]
-        except Exception:
-            scan_parents = _unique_preserve_order(common_candidates)
+    # Always scan once from the common root of all input paths (avoid per-market scans)
+    common_candidates: List[str] = []
+    for p in existing_paths:
+        p_norm = pretty_path(os.path.normpath(p))
+        common_candidates.append(os.path.dirname(p_norm.rstrip("\\/")) if _is_step0_folder_path(p_norm) else p_norm)
+
+    try:
+        scan_parents = [pretty_path(os.path.normpath(os.path.commonpath(common_candidates)))]
+    except Exception:
+        scan_parents = _unique_preserve_order(common_candidates[:1] if common_candidates else [])
 
     step0_map = _build_step0_map(scan_parents)
 
@@ -711,7 +779,7 @@ def select_step0_subfolders(module_var, input_var, root, module_names: List[str]
         step0_base = os.path.basename(step0.rstrip("\\/")) or step0
 
         # Adjust Width
-        PARENT_W = 10
+        PARENT_W = 30
         STEP0_PARENT_W = 30
 
         pad1 = max(0, PARENT_W - len(parent_base))
