@@ -396,8 +396,8 @@ def gui_config_dialog(
 
     def _refresh_add_other_state():
         sel = module_var.get()
-        # Solo módulos 1, 3 y 4
-        multi_modules = (MODULE_NAMES[1], MODULE_NAMES[3], MODULE_NAMES[4])
+        # Only module 1 and 4
+        multi_modules = (MODULE_NAMES[1], MODULE_NAMES[4])
 
         # Habilitar solo si ya hay al menos una carpeta seleccionada
         raw_paths = [p.strip() for p in re.split(r"[;\n]+", input_var.get() or "") if p.strip()]
@@ -679,6 +679,7 @@ def gui_config_dialog(
         normalized_allowed_n77_ssb_post = normalize_csv_list(allowed_n77_ssb_post_var.get())
         normalized_allowed_n77_arfcn_post = normalize_csv_list(allowed_n77_arfcn_post_var.get())
 
+        # ConsistencyCheck module
         if is_consistency_module(sel_module):
             sel_input_pre = input_pre_var.get().strip()
             sel_input_post = input_post_var.get().strip()
@@ -708,11 +709,15 @@ def gui_config_dialog(
                 export_correction_cmd=bool(export_correction_cmd_var.get()),
                 fast_excel_export=bool(fast_excel_export_var.get()),
             )
+
+        # Other modules except ConsistencyCheck
         else:
-            step0_ret = select_step0_subfolders(module_var, input_var, root, MODULE_NAMES, TOOL_VERSION)
-            if step0_ret is None:
-                return
-            _refresh_add_other_state()
+            raw_paths = [p.strip() for p in re.split(r"[;\n]+", input_var.get() or "") if p.strip()]
+            if len(raw_paths) > 1:
+                step0_ret = select_step0_subfolders(module_var, input_var, root, MODULE_NAMES, TOOL_VERSION)
+                if step0_ret is None:
+                    return
+                _refresh_add_other_state()
 
             sel_input = input_var.get().strip()
             if not sel_input:
@@ -1297,6 +1302,7 @@ def run_consistency_checks(
     allowed_n77_arfcn_pre_csv: Optional[str] = None,
     allowed_n77_ssb_post_csv: Optional[str] = None,
     allowed_n77_arfcn_post_csv: Optional[str] = None,
+    frequency_audit: bool = True,
     profiles_audit: bool = True,
     export_correction_cmd_post: bool = True,
     fast_excel_export: bool = False,
@@ -1751,7 +1757,7 @@ def run_consistency_checks(
                     pre_audit_excel = run_configuration_audit(input_dir=pre_dir_process_fs, ca_freq_filters_csv=ca_freq_filters_csv, n77_ssb_pre=n77_ssb_pre, n77_ssb_post=n77_ssb_post, n77b_ssb=n77b_ssb,
                                                               allowed_n77_ssb_pre_csv=allowed_n77_ssb_pre_csv, allowed_n77_arfcn_pre_csv=allowed_n77_arfcn_pre_csv, allowed_n77_ssb_post_csv=allowed_n77_ssb_post_csv,
                                                               allowed_n77_arfcn_post_csv=allowed_n77_arfcn_post_csv, versioned_suffix=audit_pre_suffix, market_label=market_label, external_output_dir=output_dir,
-                                                              profiles_audit=profiles_audit, export_correction_cmd=False, fast_excel_export=fast_excel_export, fast_excel_autofit_rows=fast_excel_autofit_rows, fast_excel_autofit_max_width=fast_excel_autofit_max_width)
+                                                              frequency_audit=frequency_audit, profiles_audit=profiles_audit, export_correction_cmd=False, fast_excel_export=fast_excel_export, fast_excel_autofit_rows=fast_excel_autofit_rows, fast_excel_autofit_max_width=fast_excel_autofit_max_width)
 
                 if pre_audit_excel:
                     print(f"{module_name} {market_tag} [INFO] PRE Configuration Audit output: '{pretty_path(pre_audit_excel)}'")
@@ -1771,7 +1777,7 @@ def run_consistency_checks(
                     post_audit_excel = run_configuration_audit(input_dir=post_dir_process_fs, ca_freq_filters_csv=ca_freq_filters_csv, n77_ssb_pre=n77_ssb_pre, n77_ssb_post=n77_ssb_post, n77b_ssb=n77b_ssb,
                                                                allowed_n77_ssb_pre_csv=allowed_n77_ssb_pre_csv, allowed_n77_arfcn_pre_csv=allowed_n77_arfcn_pre_csv, allowed_n77_ssb_post_csv=allowed_n77_ssb_post_csv,
                                                                allowed_n77_arfcn_post_csv=allowed_n77_arfcn_post_csv, versioned_suffix=audit_post_suffix, market_label=market_label, external_output_dir=output_dir,
-                                                               profiles_audit=profiles_audit, export_correction_cmd=export_correction_cmd_post, fast_excel_export=fast_excel_export, fast_excel_autofit_rows=fast_excel_autofit_rows, fast_excel_autofit_max_width=fast_excel_autofit_max_width)
+                                                               frequency_audit=frequency_audit, profiles_audit=profiles_audit, export_correction_cmd=export_correction_cmd_post, fast_excel_export=fast_excel_export, fast_excel_autofit_rows=fast_excel_autofit_rows, fast_excel_autofit_max_width=fast_excel_autofit_max_width)
 
                 if post_audit_excel:
                     print(f"{module_name} {market_tag} [INFO] POST Configuration Audit output: '{pretty_path(post_audit_excel)}'")
@@ -1854,39 +1860,6 @@ def run_consistency_checks(
 
     main_logic(market_pairs)
 
-
-# NOTE: Module 4 (Profiles Audit) removed from GUI/CLI.
-# def run_profiles_audit(
-#     input_dir: str,
-#     ca_freq_filters_csv: str = "",
-#     n77_ssb_pre: Optional[str] = None,
-#     n77_ssb_post: Optional[str] = None,
-#     n77b_ssb: Optional[str] = None,
-#     allowed_n77_ssb_pre_csv: Optional[str] = None,
-#     allowed_n77_arfcn_pre_csv: Optional[str] = None,
-#     allowed_n77_ssb_post_csv: Optional[str] = None,
-#     allowed_n77_arfcn_post_csv: Optional[str] = None,
-# ) -> Optional[str]:
-#     """
-#     Profiles Audit = Configuration Audit with profiles_audit=True
-#     and module_name='[Profiles Audit]'.
-#     """
-#
-#     module_name = "[Profiles Audit]"
-#
-#     return run_configuration_audit(
-#         input_dir=input_dir,
-#         ca_freq_filters_csv=ca_freq_filters_csv,
-#         n77_ssb_pre=n77_ssb_pre,
-#         n77_ssb_post=n77_ssb_post,
-#         n77b_ssb=n77b_ssb,
-#         allowed_n77_ssb_pre_csv=allowed_n77_ssb_pre_csv,
-#         allowed_n77_arfcn_pre_csv=allowed_n77_arfcn_pre_csv,
-#         allowed_n77_ssb_post_csv=allowed_n77_ssb_post_csv,
-#         allowed_n77_arfcn_post_csv=allowed_n77_arfcn_post_csv,
-#         profiles_audit=True,                   # <<< KEY
-#         module_name_override=module_name,      # <<< KEY
-#     )
 
 
 def run_final_cleanup(input_dir: str, *_args) -> None:

@@ -322,6 +322,40 @@ def pick_checkboxes_dialog(parent_root, items: List[Tuple[object, object]], titl
 
     inner.bind("<Configure>", _on_inner_config)
 
+    # Enable mouse wheel scrolling on the canvas (Windows/macOS: <MouseWheel>, Linux: <Button-4>/<Button-5>)
+    def _on_mousewheel(_e=None):
+        try:
+            if _e is None:
+                return
+            if getattr(_e, "delta", 0):
+                canvas.yview_scroll(int(-1 * (_e.delta / 120)), "units")
+            elif getattr(_e, "num", None) == 4:
+                canvas.yview_scroll(-1, "units")
+            elif getattr(_e, "num", None) == 5:
+                canvas.yview_scroll(1, "units")
+        except Exception:
+            pass
+
+    def _on_shift_mousewheel(_e=None):
+        try:
+            if _e is None:
+                return
+            if getattr(_e, "delta", 0):
+                canvas.xview_scroll(int(-1 * (_e.delta / 120)), "units")
+            elif getattr(_e, "num", None) == 4:
+                canvas.xview_scroll(-1, "units")
+            elif getattr(_e, "num", None) == 5:
+                canvas.xview_scroll(1, "units")
+        except Exception:
+            pass
+
+    win.bind("<MouseWheel>", _on_mousewheel)
+    win.bind("<Shift-MouseWheel>", _on_shift_mousewheel)
+    win.bind("<Button-4>", _on_mousewheel)
+    win.bind("<Button-5>", _on_mousewheel)
+    win.bind("<Shift-Button-4>", _on_shift_mousewheel)
+    win.bind("<Shift-Button-5>", _on_shift_mousewheel)
+
     vars_list: List[tk.IntVar] = []
     labels_list: List[str] = []
 
@@ -792,12 +826,18 @@ def select_step0_subfolders(module_var, input_var, root, module_names: List[str]
         parent_base = os.path.basename(parent.rstrip("\\/")) or parent
 
         step0_parent = os.path.dirname(step0.rstrip("\\/"))
-        step0_parent_base = os.path.basename(step0_parent.rstrip("\\/")) or step0_parent
+        try:
+            step0_parent_rel = pretty_path(os.path.normpath(os.path.relpath(step0_parent, parent)))
+        except Exception:
+            step0_parent_rel = os.path.basename(step0_parent.rstrip("\\/")) or step0_parent
+
+        if step0_parent_rel in (".", ""):
+            step0_parent_rel = "."
 
         step0_base = os.path.basename(step0.rstrip("\\/")) or step0
 
         k1 = parent_base.lower() if os.name == "nt" else parent_base
-        k2 = step0_parent_base.lower() if os.name == "nt" else step0_parent_base
+        k2 = step0_parent_rel.lower() if os.name == "nt" else step0_parent_rel
         k3 = step0_base.lower() if os.name == "nt" else step0_base
         return (k1, k2, k3)
 
@@ -808,22 +848,29 @@ def select_step0_subfolders(module_var, input_var, root, module_names: List[str]
         parent_base = os.path.basename(parent.rstrip("\\/")) or parent
 
         step0_parent = os.path.dirname(step0.rstrip("\\/"))
-        step0_parent_base = os.path.basename(step0_parent.rstrip("\\/")) or step0_parent
+        try:
+            # Show the full relative path from the selected root folder (1st column) to the Step0 parent folder (2nd column)
+            step0_parent_rel = pretty_path(os.path.normpath(os.path.relpath(step0_parent, parent)))
+        except Exception:
+            step0_parent_rel = os.path.basename(step0_parent.rstrip("\\/")) or step0_parent
+
+        if step0_parent_rel in (".", ""):
+            step0_parent_rel = "."
 
         step0_base = os.path.basename(step0.rstrip("\\/")) or step0
 
         version_tag = f"v{tool_version}".strip()
         audit_info = _find_existing_audit_info(step0, version_tag)
 
-        PARENT_W = 10
-        STEP0_PARENT_W = 30
+        PARENT_W = 15
+        STEP0_PARENT_W = 50
         STEP0_W = 50
 
         pad1 = max(0, PARENT_W - len(parent_base))
-        pad2 = max(0, STEP0_PARENT_W - len(step0_parent_base))
+        pad2 = max(0, STEP0_PARENT_W - len(step0_parent_rel))
         pad3 = max(0, STEP0_W - len(step0_base))
 
-        return f"[{parent_base}]{' ' * pad1}  [{step0_parent_base}]{' ' * pad2} --> {step0_base}{' ' * pad3}  {audit_info}"
+        return f"[{parent_base}]{' ' * pad1}  [{step0_parent_rel}]{' ' * pad2} --> {step0_base}{' ' * pad3}  {audit_info}"
 
     selectable_items = sorted(selectable_items, key=_step0_item_sort_key)
 
@@ -835,7 +882,7 @@ def select_step0_subfolders(module_var, input_var, root, module_names: List[str]
         default_pattern="*Step0*",
         default_checked=0,
         label_fn=_format_step0_item_label,
-        geometry="1400x650",
+        geometry="1600x650",
         value_fn=lambda it: it[1],
         checked_fn=lambda it: (_path_key(it[1]) in existing_keys),
     )

@@ -222,9 +222,39 @@ def detect_pre_post_subfolders(base_folder: str, BLACKLIST: tuple) -> Tuple[Opti
         name_low = entry.name.lower()
         if any(tok in name_low for tok in BLACKLIST):
             continue
+
         step0_folder_parsed = detect_step0_folders(entry.name, base_folder)
         if step0_folder_parsed:
             runs.append(step0_folder_parsed)
+            continue
+
+        # Fallback: accept folders that contain "Step0" even if the name doesn't match the strict yyyymmdd_<time> pattern,
+        # as long as they contain valid logs (plain or inside ZIP files).
+        if "step0" not in name_low:
+            continue
+        if not folder_or_zip_has_valid_logs(entry.path):
+            continue
+
+        try:
+            # Use folder mtime as ordering key. If the folder name contains YYYYMMDD, use that date and mtime for the time part.
+            m = re.match(r"^(?P<date>\d{8})", entry.name, flags=re.IGNORECASE)
+
+            try:
+                mtime_dt = datetime.fromtimestamp(os.path.getmtime(entry.path))
+            except Exception:
+                mtime_dt = datetime.now()
+
+            if m:
+                date_str = m.group("date")
+                dt = datetime(year=int(date_str[:4]), month=int(date_str[4:6]), day=int(date_str[6:8]), hour=mtime_dt.hour, minute=mtime_dt.minute, second=mtime_dt.second)
+            else:
+                dt = mtime_dt
+                date_str = dt.strftime("%Y%m%d")
+
+            time_hhmm = f"{dt.hour:02d}{dt.minute:02d}"
+            runs.append(Step0RunInfo(name=entry.name, path=entry.path, date=date_str, time_hhmm=time_hhmm, datetime_key=dt))
+        except Exception:
+            continue
 
     if len(runs) < 2:
         return None, None, {}

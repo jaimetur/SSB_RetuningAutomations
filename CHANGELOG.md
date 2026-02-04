@@ -12,8 +12,8 @@
   - #### 🚨 Breaking Changes:
 
   - #### 🌟 New Features:
-    - Now `ConfigurationAudit`, `ConsistencyCheck (bulk)` and `Final Clean-up` modules supports multiple Input folders from GUI (using Add button or selecting several subfolders within the same folder) and also from CLI (using `--inputs` argument instead of `--input`) to process all of them in batch mode.
-    - Now `ConfigurationAudit`, `ConsistencyCheck (bulk)` and `Final Clean-up` modules supports multi-select valid `Step0` subfolders.
+    - Now `ConfigurationAudit` and `Final Clean-up` modules supports multiple Input folders from GUI (using Add button or selecting several subfolders within the same folder) and also from CLI (using `--inputs` argument instead of `--input`) to process all of them in batch mode.
+    - Now `ConfigurationAudit` and `Final Clean-up` modules supports multi-select valid `Step0` subfolders.
     - `NRCellDU` now updates `ssbFrequency` column when the value is 0 and `ssbFrequencyAutoSelected` is not 0. 
     - New Flag on GUI (NR/LTE Frequency Audits" and CLI (`--frequency-audit`) to Include/Exclude `NRFrequency` and `GUtranSyncSignalFrequency` Categories on SummaryAudit and PPT.
     - Included a new Selectable dialog to select wich folders do you want to re-Run `ConfigurationAudit` module when a previous Audit (with the same version) have been found (This new dialog only appears in batch mode).
@@ -39,6 +39,8 @@
     - Fix bug in `ConsistencyCheck` module where the SSB-Unknown mask was not being applied to `Summary_CellRelation` sheet so the stats show in this table did not match with the real discrepancies shown in `_disc` table. 
     - Fix bug in `ConsistencyCheck` module where the Freq_Pre/Freq_Post was not being properly extracted when the SSB freq was something like `autoXXXXX_YYY` in `Summary_CellRelation` sheet.
     - Other fixes in `ConsistencyCheck` module to align stats of Summary table with real discrepancies (filtered by SSB-Post in other tables).
+    - Fix bug on when using Multi-subfolder selection on `ConsistencyCheck (bulk)` module. It has no sense to use this feature for this module. Disabled.
+    - Fix auto-detect Step0 folder to detect folders with `Step0` in the folder name and valid logs files inside (in .txt/.log/.zip formats).
     - Minor bug fixing.
     
   - #### 📚 Documentation: 
