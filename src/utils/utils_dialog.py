@@ -12,6 +12,7 @@ from src.utils.utils_io import to_long_path, pretty_path, detect_step0_folders, 
 # ============================ OPTIONAL TKINTER UI =========================== #
 try:
     import tkinter as tk
+    import tkinter.font as tkfont
     from tkinter import ttk, filedialog, messagebox
 except Exception:
     tk = None
@@ -169,6 +170,206 @@ def ask_yes_no_dialog_custom(title: str, message: str, default: bool = True) -> 
 
     except Exception:
         return _cli_fallback()
+
+
+# ============================ MULTI-SELECTION HELPERS ================== #
+def pick_checkboxes_dialog(parent_root, items: List[Tuple[object, object]], title: str, header_hint: str, default_pattern: str, default_checked: int, label_fn, value_fn, geometry: str = "1200x650") -> Optional[List[str]]:
+    """
+    Generic multi-select dialog:
+    - Filter pattern
+    - Select All / None / Filtered
+    - Apply / Cancel
+    - Vertical + horizontal scroll
+    - CLI fallback if Tk is not available
+
+    Returns:
+      - List[str] selected values
+      - [] if user applied with none selected
+      - None if user cancelled
+    """
+    def _unique_preserve_order(paths: List[str]) -> List[str]:
+        seen = set()
+        out: List[str] = []
+        for p in paths:
+            if not p:
+                continue
+            p_clean = pretty_path(os.path.normpath(str(p)))
+            k = p_clean.lower() if os.name == "nt" else p_clean
+            if k in seen:
+                continue
+            seen.add(k)
+            out.append(p_clean)
+        return out
+
+    def _match_pattern(text: str, pattern: str) -> bool:
+        patt = (pattern or "").strip()
+        if not patt:
+            return True
+        t = text.lower() if os.name == "nt" else text
+        p = patt.lower() if os.name == "nt" else patt
+        return fnmatch.fnmatch(t, p)
+
+    def _center_window(win_obj) -> None:
+        try:
+            win_obj.update_idletasks()
+            w = win_obj.winfo_width()
+            h = win_obj.winfo_height()
+            sw = win_obj.winfo_screenwidth()
+            sh = win_obj.winfo_screenheight()
+            x = max(0, int((sw - w) / 2))
+            y = max(0, int((sh - h) / 2))
+            win_obj.geometry(f"{w}x{h}+{x}+{y}")
+        except Exception:
+            pass
+
+    def _bring_to_front(win_obj) -> None:
+        try:
+            win_obj.update_idletasks()
+            win_obj.deiconify()
+            win_obj.lift()
+            try:
+                win_obj.attributes("-topmost", True)
+                win_obj.after(200, lambda: win_obj.attributes("-topmost", False))
+            except Exception:
+                pass
+            win_obj.focus_force()
+        except Exception:
+            pass
+
+    if tk is None or ttk is None:
+        print(f"\n[{title}] Tkinter not available. Using CLI fallback.\n")
+        for idx, it in enumerate(items, start=1):
+            print(f"{idx:3d}) {label_fn(it)}")
+        print("\nType comma-separated indexes to select (e.g. 1,3,5), or press Enter to cancel.")
+        ans = input("Selection: ").strip()
+        if not ans:
+            return None
+        selected: List[str] = []
+        for part in ans.split(","):
+            part = part.strip()
+            if not part.isdigit():
+                continue
+            i = int(part)
+            if 1 <= i <= len(items):
+                selected.append(str(value_fn(items[i - 1])))
+        return _unique_preserve_order(selected)
+
+    # IMPORTANT: When parent_root is None, create a dedicated Tk root and run mainloop.
+    # This avoids the "flash and close instantly" behavior seen on some Windows/Tk setups.
+    is_root_dialog = parent_root is None
+    win = tk.Tk() if is_root_dialog else tk.Toplevel(parent_root)
+
+    style = ttk.Style()
+    style.configure("Mono.TCheckbutton", font=("Consolas", 10))  # o "Courier New"
+
+    win.title(title)
+    win.geometry(geometry)
+    win.resizable(True, True)
+
+    _center_window(win)
+    win.after(0, lambda: _bring_to_front(win))
+
+    try:
+        if not is_root_dialog and parent_root is not None:
+            win.transient(parent_root)
+        win.grab_set()
+    except Exception:
+        pass
+
+    result: Dict[str, object] = {"selected": None}
+
+    header = ttk.Frame(win, padding=10)
+    header.pack(fill="x")
+
+    ttk.Label(header, text="Filter pattern:").pack(side="left")
+    filter_var = tk.StringVar(value=default_pattern)
+    ttk.Entry(header, textvariable=filter_var, width=40).pack(side="left", padx=8)
+    if header_hint:
+        ttk.Label(header, text=header_hint).pack(side="left", padx=12)
+
+    body = ttk.Frame(win, padding=10)
+    body.pack(fill="both", expand=True)
+
+    canvas = tk.Canvas(body, highlightthickness=0)
+    vscroll = ttk.Scrollbar(body, orient="vertical", command=canvas.yview)
+    xscroll = ttk.Scrollbar(body, orient="horizontal", command=canvas.xview)
+    canvas.configure(yscrollcommand=vscroll.set, xscrollcommand=xscroll.set)
+
+    vscroll.pack(side="right", fill="y")
+    xscroll.pack(side="bottom", fill="x")
+    canvas.pack(side="left", fill="both", expand=True)
+
+    inner = ttk.Frame(canvas)
+    canvas.create_window((0, 0), window=inner, anchor="nw")
+
+    def _on_inner_config(_e=None):
+        try:
+            canvas.configure(scrollregion=canvas.bbox("all"))
+        except Exception:
+            pass
+
+    inner.bind("<Configure>", _on_inner_config)
+
+    vars_list: List[tk.IntVar] = []
+    labels_list: List[str] = []
+
+    for idx, it in enumerate(items):
+        label = str(label_fn(it))
+        var = tk.IntVar(value=int(default_checked))
+        ttk.Checkbutton(inner, text=label, variable=var, style="Mono.TCheckbutton").grid(row=idx, column=0, sticky="w", pady=2)
+        vars_list.append(var)
+        labels_list.append(label)
+
+    footer = ttk.Frame(win, padding=10)
+    footer.pack(fill="x")
+
+    def select_all():
+        for v in vars_list:
+            v.set(1)
+
+    def select_none():
+        for v in vars_list:
+            v.set(0)
+
+    def select_filtered():
+        patt = filter_var.get().strip()
+        for v, label in zip(vars_list, labels_list):
+            v.set(1 if _match_pattern(label, patt) else 0)
+
+    def on_apply():
+        selected_values = [str(value_fn(items[i])) for i, v in enumerate(vars_list) if int(v.get()) == 1]
+        result["selected"] = _unique_preserve_order(selected_values)
+        try:
+            win.destroy()
+        except Exception:
+            pass
+
+    def on_cancel():
+        result["selected"] = None
+        try:
+            win.destroy()
+        except Exception:
+            pass
+
+    def _on_escape(_e=None):
+        on_cancel()
+        return "break"
+
+    ttk.Button(footer, text="Select All", command=select_all).pack(side="left", padx=5)
+    ttk.Button(footer, text="Select None", command=select_none).pack(side="left", padx=5)
+    ttk.Button(footer, text="Select Filtered", command=select_filtered).pack(side="left", padx=5)
+    ttk.Button(footer, text="Cancel", command=on_cancel).pack(side="right", padx=5)
+    ttk.Button(footer, text="Apply", command=on_apply).pack(side="right", padx=5)
+
+    win.protocol("WM_DELETE_WINDOW", on_cancel)
+    win.bind("<Escape>", _on_escape)
+
+    if is_root_dialog:
+        win.mainloop()
+    else:
+        win.wait_window()
+
+    return result["selected"]  # type: ignore
 
 
 # ============================ STEP0 MULTI-SELECTION HELPERS ================== #
@@ -413,157 +614,6 @@ def select_step0_subfolders(module_var, input_var, root, module_names: List[str]
 
         return f"[{base_name}] {rel}"
 
-    def _pick_step0_subfolders_dialog(parent_root, items: List[Tuple[str, str]], default_pattern: str = "*Step0*") -> Optional[List[str]]:
-        def _center_window(win_obj) -> None:
-            try:
-                win_obj.update_idletasks()
-                w = win_obj.winfo_width()
-                h = win_obj.winfo_height()
-                sw = win_obj.winfo_screenwidth()
-                sh = win_obj.winfo_screenheight()
-                x = max(0, int((sw - w) / 2))
-                y = max(0, int((sh - h) / 2))
-                win_obj.geometry(f"{w}x{h}+{x}+{y}")
-            except Exception:
-                pass
-
-        if tk is None or ttk is None:
-            print("\n[Step0 Selector] Tkinter not available. Using CLI fallback.\n")
-            for idx, (parent_folder, step0_folder) in enumerate(items, start=1):
-                print(f"{idx:3d}) {_format_step0_item_label(parent_folder, step0_folder)}")
-            print("\nType comma-separated indexes to select (e.g. 1,3,5), or press Enter to cancel.")
-            ans = input("Selection: ").strip()
-            if not ans:
-                return None
-            selected: List[str] = []
-            for part in ans.split(","):
-                part = part.strip()
-                if not part.isdigit():
-                    continue
-                i = int(part)
-                if 1 <= i <= len(items):
-                    selected.append(items[i - 1][1])
-            return _unique_preserve_order(selected)
-
-        result: Dict[str, object] = {"selected": None}
-
-        win = tk.Toplevel(parent_root)
-        win.title("Subfolders Selection: Select Step0 folders to process")
-        win.geometry("1200x650")
-        win.resizable(True, True)
-
-        _center_window(win)
-
-        try:
-            win.transient(parent_root)
-            win.grab_set()
-        except Exception:
-            pass
-
-        header = ttk.Frame(win, padding=10)
-        header.pack(fill="x")
-
-        ttk.Label(header, text="Filter pattern:").pack(side="left")
-        filter_var = tk.StringVar(value=default_pattern)
-        ttk.Entry(header, textvariable=filter_var, width=40).pack(side="left", padx=8)
-
-        body = ttk.Frame(win, padding=10)
-        body.pack(fill="both", expand=True)
-
-        canvas = tk.Canvas(body, highlightthickness=0)
-        vscroll = ttk.Scrollbar(body, orient="vertical", command=canvas.yview)
-        xscroll = ttk.Scrollbar(body, orient="horizontal", command=canvas.xview)
-        canvas.configure(yscrollcommand=vscroll.set, xscrollcommand=xscroll.set)
-
-        vscroll.pack(side="right", fill="y")
-        xscroll.pack(side="bottom", fill="x")
-        canvas.pack(side="left", fill="both", expand=True)
-
-        inner = ttk.Frame(canvas)
-        inner_id = canvas.create_window((0, 0), window=inner, anchor="nw")
-
-        def _on_inner_config(_e=None):
-            try:
-                canvas.configure(scrollregion=canvas.bbox("all"))
-            except Exception:
-                pass
-
-        inner.bind("<Configure>", _on_inner_config)
-
-        def _on_mousewheel(_e):
-            try:
-                canvas.yview_scroll(int(-1 * (_e.delta / 120)), "units")
-            except Exception:
-                pass
-
-        def _on_shift_mousewheel(_e):
-            try:
-                canvas.xview_scroll(int(-1 * (_e.delta / 120)), "units")
-            except Exception:
-                pass
-
-        try:
-            canvas.bind_all("<MouseWheel>", _on_mousewheel)
-            canvas.bind_all("<Shift-MouseWheel>", _on_shift_mousewheel)
-        except Exception:
-            pass
-
-        vars_list: List[tk.IntVar] = []
-        labels_list: List[str] = []
-
-        for idx, (parent_folder, step0_folder) in enumerate(items):
-            label = _format_step0_item_label(parent_folder, step0_folder)
-            var = tk.IntVar(value=1)
-            ttk.Checkbutton(inner, text=label, variable=var).grid(row=idx, column=0, sticky="w", pady=2)
-            vars_list.append(var)
-            labels_list.append(label)
-
-        footer = ttk.Frame(win, padding=10)
-        footer.pack(fill="x")
-
-        def select_all():
-            for v in vars_list:
-                v.set(1)
-
-        def select_none():
-            for v in vars_list:
-                v.set(0)
-
-        def select_filtered():
-            patt = filter_var.get().strip()
-            for v, label in zip(vars_list, labels_list):
-                v.set(1 if _match_pattern(label, patt) else 0)
-
-        def on_apply():
-            selected = [items[i][1] for i, v in enumerate(vars_list) if int(v.get()) == 1]
-            result["selected"] = _unique_preserve_order(selected)
-            win.destroy()
-
-        def on_cancel():
-            result["selected"] = None
-            win.destroy()
-
-        def _on_escape(_e=None):
-            on_cancel()
-            return "break"
-
-        ttk.Button(footer, text="Select All", command=select_all).pack(side="left", padx=5)
-        ttk.Button(footer, text="Select None", command=select_none).pack(side="left", padx=5)
-        ttk.Button(footer, text="Select Filtered", command=select_filtered).pack(side="left", padx=5)
-        ttk.Button(footer, text="Cancel", command=on_cancel).pack(side="right", padx=5)
-        ttk.Button(footer, text="Apply", command=on_apply).pack(side="right", padx=5)
-
-        try:
-            win.update_idletasks()
-            win.lift()
-            win.attributes("-topmost", True)
-            win.after(200, lambda: win.attributes("-topmost", False))
-        except Exception:
-            pass
-
-        win.bind("<Escape>", _on_escape)
-        win.wait_window()
-        return result["selected"]  # type: ignore
 
     sel_module = (module_var.get() or "").strip()
     if not _is_multi_input_module(sel_module, module_names):
@@ -594,7 +644,59 @@ def select_step0_subfolders(module_var, input_var, root, module_names: List[str]
             return True
         return False
 
-    selected = _pick_step0_subfolders_dialog(root, selectable_items, default_pattern="*Step0*")
+    def _step0_item_sort_key(it: Tuple[str, str]) -> Tuple[str, str, str]:
+        parent = pretty_path(os.path.normpath(it[0] or ""))
+        step0 = pretty_path(os.path.normpath(it[1] or ""))
+
+        parent_base = os.path.basename(parent.rstrip("\\/")) or parent
+
+        step0_parent = os.path.dirname(step0.rstrip("\\/"))
+        step0_parent_base = os.path.basename(step0_parent.rstrip("\\/")) or step0_parent
+
+        step0_base = os.path.basename(step0.rstrip("\\/")) or step0
+
+        k1 = parent_base.lower() if os.name == "nt" else parent_base
+        k2 = step0_parent_base.lower() if os.name == "nt" else step0_parent_base
+        k3 = step0_base.lower() if os.name == "nt" else step0_base
+        return (k1, k2, k3)
+
+    def _format_step0_item_label(it: Tuple[str, str]) -> str:
+        parent = pretty_path(os.path.normpath(it[0] or ""))
+        step0 = pretty_path(os.path.normpath(it[1] or ""))
+
+        parent_base = os.path.basename(parent.rstrip("\\/")) or parent
+
+        step0_parent = os.path.dirname(step0.rstrip("\\/"))
+        step0_parent_base = os.path.basename(step0_parent.rstrip("\\/")) or step0_parent
+
+        step0_base = os.path.basename(step0.rstrip("\\/")) or step0
+
+        # Adjust Width
+        PARENT_W = 10
+        STEP0_PARENT_W = 30
+
+        pad1 = max(0, PARENT_W - len(parent_base))
+        pad2 = max(0, STEP0_PARENT_W - len(step0_parent_base))
+
+        # 3 columns: [parent] - [step0_parent] --> [step0]
+        return (f"[{parent_base}]{' ' * pad1}  [{step0_parent_base}]{' ' * pad2} --> {step0_base}")
+
+    selectable_items = sorted(selectable_items, key=_step0_item_sort_key)
+
+    selected = pick_checkboxes_dialog(
+        root,
+        selectable_items,
+        title="Subfolders Selection: Select Step0 folders to process",
+        header_hint="Select which sub-folders do you want to process.",
+        default_pattern="*Step0*",
+        default_checked=1,
+        label_fn=_format_step0_item_label,
+        value_fn=lambda it: it[1],
+    )
+
+    # selected = pick_checkboxes_dialog(root, selectable_items, title="Subfolders Selection: Select Step0 folders to process", header_hint="Select which sub-folders do you want to process.", default_pattern="*Step0*", default_checked=1, label_fn=lambda it: _format_step0_item_label(it[0], it[1]), value_fn=lambda it: it[1])
+
+
     if selected is None:
         return None
 
@@ -656,203 +758,6 @@ def browse_input_folders(module_var, input_var, root, module_names: List[str], a
     _ = select_step0_subfolders(module_var, input_var, root, module_names)
 
 
-def select_existing_configuration_audits_to_rerun(parent_root, existing_items: List[Tuple[str, str]], default_pattern: str = "*") -> Optional[List[str]]:
-    """
-    Show a multi-select dialog listing folders that already have a ConfigurationAudit Excel generated with the same TOOL_VERSION.
-
-    User selects which ones should be RE-RUN. Unselected items will reuse existing audits.
-    Returns:
-        - List[str] of input folders selected to be re-run
-        - [] if none selected
-        - None if user cancelled
-    """
-    def _unique_preserve_order(paths: List[str]) -> List[str]:
-        seen = set()
-        out: List[str] = []
-        for p in paths:
-            if not p:
-                continue
-            p_clean = pretty_path(os.path.normpath(p))
-            k = p_clean.lower() if os.name == "nt" else p_clean
-            if k in seen:
-                continue
-            seen.add(k)
-            out.append(p_clean)
-        return out
-
-    def _match_pattern(text: str, pattern: str) -> bool:
-        patt = (pattern or "").strip()
-        if not patt:
-            return True
-        t = text.lower() if os.name == "nt" else text
-        p = patt.lower() if os.name == "nt" else patt
-        return fnmatch.fnmatch(t, p)
-
-    def _format_item_label(input_folder: str, existing_excel: str) -> str:
-        inp = pretty_path(os.path.normpath(input_folder))
-        exl = pretty_path(os.path.normpath(existing_excel))
-        base = os.path.basename(inp.rstrip("\\\\/")) or inp
-        return f"[{base}] {inp}  -->  {exl}"
-
-    def _center_window(win_obj) -> None:
-        try:
-            win_obj.update_idletasks()
-            w = win_obj.winfo_width()
-            h = win_obj.winfo_height()
-            sw = win_obj.winfo_screenwidth()
-            sh = win_obj.winfo_screenheight()
-            x = max(0, int((sw - w) / 2))
-            y = max(0, int((sh - h) / 2))
-            win_obj.geometry(f"{w}x{h}+{x}+{y}")
-        except Exception:
-            pass
-
-    def _bring_to_front(win_obj) -> None:
-        try:
-            win_obj.update_idletasks()
-            win_obj.deiconify()
-            win_obj.lift()
-            try:
-                win_obj.attributes("-topmost", True)
-                win_obj.after(250, lambda: win_obj.attributes("-topmost", False))
-            except Exception:
-                pass
-            win_obj.focus_force()
-        except Exception:
-            pass
-
-    if tk is None or ttk is None:
-        print("\n[Configuration Audit] Existing audits detected (same version).")
-        for idx, (inp, exl) in enumerate(existing_items, start=1):
-            print(f"{idx:3d}) {_format_item_label(inp, exl)}")
-        print("\nType comma-separated indexes to RE-RUN (e.g. 1,3,5), or press Enter to reuse all.")
-        ans = input("Selection: ").strip()
-        if not ans:
-            return []
-        selected: List[str] = []
-        for part in ans.split(","):
-            part = part.strip()
-            if not part.isdigit():
-                continue
-            i = int(part)
-            if 1 <= i <= len(existing_items):
-                selected.append(existing_items[i - 1][0])
-        return _unique_preserve_order(selected)
-
-    result: Dict[str, object] = {"selected": None}
-
-    # IMPORTANT:
-    # - When called from batch execution we pass parent_root=None.
-    # - Creating a hidden temp root + Toplevel can cause the dialog to flash and close immediately on some Windows/Tk setups.
-    # - So: if parent_root is None => create a dedicated Tk root and run its mainloop.
-    is_root_dialog = parent_root is None
-    win = tk.Tk() if is_root_dialog else tk.Toplevel(parent_root)
-
-    win.title("Existing ConfigurationAudit detected: Select folders to RE-RUN")
-    win.geometry("1200x650")
-    win.resizable(True, True)
-
-    _center_window(win)
-    win.after(0, lambda: _bring_to_front(win))
-
-    try:
-        if not is_root_dialog and parent_root is not None:
-            win.transient(parent_root)
-        win.grab_set()
-    except Exception:
-        pass
-
-    header = ttk.Frame(win, padding=10)
-    header.pack(fill="x")
-
-    ttk.Label(header, text="Filter pattern:").pack(side="left")
-    filter_var = tk.StringVar(value=default_pattern)
-    ttk.Entry(header, textvariable=filter_var, width=40).pack(side="left", padx=8)
-    ttk.Label(header, text="Select which folders should be RE-RUN (unchecked = reuse existing).").pack(side="left", padx=12)
-
-    body = ttk.Frame(win, padding=10)
-    body.pack(fill="both", expand=True)
-
-    canvas = tk.Canvas(body, highlightthickness=0)
-    vscroll = ttk.Scrollbar(body, orient="vertical", command=canvas.yview)
-    xscroll = ttk.Scrollbar(body, orient="horizontal", command=canvas.xview)
-    canvas.configure(yscrollcommand=vscroll.set, xscrollcommand=xscroll.set)
-
-    vscroll.pack(side="right", fill="y")
-    xscroll.pack(side="bottom", fill="x")
-    canvas.pack(side="left", fill="both", expand=True)
-
-    inner = ttk.Frame(canvas)
-    canvas.create_window((0, 0), window=inner, anchor="nw")
-
-    def _on_inner_config(_e=None):
-        try:
-            canvas.configure(scrollregion=canvas.bbox("all"))
-        except Exception:
-            pass
-
-    inner.bind("<Configure>", _on_inner_config)
-
-    vars_list: List[tk.IntVar] = []
-    labels_list: List[str] = []
-
-    for idx, (inp, exl) in enumerate(existing_items):
-        label = _format_item_label(inp, exl)
-        var = tk.IntVar(value=0)
-        ttk.Checkbutton(inner, text=label, variable=var).grid(row=idx, column=0, sticky="w", pady=2)
-        vars_list.append(var)
-        labels_list.append(label)
-
-    footer = ttk.Frame(win, padding=10)
-    footer.pack(fill="x")
-
-    def select_all():
-        for v in vars_list:
-            v.set(1)
-
-    def select_none():
-        for v in vars_list:
-            v.set(0)
-
-    def select_filtered():
-        patt = filter_var.get().strip()
-        for v, label in zip(vars_list, labels_list):
-            v.set(1 if _match_pattern(label, patt) else 0)
-
-    def on_apply():
-        selected = [existing_items[i][0] for i, v in enumerate(vars_list) if int(v.get()) == 1]
-        result["selected"] = _unique_preserve_order(selected)
-        try:
-            win.destroy()
-        except Exception:
-            pass
-
-    def on_cancel():
-        result["selected"] = None
-        try:
-            win.destroy()
-        except Exception:
-            pass
-
-    def _on_escape(_e=None):
-        on_cancel()
-        return "break"
-
-    ttk.Button(footer, text="Select All", command=select_all).pack(side="left", padx=5)
-    ttk.Button(footer, text="Select None", command=select_none).pack(side="left", padx=5)
-    ttk.Button(footer, text="Select Filtered", command=select_filtered).pack(side="left", padx=5)
-    ttk.Button(footer, text="Cancel", command=on_cancel).pack(side="right", padx=5)
-    ttk.Button(footer, text="Apply", command=on_apply).pack(side="right", padx=5)
-
-    win.protocol("WM_DELETE_WINDOW", on_cancel)
-    win.bind("<Escape>", _on_escape)
-
-    if is_root_dialog:
-        win.mainloop()
-    else:
-        win.wait_window()
-
-    return result["selected"]  # type: ignore
 
 
 

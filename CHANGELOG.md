@@ -16,6 +16,7 @@
     - Now `ConfigurationAudit`, `ConsistencyCheck (bulk)` and `Final Clean-up` modules supports multi-select valid `Step0` subfolders.
     - `NRCellDU` now updates `ssbFrequency` column when the value is 0 and `ssbFrequencyAutoSelected` is not 0. 
     - New Flag on GUI (NR/LTE Frequency Audits" and CLI (`--frequency-audit`) to Include/Exclude `NRFrequency` and `GUtranSyncSignalFrequency` Categories on SummaryAudit and PPT.
+    - Included a new Selectable dialog to select wich folders do you want to re-Run `ConfigurationAudit` module when a previous Audit (with the same version) have been found (This new dialog only appears in batch mode).
     - Included Tool logo on GUI launcher dialog.
 
   - #### 🚀 Enhancements:

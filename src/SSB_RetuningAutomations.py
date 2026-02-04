@@ -36,7 +36,7 @@ if str(_PROJECT_ROOT_DIR) not in sys.path:
 
 # Import our different Classes
 from src.utils.utils_datetime import format_duration_hms
-from src.utils.utils_dialog import tk, ttk, filedialog, messagebox, ask_reopen_launcher, ask_yes_no_dialog, ask_yes_no_dialog_custom, browse_input_folders, select_step0_subfolders, get_multi_step0_items, select_existing_configuration_audits_to_rerun
+from src.utils.utils_dialog import tk, ttk, filedialog, messagebox, ask_reopen_launcher, ask_yes_no_dialog, ask_yes_no_dialog_custom, browse_input_folders, select_step0_subfolders, get_multi_step0_items, pick_checkboxes_dialog
 from src.utils.utils_infrastructure import LoggerDual, get_resource_path
 from src.utils.utils_io import load_cfg_values, save_cfg_values, log_module_exception, to_long_path, pretty_path, folder_or_zip_has_valid_logs, detect_pre_post_subfolders, write_compared_folders_file, ensure_logs_available, attach_output_log_mirror, materialize_step0_zip_runs_as_folders
 
@@ -2127,7 +2127,34 @@ def execute_module(
 
             rerun_set = set()
             if existing_items:
-                selected = select_existing_configuration_audits_to_rerun(None, existing_items, default_pattern="*")
+                def _existing_item_sort_key(it: Tuple[str, str]) -> Tuple[str, str]:
+                    inp = pretty_path(os.path.normpath(it[0] or ""))
+                    base = os.path.basename(inp.rstrip("\\/")) or inp
+                    k1 = base.lower() if os.name == "nt" else base
+                    k2 = inp.lower() if os.name == "nt" else inp
+                    return (k1, k2)
+
+                def _format_existing_item_label(it: Tuple[str, str]) -> str:
+                    inp = pretty_path(os.path.normpath(it[0] or ""))
+                    base = os.path.basename(inp.rstrip("\\/")) or inp
+                    audit_dir = os.path.basename(os.path.dirname(os.path.normpath(it[1] or "")).rstrip("\\/"))
+
+                    BASE_W = 60  # ancho objetivo de "base"
+                    pad = max(0, BASE_W - len(base))
+                    return f"[{base}]{' ' * pad} --> {audit_dir}"
+
+                existing_items = sorted(existing_items, key=_existing_item_sort_key)
+
+                selected = pick_checkboxes_dialog(
+                    None,
+                    existing_items,
+                    title="Existing ConfigurationAudit with same version detected: Select folders to RE-RUN",
+                    header_hint="Select which folders should be RE-RUN.",
+                    default_pattern="*",
+                    default_checked=0,
+                    label_fn=_format_existing_item_label,
+                    value_fn=lambda it: it[0])
+
                 if selected is None:
                     print("[Configuration Audit] [WARNING] Batch start cancelled by user (existing audits selection).")
                     return
