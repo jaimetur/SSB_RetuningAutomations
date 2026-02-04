@@ -635,6 +635,20 @@ def select_step0_subfolders(module_var, input_var, root, module_names: List[str]
                             continue
 
                         info = detect_step0_folders(e.name, current_fs)
+
+                        # Fallback: accept folders that contain "Step0" even if detect_step0_folders() doesn't match (e.g. missing HHMM in the name)
+                        if not info and "step0" in (str(e.name) or "").lower():
+                            try:
+                                from datetime import datetime
+                                m = re.match(r"^(\d{8})", str(e.name))
+                                dt_key = datetime.strptime(m.group(1), "%Y%m%d") if m else 0
+                            except Exception:
+                                dt_key = 0
+
+                            if _folder_tree_has_valid_logs(e.path, max_depth=STEP0_LOGS_SEARCH_MAX_DEPTH):
+                                candidates.append((dt_key, pretty_path(os.path.normpath(e.path))))
+                            continue
+
                         if info:
                             if _folder_tree_has_valid_logs(info.path, max_depth=STEP0_LOGS_SEARCH_MAX_DEPTH):
                                 candidates.append((info.datetime_key, pretty_path(os.path.normpath(info.path))))
