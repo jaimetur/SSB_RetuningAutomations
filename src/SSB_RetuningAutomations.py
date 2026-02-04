@@ -386,7 +386,7 @@ def gui_config_dialog(
     btn_browse.grid(row=1, column=3, sticky="ew", **pad)
 
     def _on_select_subfolders():
-        ret = select_step0_subfolders(module_var, input_var, root, MODULE_NAMES)
+        ret = select_step0_subfolders(module_var, input_var, root, MODULE_NAMES, TOOL_VERSION)
         if ret is None:
             return
         _refresh_add_other_state()
@@ -709,7 +709,7 @@ def gui_config_dialog(
                 fast_excel_export=bool(fast_excel_export_var.get()),
             )
         else:
-            step0_ret = select_step0_subfolders(module_var, input_var, root, MODULE_NAMES)
+            step0_ret = select_step0_subfolders(module_var, input_var, root, MODULE_NAMES, TOOL_VERSION)
             if step0_ret is None:
                 return
             _refresh_add_other_state()

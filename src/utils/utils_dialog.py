@@ -552,7 +552,7 @@ def get_multi_step0_items(module_var, input_var, module_names: List[str]) -> Lis
     return items
 
 
-def select_step0_subfolders(module_var, input_var, root, module_names: List[str]) -> Optional[bool]:
+def select_step0_subfolders(module_var, input_var, root, module_names: List[str], tool_version: str) -> Optional[bool]:
     """
     Expand a base folder into Step0 folders and optionally let the user select them.
 
@@ -622,16 +622,6 @@ def select_step0_subfolders(module_var, input_var, root, module_names: List[str]
                 return []
 
             candidates: List[Tuple[object, str]] = []
-
-            # Fallback: accept the parent folder itself if it contains "Step0" and has valid logs or a ZIP with valid logs
-            try:
-                parent_base = os.path.basename(parent_fs.rstrip("\\/")) or parent_fs
-                if "step0" in parent_base.lower() and folder_or_zip_has_valid_logs(parent_fs):
-                    from datetime import datetime
-                    candidates.append((datetime(1970, 1, 1, 0, 0), pretty_path(os.path.normpath(parent_fs))))
-            except Exception:
-                pass
-
             stack: List[Tuple[str, int]] = [(parent_fs, 0)]
 
             while stack:
@@ -649,17 +639,6 @@ def select_step0_subfolders(module_var, input_var, root, module_names: List[str]
                             if _folder_tree_has_valid_logs(info.path, max_depth=STEP0_LOGS_SEARCH_MAX_DEPTH):
                                 candidates.append((info.datetime_key, pretty_path(os.path.normpath(info.path))))
                             continue
-
-                        # Fallback: accept any folder containing "Step0" (case-insensitive) if it contains valid logs or a ZIP with valid logs
-                        name_low = (e.name or "").lower()
-                        if "step0" in name_low and folder_or_zip_has_valid_logs(e.path):
-                            try:
-                                from datetime import datetime
-                                dt_key = datetime(1970, 1, 1, 0, 0)
-                                candidates.append((dt_key, pretty_path(os.path.normpath(e.path))))
-                                continue
-                            except Exception:
-                                pass
 
                         if depth < max_depth:
                             stack.append((e.path, depth + 1))
@@ -682,19 +661,82 @@ def select_step0_subfolders(module_var, input_var, root, module_names: List[str]
         p = patt.lower() if os.name == "nt" else patt
         return fnmatch.fnmatch(t, p)
 
-    def _format_step0_item_label(parent_folder: str, step0_folder: str) -> str:
-        parent_clean = pretty_path(os.path.normpath(parent_folder))
-        base_name = os.path.basename(parent_clean.rstrip("\\/")) or parent_clean
-        step0_clean = pretty_path(os.path.normpath(step0_folder))
+    def _path_key(p: str) -> str:
+        p_clean = pretty_path(os.path.normpath(p or ""))
+        return p_clean.lower() if os.name == "nt" else p_clean
 
-        rel = step0_clean
+    def _is_step0_folder_path(path: str) -> bool:
+        p = pretty_path(os.path.normpath(path or ""))
+        if not p:
+            return False
+        parent_dir = os.path.dirname(p.rstrip("\\/"))
+        base_name = os.path.basename(p.rstrip("\\/"))
         try:
-            rel = os.path.relpath(step0_clean, start=parent_clean)
+            return bool(detect_step0_folders(base_name, to_long_path(parent_dir) if parent_dir else parent_dir))
         except Exception:
-            rel = step0_clean
+            return False
 
-        return f"[{base_name}] {rel}"
+    def _try_parse_folder_ts(folder_name: str) -> Optional[object]:
+        if not folder_name:
+            return None
+        m = re.search(r"_(\d{8}_\d{4})_v", folder_name)
+        if not m:
+            return None
+        try:
+            from datetime import datetime
+            return datetime.strptime(m.group(1), "%Y%m%d_%H%M")
+        except Exception:
+            return None
 
+    def _find_existing_audit_info(step0_folder: str, version_tag: str) -> str:
+        step0_fs = to_long_path(step0_folder) if step0_folder else step0_folder
+        if not step0_fs or not os.path.isdir(step0_fs):
+            return ""
+
+        ca_candidates: List[Tuple[object, float, str]] = []
+        cc_candidates: List[Tuple[object, float, str]] = []
+
+        try:
+            for name in os.listdir(step0_fs):
+                full = os.path.join(step0_fs, name)
+                if not os.path.isdir(full):
+                    continue
+
+                n = str(name)
+                if version_tag not in n:
+                    continue
+
+                ts = _try_parse_folder_ts(n)
+                try:
+                    mt = os.path.getmtime(full)
+                except Exception:
+                    mt = 0.0
+
+                if n.startswith("ConfigurationAudit_"):
+                    ca_candidates.append((ts or 0, mt, n))
+                elif n.startswith("ConsistencyChecks_") or n.startswith("ConsistencyCheck_"):
+                    cc_candidates.append((ts or 0, mt, n))
+        except Exception:
+            return ""
+
+        def _pick_newest(cands: List[Tuple[object, float, str]]) -> Optional[str]:
+            if not cands:
+                return None
+            cands.sort(key=lambda x: (x[0], x[1]))
+            return cands[-1][2]
+
+        ca = _pick_newest(ca_candidates)
+        cc = _pick_newest(cc_candidates)
+
+        # if ca and cc:
+        #     return f"CA: {ca} | CC: {cc}"
+        # if ca:
+        #     return ca
+        # if cc:
+        #     return cc
+        # return ""
+
+        return f"CA: {ca} | CC: {cc}"
 
     sel_module = (module_var.get() or "").strip()
     if not _is_multi_input_module(sel_module, module_names):
@@ -704,48 +746,24 @@ def select_step0_subfolders(module_var, input_var, root, module_names: List[str]
     if not current_paths:
         return False
 
-    def _path_key(p: str) -> str:
-        p_clean = pretty_path(os.path.normpath(p or ""))
-        return p_clean.lower() if os.name == "nt" else p_clean
-
-    def _is_step0_folder_path(path: str) -> bool:
-        p = pretty_path(os.path.normpath(path or ""))
-        if not p:
-            return False
-
-        parent_dir = os.path.dirname(p.rstrip("\\/"))
-        base_name = os.path.basename(p.rstrip("\\/"))
-
-        # Fallback: if the folder name contains "Step0", treat it as Step0 even if detect_step0_folders() doesn't match.
-        if "step0" in (base_name or "").lower():
-            return True
-
-        try:
-            return bool(detect_step0_folders(base_name, to_long_path(parent_dir) if parent_dir else parent_dir))
-        except Exception:
-            return False
-
     existing_paths = current_paths
     existing_keys = set(_path_key(p) for p in existing_paths)
 
-    # Always scan once from the common root of all input paths (avoid per-market scans)
-    common_candidates: List[str] = []
-    for p in existing_paths:
-        p_norm = pretty_path(os.path.normpath(p))
-        common_candidates.append(os.path.dirname(p_norm.rstrip("\\/")) if _is_step0_folder_path(p_norm) else p_norm)
-
-    try:
-        scan_parents = [pretty_path(os.path.normpath(os.path.commonpath(common_candidates)))]
-    except Exception:
-        scan_parents = _unique_preserve_order(common_candidates[:1] if common_candidates else [])
+    scan_parents = existing_paths
+    if len(existing_paths) > 1 and any(_is_step0_folder_path(p) for p in existing_paths):
+        common_candidates: List[str] = []
+        for p in existing_paths:
+            common_candidates.append(os.path.dirname(p.rstrip("\\/")) if _is_step0_folder_path(p) else p)
+        try:
+            scan_parents = [pretty_path(os.path.normpath(os.path.commonpath(common_candidates)))]
+        except Exception:
+            scan_parents = _unique_preserve_order(common_candidates)
 
     step0_map = _build_step0_map(scan_parents)
 
     selectable_items: List[Tuple[str, str]] = []
     for parent, step0s in step0_map.items():
         for step0_folder in step0s:
-            # if _path_key(step0_folder) in existing_keys:
-            #     continue
             selectable_items.append((parent, step0_folder))
 
     if not selectable_items:
@@ -778,15 +796,18 @@ def select_step0_subfolders(module_var, input_var, root, module_names: List[str]
 
         step0_base = os.path.basename(step0.rstrip("\\/")) or step0
 
-        # Adjust Width
-        PARENT_W = 30
+        version_tag = f"v{tool_version}".strip()
+        audit_info = _find_existing_audit_info(step0, version_tag)
+
+        PARENT_W = 10
         STEP0_PARENT_W = 30
+        STEP0_W = 50
 
         pad1 = max(0, PARENT_W - len(parent_base))
         pad2 = max(0, STEP0_PARENT_W - len(step0_parent_base))
+        pad3 = max(0, STEP0_W - len(step0_base))
 
-        # 3 columns: [parent] - [step0_parent] --> [step0]
-        return (f"[{parent_base}]{' ' * pad1}  [{step0_parent_base}]{' ' * pad2} --> {step0_base}")
+        return f"[{parent_base}]{' ' * pad1}  [{step0_parent_base}]{' ' * pad2} --> {step0_base}{' ' * pad3}  {audit_info}"
 
     selectable_items = sorted(selectable_items, key=_step0_item_sort_key)
 
@@ -798,12 +819,10 @@ def select_step0_subfolders(module_var, input_var, root, module_names: List[str]
         default_pattern="*Step0*",
         default_checked=0,
         label_fn=_format_step0_item_label,
+        geometry="1400x650",
         value_fn=lambda it: it[1],
         checked_fn=lambda it: (_path_key(it[1]) in existing_keys),
     )
-
-    # selected = pick_checkboxes_dialog(root, selectable_items, title="Subfolders Selection: Select Step0 folders to process", header_hint="Select which sub-folders do you want to process.", default_pattern="*Step0*", default_checked=1, label_fn=lambda it: _format_step0_item_label(it[0], it[1]), value_fn=lambda it: it[1])
-
 
     if selected is None:
         return None
@@ -815,6 +834,7 @@ def select_step0_subfolders(module_var, input_var, root, module_names: List[str]
         return True
 
     return False
+
 
 
 
@@ -863,10 +883,3 @@ def browse_input_folders(module_var, input_var, root, module_names: List[str], a
         input_var.set(";".join(merged))
     else:
         input_var.set(pretty_path(os.path.normpath(path)))
-
-    _ = select_step0_subfolders(module_var, input_var, root, module_names)
-
-
-
-
-
