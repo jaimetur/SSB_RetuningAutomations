@@ -477,24 +477,28 @@ def get_multi_step0_items(module_var, input_var, module_names: List[str]) -> Lis
                             continue
 
                         info = detect_step0_folders(e.name, current_fs)
+
+                        # Fallback: accept folders that contain "Step0" even if detect_step0_folders() doesn't match (e.g. missing HHMM in the name)
+                        if not info and "step0" in (str(e.name) or "").lower():
+                            try:
+                                from datetime import datetime
+                                m = re.match(r"^(\d{8})", str(e.name))
+                                dt_key = datetime.strptime(m.group(1), "%Y%m%d") if m else 0
+                            except Exception:
+                                dt_key = 0
+
+                            if _folder_tree_has_valid_logs(e.path, max_depth=STEP0_LOGS_SEARCH_MAX_DEPTH):
+                                candidates.append((dt_key, pretty_path(os.path.normpath(e.path))))
+                            continue
+
                         if info:
                             if _folder_tree_has_valid_logs(info.path, max_depth=STEP0_LOGS_SEARCH_MAX_DEPTH):
                                 candidates.append((info.datetime_key, pretty_path(os.path.normpath(info.path))))
                             continue
 
-                        # Fallback: accept any folder containing "Step0" (case-insensitive) if it contains valid logs or a ZIP with valid logs
-                        name_low = (e.name or "").lower()
-                        if "step0" in name_low and folder_or_zip_has_valid_logs(e.path):
-                            try:
-                                from datetime import datetime
-                                dt_key = datetime(1970, 1, 1, 0, 0)
-                                candidates.append((dt_key, pretty_path(os.path.normpath(e.path))))
-                                continue
-                            except Exception:
-                                pass
-
                         if depth < max_depth:
                             stack.append((e.path, depth + 1))
+
                 except Exception:
                     continue
 
@@ -683,8 +687,14 @@ def select_step0_subfolders(module_var, input_var, root, module_names: List[str]
         p = pretty_path(os.path.normpath(path or ""))
         if not p:
             return False
+
         parent_dir = os.path.dirname(p.rstrip("\\/"))
         base_name = os.path.basename(p.rstrip("\\/"))
+
+        # Fallback: accept folders that contain "Step0" even if detect_step0_folders() doesn't match (e.g. missing HHMM in the name)
+        if "step0" in (base_name or "").lower():
+            return True
+
         try:
             return bool(detect_step0_folders(base_name, to_long_path(parent_dir) if parent_dir else parent_dir))
         except Exception:
