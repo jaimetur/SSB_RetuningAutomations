@@ -173,7 +173,7 @@ def ask_yes_no_dialog_custom(title: str, message: str, default: bool = True) -> 
 
 
 # ============================ MULTI-SELECTION HELPERS ================== #
-def pick_checkboxes_dialog(parent_root, items: List[Tuple[object, object]], title: str, header_hint: str, default_pattern: str, default_checked: int, label_fn, value_fn, geometry: str = "1200x650") -> Optional[List[str]]:
+def pick_checkboxes_dialog(parent_root, items: List[Tuple[object, object]], title: str, header_hint: str, default_pattern: str, default_checked: int, label_fn, value_fn, geometry: str = "1200x650", checked_fn=None) -> Optional[List[str]]:
     """
     Generic multi-select dialog:
     - Filter pattern
@@ -315,7 +315,8 @@ def pick_checkboxes_dialog(parent_root, items: List[Tuple[object, object]], titl
 
     for idx, it in enumerate(items):
         label = str(label_fn(it))
-        var = tk.IntVar(value=int(default_checked))
+        init_checked = int(default_checked) if checked_fn is None else int(bool(checked_fn(it)))
+        var = tk.IntVar(value=init_checked)
         ttk.Checkbutton(inner, text=label, variable=var, style="Mono.TCheckbutton").grid(row=idx, column=0, sticky="w", pady=2)
         vars_list.append(var)
         labels_list.append(label)
@@ -480,12 +481,31 @@ def get_multi_step0_items(module_var, input_var, module_names: List[str]) -> Lis
     if not current_paths:
         return []
 
-    step0_map = _build_step0_map(current_paths)
+    def _is_step0_folder_path(path: str) -> bool:
+        p = pretty_path(os.path.normpath(path or ""))
+        if not p:
+            return False
+        parent_dir = os.path.dirname(p.rstrip("\\/"))
+        base_name = os.path.basename(p.rstrip("\\/"))
+        try:
+            return bool(detect_step0_folders(base_name, to_long_path(parent_dir) if parent_dir else parent_dir))
+        except Exception:
+            return False
+
+    scan_parents = current_paths
+    if len(current_paths) > 1 and any(_is_step0_folder_path(p) for p in current_paths):
+        common_candidates: List[str] = []
+        for p in current_paths:
+            common_candidates.append(os.path.dirname(p.rstrip("\\/")) if _is_step0_folder_path(p) else p)
+        try:
+            scan_parents = [pretty_path(os.path.normpath(os.path.commonpath(common_candidates)))]
+        except Exception:
+            scan_parents = _unique_preserve_order(common_candidates)
+
+    step0_map = _build_step0_map(scan_parents)
 
     items: List[Tuple[str, str]] = []
     for parent, step0s in step0_map.items():
-        if len(step0s) <= 1:
-            continue
         for step0_folder in step0s:
             items.append((parent, step0_folder))
 
@@ -623,25 +643,44 @@ def select_step0_subfolders(module_var, input_var, root, module_names: List[str]
     if not current_paths:
         return False
 
-    step0_map = _build_step0_map(current_paths)
+    def _path_key(p: str) -> str:
+        p_clean = pretty_path(os.path.normpath(p or ""))
+        return p_clean.lower() if os.name == "nt" else p_clean
 
-    out_paths: List[str] = []
+    def _is_step0_folder_path(path: str) -> bool:
+        p = pretty_path(os.path.normpath(path or ""))
+        if not p:
+            return False
+        parent_dir = os.path.dirname(p.rstrip("\\/"))
+        base_name = os.path.basename(p.rstrip("\\/"))
+        try:
+            return bool(detect_step0_folders(base_name, to_long_path(parent_dir) if parent_dir else parent_dir))
+        except Exception:
+            return False
+
+    existing_paths = current_paths
+    existing_keys = set(_path_key(p) for p in existing_paths)
+
+    scan_parents = existing_paths
+    if len(existing_paths) > 1 and any(_is_step0_folder_path(p) for p in existing_paths):
+        common_candidates: List[str] = []
+        for p in existing_paths:
+            common_candidates.append(os.path.dirname(p.rstrip("\\/")) if _is_step0_folder_path(p) else p)
+        try:
+            scan_parents = [pretty_path(os.path.normpath(os.path.commonpath(common_candidates)))]
+        except Exception:
+            scan_parents = _unique_preserve_order(common_candidates)
+
+    step0_map = _build_step0_map(scan_parents)
+
     selectable_items: List[Tuple[str, str]] = []
-
     for parent, step0s in step0_map.items():
-        if len(step0s) == 0:
-            out_paths.append(parent)
-        elif len(step0s) == 1:
-            out_paths.append(step0s[0])
-        else:
-            for step0_folder in step0s:
-                selectable_items.append((parent, step0_folder))
+        for step0_folder in step0s:
+            # if _path_key(step0_folder) in existing_keys:
+            #     continue
+            selectable_items.append((parent, step0_folder))
 
     if not selectable_items:
-        new_value = ";".join(_unique_preserve_order(out_paths))
-        if new_value != (input_var.get() or ""):
-            input_var.set(new_value)
-            return True
         return False
 
     def _step0_item_sort_key(it: Tuple[str, str]) -> Tuple[str, str, str]:
@@ -689,9 +728,10 @@ def select_step0_subfolders(module_var, input_var, root, module_names: List[str]
         title="Subfolders Selection: Select Step0 folders to process",
         header_hint="Select which sub-folders do you want to process.",
         default_pattern="*Step0*",
-        default_checked=1,
+        default_checked=0,
         label_fn=_format_step0_item_label,
         value_fn=lambda it: it[1],
+        checked_fn=lambda it: (_path_key(it[1]) in existing_keys),
     )
 
     # selected = pick_checkboxes_dialog(root, selectable_items, title="Subfolders Selection: Select Step0 folders to process", header_hint="Select which sub-folders do you want to process.", default_pattern="*Step0*", default_checked=1, label_fn=lambda it: _format_step0_item_label(it[0], it[1]), value_fn=lambda it: it[1])
@@ -700,13 +740,14 @@ def select_step0_subfolders(module_var, input_var, root, module_names: List[str]
     if selected is None:
         return None
 
-    merged = _unique_preserve_order(out_paths + selected)
+    merged = _unique_preserve_order(selected)
     new_value = ";".join(merged)
     if new_value != (input_var.get() or ""):
         input_var.set(new_value)
         return True
 
     return False
+
 
 
 # ============================ PUBLIC API (USED BY LAUNCHER) ================== #

@@ -406,9 +406,11 @@ def gui_config_dialog(
 
         try:
             multi_items = get_multi_step0_items(module_var, input_var, MODULE_NAMES)
-            btn_select_subfolders.config(state=("normal" if (sel in multi_modules and has_first and len(multi_items) > 0) else "disabled"))
+            is_multi_input = (len(raw_paths) > 1)
+            btn_select_subfolders.config(state=("normal" if (sel in multi_modules and has_first and (is_multi_input or len(multi_items) > 0)) else "disabled"))
         except Exception:
-            btn_select_subfolders.config(state="disabled")
+            is_multi_input = (len(raw_paths) > 1)
+            btn_select_subfolders.config(state=("normal" if (sel in multi_modules and has_first and is_multi_input) else "disabled"))
 
 
     btn_add = ttk.Button(single_frame, text="Add Other…", state="disabled", command=lambda: (browse_input_folders(module_var, input_var, root, MODULE_NAMES, add_mode=True), _refresh_add_other_state()))
