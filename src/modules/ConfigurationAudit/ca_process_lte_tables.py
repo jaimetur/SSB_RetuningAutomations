@@ -282,16 +282,16 @@ def process_gu_freq_rel(df_gu_freq_rel, is_old, add_row, n77_ssb_pre, is_new, n7
                     add_row(
                         "GUtranFreqRelation",
                         "LTE Frequency Audit",
-                        f"LTE cells with GUtranFreqRelationId {expected_old_rel_id} and {expected_new_rel_id} (from GUtranFreqRelation table)",
-                        len(cells_both),
+                        f"LTE nodes with  GUtranFreqRelationId {expected_old_rel_id} and {expected_new_rel_id} (from GUtranFreqRelation table)",
+                        len(nodes_cells_both),
                         ", ".join(nodes_cells_both),
                     )
 
                     add_row(
                         "GUtranFreqRelation",
                         "LTE Frequency Audit",
-                        f"LTE cells with GUtranFreqRelationId {expected_old_rel_id} but without {expected_new_rel_id} (from GUtranFreqRelation table)",
-                        len(cells_old_without_new),
+                        f"LTE nodes with  GUtranFreqRelationId {expected_old_rel_id} but without {expected_new_rel_id} (from GUtranFreqRelation table)",
+                        len(nodes_cells_old_without_new),
                         ", ".join(nodes_cells_old_without_new),
                     )
 
@@ -358,43 +358,19 @@ def process_gu_freq_rel(df_gu_freq_rel, is_old, add_row, n77_ssb_pre, is_new, n7
                                 old_val = old_row[col_name]
                                 new_val = new_row[col_name]
                                 if _values_differ(old_val, new_val):
-                                    param_mismatch_rows_gu.append(
-                                        {
-                                            "Layer": "LTE",
-                                            "Table": "GUtranFreqRelation",
-                                            "NodeId": node_val,
-                                            "EUtranCellId": str(cell_id),
-                                            "GUtranFreqRelationId": expected_new_rel_id,
-                                            "Parameter": str(col_name),
-                                            "OldSSB": n77_ssb_pre,
-                                            "NewSSB": n77_ssb_post,
-                                            "OldValue": "" if pd.isna(old_val) else str(old_val),
-                                            "NewValue": "" if pd.isna(new_val) else str(new_val),
-                                        }
-                                    )
+                                    param_mismatch_rows_gu.append({"Layer": "LTE", "Table": "GUtranFreqRelation", "NodeId": node_val, "EUtranCellId": str(cell_id), "GUtranFreqRelationId": expected_new_rel_id, "Parameter": str(col_name), "OldSSB": n77_ssb_pre, "NewSSB": n77_ssb_post, "OldValue": "" if pd.isna(old_val) else str(old_val), "NewValue": "" if pd.isna(new_val) else str(new_val)})
 
                             bad_cells_params.append(str(cell_id))
                             if node_val:
                                 bad_nodes_params.add(str(node_val))
 
-                    bad_cells_params = sorted(set(bad_cells_params))
-
-                    add_row(
-                        "GUtranFreqRelation",
-                        "LTE Frequency Inconsistencies",
-                        f"LTE cells with mismatching params between GUtranFreqRelationId {expected_old_rel_id} and {expected_new_rel_id} (from GUtranFreqRelation table)",
-                        len(bad_cells_params),
-                        ", ".join(bad_cells_params),
-                    )
-                else:
-                    bad_cells_params = sorted(set(bad_cells_params))
                     bad_nodes_params_list = sorted(bad_nodes_params)
                     nodes_same_prio_list = sorted(nodes_same_prio)
 
                     add_row(
                         "GUtranFreqRelation",
                         "LTE Frequency Inconsistencies",
-                        f"LTE cells with same endcB1MeasPriority in old N77 SSB ({n77_ssb_pre}) and new N77 SSB ({n77_ssb_post}) (from GUtranFreqRelation table)",
+                        f"LTE nodes with same endcB1MeasPriority in old N77 SSB ({n77_ssb_pre}) and new N77 SSB ({n77_ssb_post}) (from GUtranFreqRelation table)",
                         len(nodes_same_prio_list),
                         ", ".join(nodes_same_prio_list),
                     )
@@ -402,15 +378,15 @@ def process_gu_freq_rel(df_gu_freq_rel, is_old, add_row, n77_ssb_pre, is_new, n7
                     add_row(
                         "GUtranFreqRelation",
                         "LTE Frequency Inconsistencies",
-                        f"LTE cells with mismatching params between GUtranFreqRelation {n77_ssb_pre} and {n77_ssb_post} (from GUtranFreqRelation table)",
+                        f"LTE nodes with mismatching params between GUtranFreqRelationId {n77_ssb_pre} and {n77_ssb_post} (from GUtranFreqRelation table)",
                         len(bad_nodes_params_list),
                         ", ".join(bad_nodes_params_list),
                     )
-
+                else:
                     add_row(
                         "GUtranFreqRelation",
                         "LTE Frequency Audit",
-                        "GUtranFreqRelation cell-level check skipped (EUtranCellFDDId/EUtranCellId/CellId/GUCellId missing)",
+                        "GUtranFreqRelation cell-level check skipped (EUtranCellFDDId/EUtranCellId/CellId missing)",
                         "N/A",
                     )
             else:

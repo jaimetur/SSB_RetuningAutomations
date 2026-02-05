@@ -99,6 +99,17 @@ def process_endc_distr_profile(df_endc_distr_profile, n77_ssb_pre, n77_ssb_post,
                         ", ".join(mandatory_new_nodes),
                     )
 
+                    mask_inconsistent = freq_sets.map(lambda s: ((expected_old not in s and expected_new not in s) or (expected_n77b not in s)))
+                    bad_nodes = sorted(work.loc[mask_inconsistent, node_col_edp].astype(str).unique())
+
+                    add_row(
+                        "EndcDistrProfile",
+                        "ENDC Inconsistencies",
+                        f"Nodes with gUtranFreqRef not containing N77 SSBs ({n77_ssb_pre} or {n77_ssb_post}) together with N77B SSB ({n77b_ssb}) (from EndcDistrProfile table)",
+                        len(bad_nodes),
+                        ", ".join(bad_nodes),
+                    )
+
                     mandatory_mask_inconsistent = mandatory_freq_sets.map(lambda s: ((expected_old not in s and expected_new not in s) or (expected_n77b not in s)))
                     mandatory_bad_nodes = sorted(mandatory_work.loc[mandatory_mask_inconsistent, node_col_edp].astype(str).unique())
 
@@ -109,6 +120,7 @@ def process_endc_distr_profile(df_endc_distr_profile, n77_ssb_pre, n77_ssb_post,
                         len(mandatory_bad_nodes),
                         ", ".join(mandatory_bad_nodes),
                     )
+
             else:
                 add_row(
                     "EndcDistrProfile",
