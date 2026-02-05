@@ -4,6 +4,26 @@
 
 ---
 
+## Release: v0.6.4
+- ### Release Date: 2026-02-06
+
+- ### Main Changes:
+  
+  - #### 🚨 Breaking Changes:
+
+  - #### 🌟 New Features:
+    - SummaryAudit: For NR and LTE cell rows, the ExtraInfo field should contain a list of NODES instead of cells.
+
+  - #### 🚀 Enhancements:
+
+  - #### 🐛 Bug fixes:
+    - Minor bug fixing.
+    
+  - #### 📚 Documentation: 
+    - Updated documentation with latest changes.
+
+---
+
 ## Release: v0.6.3
 - ### Release Date: 2026-02-03
 

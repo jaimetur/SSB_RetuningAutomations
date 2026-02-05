@@ -270,8 +270,12 @@ def process_nr_freq_rel(df_nr_freq_rel, is_old, add_row, n77_ssb_pre, is_new, n7
                         cells_both = sorted(cells_with_old & cells_with_new)
                         cells_old_without_new = sorted(cells_with_old - cells_with_new)
 
-                        add_row("NRFreqRelation", "NR Frequency Audit", f"NR cells with the old N77 SSB ({n77_ssb_pre}) and the new SSB ({n77_ssb_post}) (from NRFreqRelation table)", len(cells_both), ", ".join(cells_both))
-                        add_row("NRFreqRelation", "NR Frequency Audit", f"NR cells with the old N77 SSB ({n77_ssb_pre}) but without new N77 SSB ({n77_ssb_post}) (from NRFreqRelation table)", len(cells_old_without_new), ", ".join(cells_old_without_new))
+                        # For SummaryAudit we need ExtraInfo as a list of nodes (not cells) to run cleanup per node.
+                        nodes_cells_both = sorted(full_n77.loc[full_n77[cell_col].isin(cells_both), node_col].astype(str).unique()) if cells_both else []
+                        nodes_cells_old_without_new = sorted(full_n77.loc[full_n77[cell_col].isin(cells_old_without_new), node_col].astype(str).unique()) if cells_old_without_new else []
+
+                        add_row("NRFreqRelation", "NR Frequency Audit", f"NR cells with the old N77 SSB ({n77_ssb_pre}) and the new SSB ({n77_ssb_post}) (from NRFreqRelation table)", len(cells_both), ", ".join(nodes_cells_both))
+                        add_row("NRFreqRelation", "NR Frequency Audit", f"NR cells with the old N77 SSB ({n77_ssb_pre}) but without new N77 SSB ({n77_ssb_post}) (from NRFreqRelation table)", len(cells_old_without_new), ", ".join(nodes_cells_old_without_new))
 
                         # ----------------------------- NEW: mcpcPCellNrFreqRelProfileRef clone checks (OLD SSB -> NEW SSB) -----------------------------
                         profile_col = resolve_column_case_insensitive(full_n77, ["mcpcPCellNrFreqRelProfileRef"])

@@ -275,12 +275,16 @@ def process_gu_freq_rel(df_gu_freq_rel, is_old, add_row, n77_ssb_pre, is_new, n7
                     cells_both = sorted(cells_with_old & cells_with_new)
                     cells_old_without_new = sorted(cells_with_old - cells_with_new)
 
+                    # For SummaryAudit we need ExtraInfo as a list of nodes (not cells) to run cleanup per node.
+                    nodes_cells_both = sorted(full.loc[full[cell_col_gu].isin(cells_both), node_col].astype(str).unique()) if cells_both else []
+                    nodes_cells_old_without_new = sorted(full.loc[full[cell_col_gu].isin(cells_old_without_new), node_col].astype(str).unique()) if cells_old_without_new else []
+
                     add_row(
                         "GUtranFreqRelation",
                         "LTE Frequency Audit",
                         f"LTE cells with GUtranFreqRelationId {expected_old_rel_id} and {expected_new_rel_id} (from GUtranFreqRelation table)",
                         len(cells_both),
-                        ", ".join(cells_both),
+                        ", ".join(nodes_cells_both),
                     )
 
                     add_row(
@@ -288,7 +292,7 @@ def process_gu_freq_rel(df_gu_freq_rel, is_old, add_row, n77_ssb_pre, is_new, n7
                         "LTE Frequency Audit",
                         f"LTE cells with GUtranFreqRelationId {expected_old_rel_id} but without {expected_new_rel_id} (from GUtranFreqRelation table)",
                         len(cells_old_without_new),
-                        ", ".join(cells_old_without_new),
+                        ", ".join(nodes_cells_old_without_new),
                     )
 
                     # Parameter equality check (ignoring ID/reference columns)
