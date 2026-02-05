@@ -32,6 +32,7 @@ from src.utils.utils_frequency import parse_int_frequency
 # =====================================================================
 
 def build_summary_audit(
+        df_mecontext: pd.DataFrame,
         df_nr_cell_du: pd.DataFrame,
         df_nr_freq: pd.DataFrame,
         df_nr_freq_rel: pd.DataFrame,
@@ -85,6 +86,76 @@ def build_summary_audit(
     allowed_n77_arfcn_post_set = {int(v) for v in (allowed_n77_arfcn_post or [])}
 
     rows: List[Dict[str, object]] = []
+
+    # -------------------------------------  MeContext checks (must be first rows) -------------------------------------
+    def _find_col_ci_local(df: pd.DataFrame, names: List[str]) -> str | None:
+        if df is None or df.empty:
+            return None
+        cols_l = {str(c).strip().lower(): c for c in df.columns}
+        for n in names:
+            key = str(n).strip().lower()
+            if key in cols_l:
+                return cols_l[key]
+        return None
+
+    me_node_col = _find_col_ci_local(df_mecontext, ["NodeId"])
+    me_parent_col = _find_col_ci_local(df_mecontext, ["ParentId"])
+    me_sync_col = _find_col_ci_local(df_mecontext, ["syncStatus"])
+
+    unsync_nodes: set[str] = set()
+    if df_mecontext is not None and not df_mecontext.empty and me_node_col and me_sync_col:
+        try:
+            mask_unsync = df_mecontext[me_sync_col].astype(str).str.upper().eq("UNSYNCHRONIZED")
+            unsync_nodes = set(df_mecontext.loc[mask_unsync, me_node_col].astype(str).unique())
+        except Exception:
+            unsync_nodes = set()
+
+    total_nodes = []
+    if df_mecontext is not None and not df_mecontext.empty and me_node_col:
+        try:
+            total_nodes = sorted(df_mecontext[me_node_col].astype(str).unique())
+        except Exception:
+            total_nodes = []
+
+    total_parents = []
+    if df_mecontext is not None and not df_mecontext.empty and me_parent_col:
+        try:
+            total_parents = sorted(df_mecontext[me_parent_col].astype(str).unique())
+        except Exception:
+            total_parents = []
+
+    add_row("MeContext", "Nodes", "Total unique nodes (from MeContext table)", len(total_nodes), ", ".join(total_parents))
+    add_row("MeContext", "Nodes", "Nodes with syncStatus='UNSYNCHRONIZED' (being excluded in all Audits)", len(unsync_nodes), ", ".join(sorted(unsync_nodes)))
+
+    def _exclude_unsync_df(df: pd.DataFrame) -> pd.DataFrame:
+        if df is None or df.empty or not unsync_nodes:
+            return df
+        node_col = _find_col_ci_local(df, ["NodeId"])
+        if not node_col:
+            return df
+        try:
+            return df.loc[~df[node_col].astype(str).isin(unsync_nodes)].copy()
+        except Exception:
+            return df
+
+    df_nr_cell_du = _exclude_unsync_df(df_nr_cell_du)
+    df_nr_freq = _exclude_unsync_df(df_nr_freq)
+    df_nr_freq_rel = _exclude_unsync_df(df_nr_freq_rel)
+    df_nr_cell_rel = _exclude_unsync_df(df_nr_cell_rel)
+    df_freq_prio_nr = _exclude_unsync_df(df_freq_prio_nr)
+    df_gu_sync_signal_freq = _exclude_unsync_df(df_gu_sync_signal_freq)
+    df_gu_freq_rel = _exclude_unsync_df(df_gu_freq_rel)
+    df_gu_cell_rel = _exclude_unsync_df(df_gu_cell_rel)
+    df_nr_sector_carrier = _exclude_unsync_df(df_nr_sector_carrier)
+    df_endc_distr_profile = _exclude_unsync_df(df_endc_distr_profile)
+    df_nr_cell_cu = _exclude_unsync_df(df_nr_cell_cu)
+    df_eutran_freq_rel = _exclude_unsync_df(df_eutran_freq_rel)
+    df_external_nr_cell_cu = _exclude_unsync_df(df_external_nr_cell_cu)
+    df_external_gutran_cell = _exclude_unsync_df(df_external_gutran_cell)
+    df_term_point_to_gnodeb = _exclude_unsync_df(df_term_point_to_gnodeb)
+    df_term_point_to_gnb = _exclude_unsync_df(df_term_point_to_gnb)
+    df_term_point_to_enodeb = _exclude_unsync_df(df_term_point_to_enodeb)
+
 
     # Detailed parameter mismatching rows to build Excel sheets "Summary NR Param Missmatching" and
     # "Summary LTE Param Missmatching"

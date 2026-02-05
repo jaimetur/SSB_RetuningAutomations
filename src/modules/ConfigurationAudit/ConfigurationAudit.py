@@ -477,6 +477,7 @@ class ConfigurationAudit:
                     "GUtranCellRelation": [],
                     "FreqPrioNR": [],
                     "EndcDistrProfile": [],
+                    "MeContext": [],
                     # Consistency Checks Post Step2
                     "NRCellCU": [],
                     "EUtranFreqRelation": [],
@@ -506,6 +507,54 @@ class ConfigurationAudit:
                         df_mo = entry["df"]
                         if isinstance(df_mo, pd.DataFrame) and not df_mo.empty:
                             mo_collectors[mo_name].append(df_mo)
+
+                # ---- MeContext must be processed first (UNSYNCHRONIZED nodes must be excluded from all audits) ----
+                df_mecontext = concat_or_empty(mo_collectors["MeContext"])
+
+                def _find_col_ci(df: pd.DataFrame, names: List[str]) -> str | None:
+                    if df is None or df.empty:
+                        return None
+                    cols_l = {str(c).strip().lower(): c for c in df.columns}
+                    for n in names:
+                        key = str(n).strip().lower()
+                        if key in cols_l:
+                            return cols_l[key]
+                    return None
+
+                unsync_nodes: set[str] = set()
+                me_node_col = _find_col_ci(df_mecontext, ["NodeId"])
+                me_sync_col = _find_col_ci(df_mecontext, ["syncStatus"])
+                if df_mecontext is not None and not df_mecontext.empty and me_node_col and me_sync_col:
+                    try:
+                        mask_unsync = df_mecontext[me_sync_col].astype(str).str.upper().eq("UNSYNCHRONIZED")
+                        unsync_nodes = set(df_mecontext.loc[mask_unsync, me_node_col].astype(str).unique())
+                    except Exception:
+                        unsync_nodes = set()
+
+                def _exclude_unsync(df: pd.DataFrame) -> pd.DataFrame:
+                    if df is None or df.empty or not unsync_nodes:
+                        return df
+                    node_col = _find_col_ci(df, ["NodeId"])
+                    if not node_col:
+                        return df
+                    try:
+                        return df.loc[~df[node_col].astype(str).isin(unsync_nodes)].copy()
+                    except Exception:
+                        return df
+
+                if unsync_nodes:
+                    # Filter the already-read sheets (so Excel output also excludes UNSYNCHRONIZED nodes, except MeContext)
+                    for entry in table_entries:
+                        cand = str(entry.get("sheet_candidate", "")).strip()
+                        if cand != "MeContext":
+                            df_entry = entry.get("df", None)
+                            if isinstance(df_entry, pd.DataFrame) and not df_entry.empty:
+                                entry["df"] = _exclude_unsync(df_entry)
+
+                    # Filter collectors used by the audits/pivots
+                    for mo_name, dfs in mo_collectors.items():
+                        if mo_name != "MeContext" and dfs:
+                            mo_collectors[mo_name] = [_exclude_unsync(d) for d in dfs if isinstance(d, pd.DataFrame)]
 
                 # ---- Build pivots ----
                 df_nr_cell_du = concat_or_empty(mo_collectors["NRCellDU"])
@@ -593,6 +642,7 @@ class ConfigurationAudit:
             with log_phase_timer("PHASE 4.3: Build SummaryAudit", log_fn=_log_info, show_start=show_phase_starts, show_end=False, show_timing=show_phase_timings, line_prefix="", start_level="INFO", end_level="INFO", timing_level="INFO"):
                 _log_info(f"PHASE 4.3: Build SummaryAudit (this phase can take some time)...")
                 summary_audit_df, param_mismatch_nr_df, param_mismatch_gu_df = build_summary_audit(
+                    df_mecontext=df_mecontext,
                     df_nr_cell_du=df_nr_cell_du,
                     df_nr_freq=df_nr_freq,
                     df_nr_freq_rel=df_nr_freq_rel,
@@ -711,6 +761,82 @@ class ConfigurationAudit:
 
                         # We emulate "with" to measure close precisely
                         # (so we can time writer.close() and/or writer.__exit__ behavior)
+
+                        # ---- Enrich MeContext table with additional audit columns (slide 3) ----
+                        def _count_by_node(df: pd.DataFrame, node_col: str, cond_series: pd.Series) -> pd.Series:
+                            if df is None or df.empty:
+                                return pd.Series(dtype=int)
+                            try:
+                                tmp = df.loc[cond_series.fillna(False), [node_col]].copy()
+                                tmp[node_col] = tmp[node_col].astype(str)
+                                return tmp.groupby(node_col).size().astype(int)
+                            except Exception:
+                                return pd.Series(dtype=int)
+
+                        if df_mecontext is not None and not df_mecontext.empty:
+                            me_node_col = _find_col_ci(df_mecontext, ["NodeId"])
+                            me_parent_col = _find_col_ci(df_mecontext, ["ParentId"])
+                            if me_node_col:
+                                df_me_out = df_mecontext.copy()
+                                df_me_out[me_node_col] = df_me_out[me_node_col].astype(str)
+
+                                # NRCellDU derived counts
+                                nr_node_col = _find_col_ci(df_nr_cell_du, ["NodeId"])
+                                nr_ssb_col = _find_col_ci(df_nr_cell_du, ["ssbFrequency"])
+                                if df_nr_cell_du is not None and not df_nr_cell_du.empty and nr_node_col and nr_ssb_col:
+                                    nr_ssb_num = pd.to_numeric(df_nr_cell_du[nr_ssb_col], errors="coerce")
+                                    s_mmwave = _count_by_node(df_nr_cell_du, nr_node_col, (nr_ssb_num >= 2_000_000) & (nr_ssb_num <= 2_300_000))
+                                    s_lowmid = _count_by_node(df_nr_cell_du, nr_node_col, (nr_ssb_num >= 646600) & (nr_ssb_num <= 660000))
+                                    s_n77_old = _count_by_node(df_nr_cell_du, nr_node_col, nr_ssb_num.eq(self.N77_SSB_PRE))
+                                    s_n77_new = _count_by_node(df_nr_cell_du, nr_node_col, nr_ssb_num.eq(self.N77_SSB_POST))
+
+                                    df_me_out["mmWave Cells (from NRCellDU table)"] = df_me_out[me_node_col].map(s_mmwave).fillna(0).astype(int)
+                                    df_me_out["LowMidBand Cells (from NRCellDU table)"] = df_me_out[me_node_col].map(s_lowmid).fillna(0).astype(int)
+                                    df_me_out["N77 Cells (646600-660000) (from NRCellDU table)"] = df_me_out[me_node_col].map(s_lowmid).fillna(0).astype(int)
+                                    df_me_out[f"N77A old SSB cells ({self.N77_SSB_PRE}) (from NRCellDU table)"] = df_me_out[me_node_col].map(s_n77_old).fillna(0).astype(int)
+                                    df_me_out[f"N77A new SSB cells ({self.N77_SSB_POST}) (from NRCellDU table)"] = df_me_out[me_node_col].map(s_n77_new).fillna(0).astype(int)
+                                else:
+                                    df_me_out["mmWave Cells (from NRCellDU table)"] = 0
+                                    df_me_out["LowMidBand Cells (from NRCellDU table)"] = 0
+                                    df_me_out["N77 Cells (646600-660000) (from NRCellDU table)"] = 0
+                                    df_me_out[f"N77A old SSB cells ({self.N77_SSB_PRE}) (from NRCellDU table)"] = 0
+                                    df_me_out[f"N77A new SSB cells ({self.N77_SSB_POST}) (from NRCellDU table)"] = 0
+
+                                # NRFreqRelation derived counts (substring match on NRFreqRelationId)
+                                nrfr_node_col = _find_col_ci(df_nr_freq_rel, ["NodeId"])
+                                nrfr_id_col = _find_col_ci(df_nr_freq_rel, ["NRFreqRelationId"])
+                                if df_nr_freq_rel is not None and not df_nr_freq_rel.empty and nrfr_node_col and nrfr_id_col:
+                                    s_old_rel = _count_by_node(df_nr_freq_rel, nrfr_node_col, df_nr_freq_rel[nrfr_id_col].astype(str).str.contains(str(self.N77_SSB_PRE), na=False))
+                                    s_new_rel = _count_by_node(df_nr_freq_rel, nrfr_node_col, df_nr_freq_rel[nrfr_id_col].astype(str).str.contains(str(self.N77_SSB_POST), na=False))
+                                    df_me_out[f"NRFreqRelation to old N77A SSB ({self.N77_SSB_PRE}) (from NRFreqRelation table)"] = df_me_out[me_node_col].map(s_old_rel).fillna(0).astype(int)
+                                    df_me_out[f"NRFreqRelation to new N77A SSB ({self.N77_SSB_POST}) (from NRFreqRelation table)"] = df_me_out[me_node_col].map(s_new_rel).fillna(0).astype(int)
+                                else:
+                                    df_me_out[f"NRFreqRelation to old N77A SSB ({self.N77_SSB_PRE}) (from NRFreqRelation table)"] = 0
+                                    df_me_out[f"NRFreqRelation to new N77A SSB ({self.N77_SSB_POST}) (from NRFreqRelation table)"] = 0
+
+                                # GUtranFreqRelation derived counts (substring match on GUtranFreqRelationId)
+                                gufr_node_col = _find_col_ci(df_gu_freq_rel, ["NodeId"])
+                                gufr_id_col = _find_col_ci(df_gu_freq_rel, ["GUtranFreqRelationId"])
+                                if df_gu_freq_rel is not None and not df_gu_freq_rel.empty and gufr_node_col and gufr_id_col:
+                                    s_old_gufr = _count_by_node(df_gu_freq_rel, gufr_node_col, df_gu_freq_rel[gufr_id_col].astype(str).str.contains(str(self.N77_SSB_PRE), na=False))
+                                    s_new_gufr = _count_by_node(df_gu_freq_rel, gufr_node_col, df_gu_freq_rel[gufr_id_col].astype(str).str.contains(str(self.N77_SSB_POST), na=False))
+                                    df_me_out[f"LTE nodes with the old N77A SSB ({self.N77_SSB_PRE}) (from GUtranFreqRelation table)"] = df_me_out[me_node_col].map(s_old_gufr).fillna(0).astype(int)
+                                    df_me_out[f"LTE nodes with the new N77A SSB ({self.N77_SSB_POST}) (from GUtranFreqRelation table)"] = df_me_out[me_node_col].map(s_new_gufr).fillna(0).astype(int)
+                                else:
+                                    df_me_out[f"LTE nodes with the old N77A SSB ({self.N77_SSB_PRE}) (from GUtranFreqRelation table)"] = 0
+                                    df_me_out[f"LTE nodes with the new N77A SSB ({self.N77_SSB_POST}) (from GUtranFreqRelation table)"] = 0
+
+                                # Placeholders for manual workflow columns (as per slide 3)
+                                df_me_out["Next Step"] = ""
+                                df_me_out["EndcPrio Next Step"] = ""
+
+                                # Ensure MeContext is exported with enriched columns
+                                for entry in table_entries:
+                                    if str(entry.get("sheet_candidate", "")).strip() == "MeContext":
+                                        entry["df"] = df_me_out
+                                        break
+
+
                         # ------------------------------------------------------------------
                         # PHASE 5.1: Write Summary + SummaryAudit + Param mismatch sheets
                         # ------------------------------------------------------------------
