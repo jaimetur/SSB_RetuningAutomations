@@ -488,7 +488,17 @@ def process_nr_freq_rel(df_nr_freq_rel, is_old, add_row, n77_ssb_pre, is_new, n7
                                     bad_cells_params.append(nrcell_val)
 
                         bad_cells_params = sorted(set(bad_cells_params))
-                        add_row("NRFreqRelation", "NR Frequency Inconsistencies", f"NR cells with mismatching params between old N77 SSB ({n77_ssb_pre}) and the new N77 SSB ({n77_ssb_post}) (from NRFreqRelation table)", len(bad_cells_params), ", ".join(bad_cells_params))
+
+                        # NEW: keep computing cells, but report nodes in SummaryAudit (cleanup is node-based)
+                        bad_nodes_params = []
+                        try:
+                            if bad_cells_params:
+                                bad_nodes_params = sorted(full_n77.loc[full_n77[cell_col].astype(str).isin(bad_cells_params), node_col].astype(str).unique())
+                        except Exception:
+                            bad_nodes_params = []
+
+                        add_row("NRFreqRelation", "NR Frequency Inconsistencies", f"NR nodes with mismatching params (cell-level) between old N77 SSB ({n77_ssb_pre}) and the new N77 SSB ({n77_ssb_post}) (from NRFreqRelation table)", len(bad_nodes_params), ", ".join(bad_nodes_params))
+
                     else:
                         add_row("NRFreqRelation", "NR Frequency Audit", "NRFreqRelation cell-level check skipped (NRCellCUId/NRCellId/CellId missing)", "N/A")
                 else:
