@@ -194,7 +194,7 @@ def process_freq_prio_nr(df_freq_prio_nr, n77_ssb_pre, n77_ssb_post, add_row, no
                     ", ".join(nodes_both),
                 )
 
-                # LTE cells with mismatching params between FreqPrioNR 648672 and 647328
+                # LTE nodes with mismatching params between FreqPrioNR 648672 and 647328
                 cell_col = resolve_column_case_insensitive(
                     df_freq_prio_nr,
                     [
@@ -257,12 +257,21 @@ def process_freq_prio_nr(df_freq_prio_nr, n77_ssb_pre, n77_ssb_post, add_row, no
                                     f"{node_id}/{lte_cell}: {', '.join(sorted(diff_cols))}"
                                 )
 
+                # NEW: keep computing cells, but report nodes in SummaryAudit (cleanup is node-based)
+                mismatching_nodes = []
+                try:
+                    if mismatching_cells_details:
+                        # Each entry is "node/cell: col1, col2" -> node is before first "/"
+                        mismatching_nodes = sorted({str(item.split("/", 1)[0]).strip() for item in mismatching_cells_details if "/" in str(item)})
+                except Exception:
+                    mismatching_nodes = []
+
                 add_row(
                     "FreqPrioNR",
                     "ENDC Inconsistencies",
-                    f"LTE cells with mismatching params between FreqPrioNR {old_ssb} and {new_ssb}",
-                    len(mismatching_cells_details),
-                    "; ".join(mismatching_cells_details),
+                    f"LTE nodes with mismatching params (cell-level) between FreqPrioNR {old_ssb} and {new_ssb}",
+                    len(mismatching_nodes),
+                    ", ".join(mismatching_nodes),
                 )
 
                 # Keep only N77 rows (from FreqPrioNR table)
