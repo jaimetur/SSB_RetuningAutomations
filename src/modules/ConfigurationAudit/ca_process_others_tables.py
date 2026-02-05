@@ -68,13 +68,47 @@ def process_endc_distr_profile(df_endc_distr_profile, n77_ssb_pre, n77_ssb_post,
                     work.loc[mask_inconsistent, node_col_edp].astype(str).unique()
                 )
 
-                add_row(
-                    "EndcDistrProfile",
-                    "ENDC Inconsistencies",
-                    f"Nodes with gUtranFreqRef not containing N77 SSBs ({n77_ssb_pre} or {n77_ssb_post}) together with N77B SSB ({n77b_ssb}) (from EndcDistrProfile table)",
-                    len(bad_nodes),
-                    ", ".join(bad_nodes),
-                )
+                # ----------------------------- EndcDistrProfile mandatoryGUtranFreqRef (same logic as gUtranFreqRef) -----------------------------
+                mandatory_ref_col = resolve_column_case_insensitive(df_endc_distr_profile, ["mandatoryGUtranFreqRef"])
+                if mandatory_ref_col:
+                    mandatory_work = df_endc_distr_profile[[node_col_edp, mandatory_ref_col]].copy()
+                    mandatory_work[node_col_edp] = mandatory_work[node_col_edp].astype(str)
+                    mandatory_work[mandatory_ref_col] = mandatory_work[mandatory_ref_col].astype(str)
+
+                    mandatory_freq_sets = mandatory_work[mandatory_ref_col].map(extract_sync_frequencies)
+
+                    mandatory_mask_old_pair = mandatory_freq_sets.map(lambda s: (expected_old in s) and (expected_n77b in s))
+                    mandatory_old_nodes = sorted(mandatory_work.loc[mandatory_mask_old_pair, node_col_edp].astype(str).unique())
+
+                    add_row(
+                        "EndcDistrProfile",
+                        "ENDC Audit",
+                        f"Nodes with mandatoryGUtranFreqRef containing the old N77 SSB ({n77_ssb_pre}) and the N77B SSB ({n77b_ssb}) (from EndcDistrProfile table)",
+                        len(mandatory_old_nodes),
+                        ", ".join(mandatory_old_nodes),
+                    )
+
+                    mandatory_mask_new_pair = mandatory_freq_sets.map(lambda s: (expected_new in s) and (expected_n77b in s))
+                    mandatory_new_nodes = sorted(mandatory_work.loc[mandatory_mask_new_pair, node_col_edp].astype(str).unique())
+
+                    add_row(
+                        "EndcDistrProfile",
+                        "ENDC Audit",
+                        f"Nodes with mandatoryGUtranFreqRef containing the new N77 SSB ({n77_ssb_post}) and the N77B SSB ({n77b_ssb}) (from EndcDistrProfile table)",
+                        len(mandatory_new_nodes),
+                        ", ".join(mandatory_new_nodes),
+                    )
+
+                    mandatory_mask_inconsistent = mandatory_freq_sets.map(lambda s: ((expected_old not in s and expected_new not in s) or (expected_n77b not in s)))
+                    mandatory_bad_nodes = sorted(mandatory_work.loc[mandatory_mask_inconsistent, node_col_edp].astype(str).unique())
+
+                    add_row(
+                        "EndcDistrProfile",
+                        "ENDC Inconsistencies",
+                        f"Nodes with mandatoryGUtranFreqRef not containing N77 SSBs ({n77_ssb_pre} or {n77_ssb_post}) together with N77B SSB ({n77b_ssb}) (from EndcDistrProfile table)",
+                        len(mandatory_bad_nodes),
+                        ", ".join(mandatory_bad_nodes),
+                    )
             else:
                 add_row(
                     "EndcDistrProfile",

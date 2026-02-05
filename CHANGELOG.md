@@ -13,6 +13,7 @@
 
   - #### 🌟 New Features:
     - SummaryAudit: For NR and LTE cell rows, the ExtraInfo field should contain a list of NODES instead of cells.
+    - EndcDistrProfile: Add 3 new rows for mandatoryGUtranFreqRef (following the gUtranFreqRef format) and enable support for additional frequencies.
 
   - #### 🚀 Enhancements:
 
