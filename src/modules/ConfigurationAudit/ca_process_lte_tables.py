@@ -297,12 +297,19 @@ def process_gu_freq_rel(df_gu_freq_rel, is_old, add_row, n77_ssb_pre, is_new, n7
 
                     # Parameter equality check (ignoring ID/reference columns)
                     cols_to_ignore = {arfcn_col}
+                    prio_col = resolve_column_case_insensitive(full, ["endcB1MeasPriority"])
+                    if prio_col:
+                        cols_to_ignore.add(prio_col)
+
                     for name in full.columns:
                         lname = str(name).lower()
                         if lname in {"gutranfreqrelationid", "gutransyncsignalfrequencyref"}:
                             cols_to_ignore.add(name)
 
                     bad_cells_params = []
+                    bad_nodes_params: set[str] = set()
+                    nodes_same_prio: set[str] = set()
+
                     for cell_id in cells_both:
                         cell_rows = full.loc[full[cell_col_gu].astype(str) == cell_id].copy()
                         old_rows = cell_rows.loc[cell_rows[arfcn_col] == expected_old_rel_id]
@@ -336,6 +343,17 @@ def process_gu_freq_rel(df_gu_freq_rel, is_old, add_row, n77_ssb_pre, is_new, n7
                             except Exception:
                                 node_val = ""
 
+                            # New rule: endcB1MeasPriority can change between old/new (Step1 vs Step2). We only flag cells where it stays the same.
+                            if prio_col:
+                                try:
+                                    old_prio = old_rows[prio_col].iloc[0]
+                                    new_prio = new_rows[prio_col].iloc[0]
+                                    if (pd.isna(old_prio) and pd.isna(new_prio)) or (not pd.isna(old_prio) and not pd.isna(new_prio) and str(old_prio) == str(new_prio)):
+                                        if node_val:
+                                            nodes_same_prio.add(str(node_val))
+                                except Exception:
+                                    pass
+
                             for col_name in sort_cols:
                                 old_val = old_row[col_name]
                                 new_val = new_row[col_name]
@@ -356,6 +374,8 @@ def process_gu_freq_rel(df_gu_freq_rel, is_old, add_row, n77_ssb_pre, is_new, n7
                                     )
 
                             bad_cells_params.append(str(cell_id))
+                            if node_val:
+                                bad_nodes_params.add(str(node_val))
 
                     bad_cells_params = sorted(set(bad_cells_params))
 
@@ -367,6 +387,26 @@ def process_gu_freq_rel(df_gu_freq_rel, is_old, add_row, n77_ssb_pre, is_new, n7
                         ", ".join(bad_cells_params),
                     )
                 else:
+                    bad_cells_params = sorted(set(bad_cells_params))
+                    bad_nodes_params_list = sorted(bad_nodes_params)
+                    nodes_same_prio_list = sorted(nodes_same_prio)
+
+                    add_row(
+                        "GUtranFreqRelation",
+                        "LTE Frequency Inconsistencies",
+                        f"LTE cells with same endcB1MeasPriority in old N77 SSB ({n77_ssb_pre}) and new N77 SSB ({n77_ssb_post}) (from GUtranFreqRelation table)",
+                        len(nodes_same_prio_list),
+                        ", ".join(nodes_same_prio_list),
+                    )
+
+                    add_row(
+                        "GUtranFreqRelation",
+                        "LTE Frequency Inconsistencies",
+                        f"LTE cells with mismatching params between GUtranFreqRelation {n77_ssb_pre} and {n77_ssb_post} (from GUtranFreqRelation table)",
+                        len(bad_nodes_params_list),
+                        ", ".join(bad_nodes_params_list),
+                    )
+
                     add_row(
                         "GUtranFreqRelation",
                         "LTE Frequency Audit",
