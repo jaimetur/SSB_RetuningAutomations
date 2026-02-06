@@ -232,7 +232,7 @@ class ConfigurationAudit:
 
                     header_indices = find_all_subnetwork_headers(lines)
 
-                    if len(header_indices) <= 1:
+                    if not header_indices:
                         table_start = time.perf_counter()
 
                         header_idx = find_subnetwork_header_index(lines, self.SUMMARY_RE)
@@ -260,7 +260,8 @@ class ConfigurationAudit:
                         idx_in_file = per_file_table_idx.get(base_filename, 0)
                         per_file_table_idx[base_filename] = idx_in_file + 1
 
-                        table_entries.append({"df": df, "sheet_candidate": mo_name_prev if mo_name_prev else os.path.splitext(base_filename)[0], "log_file": base_filename, "tables_in_log": 1, "note": note or "", "idx_in_file": idx_in_file})
+                        table_entries.append({"df": df, "sheet_candidate": mo_name_for_log, "log_file": base_filename, "tables_in_log": 1, "note": note or "", "idx_in_file": idx_in_file})
+
                     else:
                         tables_in_log = len(header_indices)
                         header_indices.append(len(lines))  # add sentinel index
@@ -306,8 +307,7 @@ class ConfigurationAudit:
                                     unique_mo_names.append(n)
 
                             mo_name_for_log = unique_mo_names[0] if unique_mo_names else os.path.splitext(base_filename)[0]
-                            _log_info(f"PHASE 1: Parse all log/txt files - MO parse {file_counter:>3}: '{mo_name_for_log}' (File: '{base_filename}') ({tables_in_log} tables) --> took {file_elapsed:.3f}s {tag}")
-
+                            _log_info(f"PHASE 1: Parse all log/txt files - MO parse {file_counter:>3}: '{mo_name_for_log}' (File: '{base_filename}' ({tables_in_log} tables)) --> took {file_elapsed:.3f}s {tag}")
 
             # =====================================================================
             #                PHASE 2: Determine final sorting order

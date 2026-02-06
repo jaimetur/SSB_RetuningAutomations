@@ -453,11 +453,11 @@ def process_profiles_tables(tables, add_row, n77_ssb_pre, n77_ssb_post, nodes_po
         _add_missing_suffix_profiles_check(work=work_all.copy(), node_col=node_col_all, profile_id_col=moid_col_all, uecfg_col=uecfg_col_all, add_row_fn=add_row_fn, ssb_pre_int_local=ssb_pre_int_local, ssb_post_int_local=ssb_post_int_local, metric_text=metric_text, category_text="McpcPCellNrFreqRelProfileUeCfg")
 
     def _process_single_profiles_table(df, table_name: str, moid_col_name: str, add_row_fn, ssb_pre_int_local: Optional[int], ssb_post_int_local: Optional[int]) -> None:
-        metric_missing = f"Profiles with old N77 SSB ({ssb_pre_int_local}) but not new N77 SSB ({ssb_post_int_local}) (from {table_name})"
-        metric_discr = f"Profiles with old N77 SSB ({ssb_pre_int_local}) and new N77 SSB ({ssb_post_int_local}) but with param discrepancies (from {table_name})"
+        metric_missing = f"Retuned nodes and Profiles with old N77 SSB ({ssb_pre_int_local}) but not new N77 SSB ({ssb_post_int_local}) (from {table_name})"
+        metric_discr = f"Retuned nodes and Profiles with old N77 SSB ({ssb_pre_int_local}) and new N77 SSB ({ssb_post_int_local}) but with param discrepancies (from {table_name})"
 
         metric_missing_suffix_mcpc = f"Profiles with old N77 SSB (xxxx_{ssb_pre_int_local}) but not new N77 SSB (xxxx_{ssb_post_int_local}) (from McpcPCellNrFreqRelProfileUeCfg)"
-        metric_missing_prefix_trstsa = f"NR Nodes with the new N77 SSB ({ssb_post_int_local}) and Profiles with old N77 SSB ({ssb_pre_int_local}_xxxx) but not new N77 SSB ({ssb_post_int_local}_xxxx) (from TrStSaNrFreqRelProfileUeCfg)"
+        metric_missing_prefix_trstsa = f"Retuned nodes and Profiles with old N77 SSB ({ssb_pre_int_local}_xxxx) but not new N77 SSB ({ssb_post_int_local}_xxxx) (from TrStSaNrFreqRelProfileUeCfg)"
 
         skip_generic_inconsistency = (table_name in {"McpcPCellNrFreqRelProfileUeCfg", "TrStSaNrFreqRelProfileUeCfg"})
 
@@ -787,10 +787,10 @@ def cc_post_step2(tables: Dict[str, pd.DataFrame], add_row, n77_ssb_pre: object,
             if s:
                 nodes_post_set.add(s)
 
-    metric_nrcellcu = f"NR nodes with the new N77 SSB ({ssb_post}) and NRCellCU Ref parameters to Profiles with the old SSB name (from NRCellCU table)"
-    metric_eutran = f"NR nodes with the new N77 SSB ({ssb_post}) and EUtranFreqRelation Ref parameters to Profiles with the old SSB name (from EUtranFreqRelation table)"
-    metric_profile_uecfg = f"NR Nodes with the new N77 SSB ({ssb_post}) and Profiles with old N77 SSB ({ssb_pre}_xxxx) but not new N77 SSB ({ssb_post}_xxxx) (from McpcPCellNrFreqRelProfileUeCfg)"
-    metric_trstsa_profile_uecfg = f"NR Nodes with the new N77 SSB ({ssb_post}) and Profiles with old N77 SSB ({ssb_pre}_xxxx) but not new N77 SSB ({ssb_post}_xxxx) (from TrStSaNrFreqRelProfileUeCfg)"
+    metric_nrcellcu = f"Retuned nodes with NRCellCU Ref parameters to Profiles with the old SSB name (from NRCellCU table)"
+    metric_eutran = f"Retuned nodes with EUtranFreqRelation Ref parameters to Profiles with the old SSB name (from EUtranFreqRelation table)"
+    metric_profile_uecfg = f"Retuned nodes and Profiles with old N77 SSB ({ssb_pre}_xxxx) but not new N77 SSB ({ssb_post}_xxxx) (from McpcPCellNrFreqRelProfileUeCfg)"
+    metric_trstsa_profile_uecfg = f"Retuned nodes and Profiles with old N77 SSB ({ssb_pre}_xxxx) but not new N77 SSB ({ssb_post}_xxxx) (from TrStSaNrFreqRelProfileUeCfg)"
 
     if ssb_pre is None or ssb_post is None:
         add_row("NRCellCU", "Profiles Inconsistencies", metric_nrcellcu, 0, f"Invalid SSB values ({ssb_pre}, {ssb_post})")

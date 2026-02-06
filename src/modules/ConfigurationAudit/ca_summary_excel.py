@@ -520,14 +520,14 @@ def build_summary_audit(
             ("EUtranFreqRelation", "Profiles Audit"),
 
             # Profiles tables
-            ("McpcPCellProfileUeCfg", "Profiles Inconsistencies"),
-            ("McpcPCellProfileUeCfg", "Profiles Discrepancies"),
-
             ("McpcPCellNrFreqRelProfileUeCfg", "Profiles Inconsistencies"),
             ("McpcPCellNrFreqRelProfileUeCfg", "Profiles Discrepancies"),
 
             ("TrStSaNrFreqRelProfileUeCfg", "Profiles Inconsistencies"),
             ("TrStSaNrFreqRelProfileUeCfg", "Profiles Discrepancies"),
+
+            ("McpcPCellProfileUeCfg", "Profiles Inconsistencies"),
+            ("McpcPCellProfileUeCfg", "Profiles Discrepancies"),
 
             ("UlQualMcpcMeasCfg", "Profiles Inconsistencies"),
             ("UlQualMcpcMeasCfg", "Profiles Discrepancies"),
