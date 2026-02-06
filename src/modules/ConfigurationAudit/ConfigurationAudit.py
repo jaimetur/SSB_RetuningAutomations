@@ -223,16 +223,18 @@ class ConfigurationAudit:
             _log_info("PHASE 1: Parse all log/txt files (this phase can take some time)...")
 
             with log_phase_timer("PHASE 1: Parse all log/txt files", log_fn=_log_info, show_start=show_phase_starts, show_end=False, show_timing=show_phase_timings, line_prefix="", start_level="INFO", end_level="INFO", timing_level="INFO"):
+                file_counter = 0
                 for i, path in enumerate(log_files, start=1):
-                    file_start = time.perf_counter()
+                    file_counter += 1
 
                     base_filename = os.path.basename(path)
                     lines, encoding_used = read_text_file(path)
 
                     header_indices = find_all_subnetwork_headers(lines)
 
-                    # Case 1: no 'SubNetwork' header found, fallback single-table mode
-                    if not header_indices:
+                    if len(header_indices) <= 1:
+                        table_start = time.perf_counter()
+
                         header_idx = find_subnetwork_header_index(lines, self.SUMMARY_RE)
                         df, note = parse_log_lines(lines, self.SUMMARY_RE, forced_header_idx=header_idx)
                         mo_name_prev = extract_mo_name_from_previous_line(lines, header_idx)
@@ -241,27 +243,37 @@ class ConfigurationAudit:
                             note = (note + " | " if note else "") + f"encoding={encoding_used}"
                         df, note = cap_rows(df, note)
 
+                        table_elapsed = time.perf_counter() - table_start
+
+                        mo_name_for_log = mo_name_prev if mo_name_prev else ""
+                        if header_indices and header_indices[0] < len(lines):
+                            mo_from_subnet = extract_mo_from_subnetwork_line(lines[header_indices[0]])
+                            if mo_from_subnet:
+                                mo_name_for_log = mo_from_subnet
+                        if not mo_name_for_log:
+                            mo_name_for_log = os.path.splitext(base_filename)[0]
+
+                        if show_phase_timings:
+                            tag = "[SLOW]" if table_elapsed >= float(slow_file_seconds_threshold) else ""
+                            _log_info(f"PHASE 1: Parse all log/txt files - MO parse {file_counter:>3}: '{mo_name_for_log}' (File: {base_filename}) --> took {table_elapsed:.3f}s {tag}")
+
                         idx_in_file = per_file_table_idx.get(base_filename, 0)
                         per_file_table_idx[base_filename] = idx_in_file + 1
 
-                        table_entries.append(
-                            {
-                                "df": df,
-                                "sheet_candidate": mo_name_prev if mo_name_prev else os.path.splitext(base_filename)[0],
-                                "log_file": base_filename,
-                                "tables_in_log": 1,
-                                "note": note or "",
-                                "idx_in_file": idx_in_file,  # numeric index of this table inside the same file
-                            }
-                        )
+                        table_entries.append({"df": df, "sheet_candidate": mo_name_prev if mo_name_prev else os.path.splitext(base_filename)[0], "log_file": base_filename, "tables_in_log": 1, "note": note or "", "idx_in_file": idx_in_file})
                     else:
-                        # Case 2: multiple 'SubNetwork' headers found (multi-table log)
                         tables_in_log = len(header_indices)
                         header_indices.append(len(lines))  # add sentinel index
+
+                        file_start = time.perf_counter()
+                        any_slow = False
+                        mo_names: List[str] = []
 
                         for ix in range(tables_in_log):
                             h = header_indices[ix]
                             nxt = header_indices[ix + 1]
+                            table_start = time.perf_counter()
+
                             mo_name_from_line = extract_mo_from_subnetwork_line(lines[h])
                             desired_sheet = mo_name_from_line if mo_name_from_line else os.path.splitext(base_filename)[0]
 
@@ -271,23 +283,31 @@ class ConfigurationAudit:
                                 note += f" | encoding={encoding_used}"
                             df, note = cap_rows(df, note)
 
+                            table_elapsed = time.perf_counter() - table_start
+                            if table_elapsed >= float(slow_file_seconds_threshold):
+                                any_slow = True
+
+                            mo_names.append(desired_sheet)
+
                             idx_in_file = per_file_table_idx.get(base_filename, 0)
                             per_file_table_idx[base_filename] = idx_in_file + 1
 
-                            table_entries.append(
-                                {
-                                    "df": df,
-                                    "sheet_candidate": desired_sheet,
-                                    "log_file": base_filename,
-                                    "tables_in_log": tables_in_log,
-                                    "note": note or "",
-                                    "idx_in_file": idx_in_file,
-                                }
-                            )
+                            table_entries.append({"df": df, "sheet_candidate": desired_sheet, "log_file": base_filename, "tables_in_log": tables_in_log, "note": note or "", "idx_in_file": idx_in_file})
 
-                    file_elapsed = time.perf_counter() - file_start
-                    if show_phase_timings and file_elapsed >= float(slow_file_seconds_threshold):
-                        _log_info(f"PHASE 1: Parse all log/txt files - Slow file parse {i}/{len(log_files)} (>{slow_file_seconds_threshold}s): '{base_filename}' took {file_elapsed:.3f}s")
+                        file_elapsed = time.perf_counter() - file_start
+
+                        if show_phase_timings:
+                            tag = "[SLOW]" if any_slow or (file_elapsed >= float(slow_file_seconds_threshold)) else ""
+                            unique_mo_names: List[str] = []
+                            seen = set()
+                            for n in mo_names:
+                                if n and n not in seen:
+                                    seen.add(n)
+                                    unique_mo_names.append(n)
+
+                            mo_name_for_log = unique_mo_names[0] if unique_mo_names else os.path.splitext(base_filename)[0]
+                            _log_info(f"PHASE 1: Parse all log/txt files - MO parse {file_counter:>3}: '{mo_name_for_log}' (File: '{base_filename}') ({tables_in_log} tables) --> took {file_elapsed:.3f}s {tag}")
+
 
             # =====================================================================
             #                PHASE 2: Determine final sorting order

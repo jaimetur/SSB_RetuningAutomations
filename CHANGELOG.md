@@ -21,6 +21,7 @@
     - **ConfigurationAudit:** Added new SummaryAudit profile checks for the new MOs CaCellProfile and CaCellProfileUeCfg. These checks mirror the existing TrStSaCellProfile / TrStSaCellProfileUeCfg logic, producing the same Profiles Inconsistencies and Profiles Discrepancies rows. Updated the profiles table collection/parsing so these MOs are included in the audit inputs and appear in the SummaryAudit output in the expected order.
 
   - #### 🚀 Enhancements:
+    - Execution Log now shows all MO parsed and its parsing time.
 
   - #### 🐛 Bug fixes:
     - Minor bug fixing.
