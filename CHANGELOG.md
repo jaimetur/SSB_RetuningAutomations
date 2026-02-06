@@ -18,6 +18,7 @@
     - **ConfigurationAudit:** Implemented MeContext loading, exclude UNSYNCHRONIZED across all audits, and enrich the MeContext worksheet.
     - **ConfigurationAudit:** Included MeContext in SummaryAudit and implemented a double-check by excluding UNSYNCHRONIZED inside the builder.
     - **ConfigurationAudit:** MeContext sheet enriched with additional columns (as per requirements).
+    - **ConfigurationAudit:** Added new SummaryAudit profile checks for the new MOs CaCellProfile and CaCellProfileUeCfg. These checks mirror the existing TrStSaCellProfile / TrStSaCellProfileUeCfg logic, producing the same Profiles Inconsistencies and Profiles Discrepancies rows. Updated the profiles table collection/parsing so these MOs are included in the audit inputs and appear in the SummaryAudit output in the expected order.
 
   - #### 🚀 Enhancements:
 

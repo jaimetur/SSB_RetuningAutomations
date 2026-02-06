@@ -495,6 +495,8 @@ class ConfigurationAudit:
                     "McfbCellProfileUeCfg": [],
                     "TrStSaCellProfile": [],
                     "TrStSaCellProfileUeCfg": [],
+                    "CaCellProfile": [],
+                    "CaCellProfileUeCfg": [],
                     "TrStSaNrFreqRelProfileUeCfg": [],
                     "McpcPCellEUtranFreqRelProfile": [],
                     "McpcPCellEUtranFreqRelProfileUeCfg": [],
@@ -629,6 +631,8 @@ class ConfigurationAudit:
                     "UeMCEUtranFreqRelProfileUeCfg",
                     "TrStSaCellProfile",
                     "TrStSaCellProfileUeCfg",
+                    "CaCellProfile",
+                    "CaCellProfileUeCfg",
                     "TrStSaNrFreqRelProfileUeCfg",
                 ]
                 profiles_tables: Dict[str, pd.DataFrame] = {}

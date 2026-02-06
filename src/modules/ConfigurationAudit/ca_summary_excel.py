@@ -547,6 +547,12 @@ def build_summary_audit(
             ("TrStSaCellProfileUeCfg", "Profiles Inconsistencies"),
             ("TrStSaCellProfileUeCfg", "Profiles Discrepancies"),
 
+            ("CaCellProfile", "Profiles Inconsistencies"),
+            ("CaCellProfile", "Profiles Discrepancies"),
+
+            ("CaCellProfileUeCfg", "Profiles Inconsistencies"),
+            ("CaCellProfileUeCfg", "Profiles Discrepancies"),
+
             ("McpcPCellEUtranFreqRelProfile", "Profiles Inconsistencies"),
             ("McpcPCellEUtranFreqRelProfile", "Profiles Discrepancies"),
 

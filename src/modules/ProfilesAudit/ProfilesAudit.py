@@ -586,6 +586,8 @@ def process_profiles_tables(tables, add_row, n77_ssb_pre, n77_ssb_post, nodes_po
         ("UeMCEUtranFreqRelProfileUeCfg", "UeMCEUtranFreqRelProfileUeCfgId"),
         ("TrStSaCellProfile", "TrStSaCellProfileId"),
         ("TrStSaCellProfileUeCfg", "TrStSaCellProfileId"),
+        ("CaCellProfile", "CaCellProfileId"),
+        ("CaCellProfileUeCfg", "CaCellProfileId"),
         ("TrStSaNrFreqRelProfileUeCfg", "TrStSaNrFreqRelProfileId"),
     ]
 
