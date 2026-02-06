@@ -529,11 +529,11 @@ def build_summary_audit(
             ("McpcPCellProfileUeCfg", "Profiles Inconsistencies"),
             ("McpcPCellProfileUeCfg", "Profiles Discrepancies"),
 
-            ("UlQualMcpcMeasCfg", "Profiles Inconsistencies"),
-            ("UlQualMcpcMeasCfg", "Profiles Discrepancies"),
-
             ("McpcPSCellProfileUeCfg", "Profiles Inconsistencies"),
             ("McpcPSCellProfileUeCfg", "Profiles Discrepancies"),
+
+            ("UlQualMcpcMeasCfg", "Profiles Inconsistencies"),
+            ("UlQualMcpcMeasCfg", "Profiles Discrepancies"),
 
             ("McfbCellProfile", "Profiles Inconsistencies"),
             ("McfbCellProfile", "Profiles Discrepancies"),

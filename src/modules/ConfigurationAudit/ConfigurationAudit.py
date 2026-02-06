@@ -251,7 +251,7 @@ class ConfigurationAudit:
                             if mo_from_subnet:
                                 mo_name_for_log = mo_from_subnet
                         if not mo_name_for_log:
-                            mo_name_for_log = os.path.splitext(base_filename)[0]
+                            mo_name_for_log = "MO NOT FOUND"
 
                         if show_phase_timings:
                             tag = "[SLOW]" if table_elapsed >= float(slow_file_seconds_threshold) else ""
@@ -306,7 +306,7 @@ class ConfigurationAudit:
                                     seen.add(n)
                                     unique_mo_names.append(n)
 
-                            mo_name_for_log = unique_mo_names[0] if unique_mo_names else os.path.splitext(base_filename)[0]
+                            mo_name_for_log = unique_mo_names[0] if unique_mo_names else "MO NOT FOUND"
                             _log_info(f"PHASE 1: Parse all log/txt files - MO parse {file_counter:>3}: '{mo_name_for_log}' (File: '{base_filename}' ({tables_in_log} tables)) --> took {file_elapsed:.3f}s {tag}")
 
             # =====================================================================
