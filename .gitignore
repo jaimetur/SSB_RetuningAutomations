@@ -227,3 +227,5 @@ cython_debug/
 # PyPI configuration file
 .pypirc
 
+/.idea/easycode.ignore
+/.idea/easycode/codebase-v2.xml

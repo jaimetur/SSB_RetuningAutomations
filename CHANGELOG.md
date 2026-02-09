@@ -4,14 +4,31 @@
 
 ---
 
-## Release: v0.6.4
-- ### Release Date: 2026-02-06
-
-- ### Main Changes:
+## Release: v0.6.5
+### Release Date: 2026-02-10
   
-  - #### 🚨 Breaking Changes:
+- #### 🚨 Breaking Changes:
 
-  - #### 🌟 New Features:
+- #### 🌟 New Features:
+
+- #### 🚀 Enhancements:
+  - Added an extra NRCellRelation correction command to set acaMode (e.g., AUTO) at the end of the generated script.
+  - Renamed MeContext enriched audit columns to the short header names (yellow/green) instead of the long ‘from table’ descriptions.
+
+- #### 🐛 Bug fixes:
+  - Minor bug fixing.
+    
+- #### 📚 Documentation: 
+  - Updated documentation with latest changes.
+
+---
+
+## Release: v0.6.4
+### Release Date: 2026-02-06
+
+- #### 🚨 Breaking Changes:
+
+- #### 🌟 New Features:
     - **ConfigurationAudit:** SummaryAudit: For NR and LTE cell rows, the ExtraInfo field now contains a list of NODES instead of cells.
     - **ConfigurationAudit:** SummaryAudit: EndcDistrProfile: Added 3 new rows for mandatoryGUtranFreqRef (following the gUtranFreqRef format) and enable support for additional frequencies.
     - **ConfigurationAudit:** LTE Param Mismatching: endcB1MeasPriority is no longer be handled as a "mismatch." Instead, report it as 2 separate cases and include a SummaryAudit with a list of nodes.
@@ -20,25 +37,24 @@
     - **ConfigurationAudit:** MeContext sheet enriched with additional columns (as per requirements).
     - **ConfigurationAudit:** Added new SummaryAudit profile checks for the new MOs CaCellProfile and CaCellProfileUeCfg. These checks mirror the existing TrStSaCellProfile / TrStSaCellProfileUeCfg logic, producing the same Profiles Inconsistencies and Profiles Discrepancies rows. Updated the profiles table collection/parsing so these MOs are included in the audit inputs and appear in the SummaryAudit output in the expected order.
 
-  - #### 🚀 Enhancements:
+- #### 🚀 Enhancements:
     - Execution Log now shows all MO parsed and its parsing time.
 
-  - #### 🐛 Bug fixes:
+- #### 🐛 Bug fixes:
     - Minor bug fixing.
     
-  - #### 📚 Documentation: 
+- #### 📚 Documentation: 
     - Updated documentation with latest changes.
 
 ---
 
 ## Release: v0.6.3
-- ### Release Date: 2026-02-03
+### Release Date: 2026-02-03
 
-- ### Main Changes:
   
-  - #### 🚨 Breaking Changes:
+- #### 🚨 Breaking Changes:
 
-  - #### 🌟 New Features:
+- #### 🌟 New Features:
     - Now `ConfigurationAudit` and `Final Clean-up` modules supports multiple Input folders from GUI (using Add button or selecting several subfolders within the same folder) and also from CLI (using `--inputs` argument instead of `--input`) to process all of them in batch mode.
     - Now `ConfigurationAudit` and `Final Clean-up` modules supports multi-select valid `Step0` subfolders.
     - `NRCellDU` now updates `ssbFrequency` column when the value is 0 and `ssbFrequencyAutoSelected` is not 0. 
@@ -46,7 +62,7 @@
     - Included a new Selectable dialog to select wich folders do you want to re-Run `ConfigurationAudit` module when a previous Audit (with the same version) have been found (This new dialog only appears in batch mode).
     - Included Tool logo on GUI launcher dialog.
 
-  - #### 🚀 Enhancements:
+- #### 🚀 Enhancements:
     - `ConfigurationAudit` module now detects Market name properly even if it is not delimited by `_` but if it appears after `Step0_` (i.e: 20260114_0728_Step0_Mkt188 → Market Mkt188).
     - Enhanced Correction_Cmd columns in `ConsistencyCheck` module to add the fix commands of header/footer of avery node text file:
       - confb+
@@ -63,7 +79,7 @@
     - Improved Auto-detection of PRE/POST folder in `ConsistencyCheck (bulk)` mode, to supports several levels of subfolders.
     - Enhanced main launcher dialog layout.
 
-  - #### 🐛 Bug fixes:
+- #### 🐛 Bug fixes:
     - Fix bug in `ConsistencyCheck` module where the SSB-Unknown mask was not being applied to `Summary_CellRelation` sheet so the stats show in this table did not match with the real discrepancies shown in `_disc` table. 
     - Fix bug in `ConsistencyCheck` module where the Freq_Pre/Freq_Post was not being properly extracted when the SSB freq was something like `autoXXXXX_YYY` in `Summary_CellRelation` sheet.
     - Other fixes in `ConsistencyCheck` module to align stats of Summary table with real discrepancies (filtered by SSB-Post in other tables).
@@ -71,78 +87,72 @@
     - Fix auto-detect Step0 folder to detect folders with `Step0` in the folder name and valid logs files inside (in .txt/.log/.zip formats).
     - Minor bug fixing.
     
-  - #### 📚 Documentation: 
+- #### 📚 Documentation: 
     - Updated documentation with latest changes.
 
 ---
 
 ## Release: v0.6.2
-- ### Release Date: 2026-02-01
+### Release Date: 2026-02-01
 
-- ### Main Changes:
-  
-  - #### 🚨 Breaking Changes:
+- #### 🚨 Breaking Changes:
 
-  - #### 🌟 New Features:
+- #### 🌟 New Features:
     - New module `0. Update Network Frequencies` to update the Frequency List from the Network. For this module to work you need to provide an Input Folder with a valid log for the MO NRFrequency.
 
-  - #### 🚀 Enhancements:
+- #### 🚀 Enhancements:
     - Updated Correction Commands for MO `NRCellRelation`.
     - Updated Correction Commands for MO `GUtranCellRelation`.
     - Updated Correction Commands for MO `ExternalGUtranCell`.
     - Moved `GNodeB_SSB_Target` column beside `SSB needs update` columnd in MO table `TermpointToGNB`.
 
-  - #### 🐛 Bug fixes:
+- #### 🐛 Bug fixes:
     - Fixed a pandas error in `ConsistencyCheck` module by avoiding boolean evaluation of DataFrames when selecting cached SummaryAudit data (replaced df1 or df2 with an explicit None check).
     - Minor bug fixing.
     
-  - #### 📚 Documentation: 
+- #### 📚 Documentation: 
     - Updated documentation with latest changes.
 
 ---
 
 ## Release: v0.6.1
-- ### Release Date: 2026-01-30
+### Release Date: 2026-01-30
 
-- ### Main Changes:
-  
-  - #### 🚨 Breaking Changes:
+- #### 🚨 Breaking Changes:
     - New flag `--fast-excel` (also available on GUI) to enable/disable a new Excel writer engine (xlsxwriter) to speed up Excel exports (saving to Excel takes approximately half the time compared to the default engine). (NOTE: This engine has limited formatting support and does not support applying styles such as different row colors in Excel).
     - New flag `--profiles-audit` (also available on GUI) to enable/sisable `ProfilesAudit` during a `ConfigurationAudit` execution.
 
-  - #### 🌟 New Features:
+- #### 🌟 New Features:
     - When running `ConfigurationAudit`, if the tool finds a previously generated `ConfigurationAudit` folder in the input directory created with the same tool version, it prompts the user to decide whether to run the audit again. (Note: in batch mode, the tool automatically skips folders that already contain a `ConfigurationAudit` generated with the same tool version.)
     - Integrated a new Excel writer engine (xlsxwriter) to speed up Excel exports (saving to Excel takes approximately half the time compared to the default engine). You can enable it via the new `--fast-excel` CLI flag or from the GUI. Important: this engine has limited formatting support and does not support applying styles such as different row colors in Excel.
 
-  - #### 🚀 Enhancements:
+- #### 🚀 Enhancements:
     - Unified style_headers_autofilter_and_autofit to apply styles to sheets from `ConfigurationAudit` and `ConsistencyCheck`.
 
-  - #### 🐛 Bug fixes:
+- #### 🐛 Bug fixes:
     - Minor bug fixing.
     
-  - #### 📚 Documentation: 
+- #### 📚 Documentation: 
     - Updated documentation with latest changes.
 
 ---
 
 ## Release: v0.6.0
-- ### Release Date: 2026-01-28
+### Release Date: 2026-01-28
 
-- ### Main Changes:
-  
-  - #### 🚨 Breaking Changes:
+- #### 🚨 Breaking Changes:
     - All Correction Commands files(except relations missing/new/discrepancies) are now generated by `ConfigurationAudit` module instead of `ConsistencyCheck` module.
     - Correction Commands generated by `ConfigurationAudit` are now created within folder `Correction_Cmd_CA` and in ZIP format by default.
     - Correction Commands generated by `ConsistencyCheck` are now created within folder `Correction_Cmd_CC` and in ZIP format by default.
     - New flag `--export-correction-cmd` (also available on GUI) to enable the export of Correction Commands during `ConfigurationAudit`module. (NOTE: This flag is disabled by default on CLI and need to be included if you want to export the Correction Command files).
 
-  - #### 🌟 New Features:
+- #### 🌟 New Features:
     - Merge Excel sheets for the same MO instead add (1), (2)… in 'ConfigurationAudit' module.
     - Added a hyperlink in cell A1 on every sheet from `ConfigurationAudit` Excel to jump back to `SummaryAudit`.
     - Added a hyperlink in cell A1 on every sheet from `ConsistencyCheck` Excel to jump back to `Summary_CellRelation`.
     - Now the execution log is also available in output folder for an easier way to identify which log belong to each execution.
 
-  - #### 🚀 Enhancements:
+- #### 🚀 Enhancements:
     - **ConsistencyChecks module:**
       - ConsistencyChecks exports now all Correction Commands to `Correction_Cmd_CC` folder instead of `Correction_Cmd`. 
       - In ConsistencyChecks, export ONLY neighbor-relation commands (because they require comparing 2 audits):
@@ -175,7 +185,7 @@
       - Enhancements in the way that the Correction_Cmd is loaded (before it was read from final Excel file, now it is read from the dataframe already in memory).
       - Correction Commands files are now exported as ZIP files (by default) to reduce latency and avoid to write hundreds of files on disk.
 
-  - #### 🐛 Bug fixes:
+- #### 🐛 Bug fixes:
     - Stopped ConfigurationAudit from creating ConsistencyCheck-only folders (MissingRelations/ NewRelations/ RelationsDiscrepancies) under Correction_Cmd.
     - Fixed Correction_Cmd exporters so it now includes all sheets that contain Correction_Cmd (e.g., NRCellRelation, GUtranCellRelation), not only External/TermPoint.
     - Fixed NRCellRelation command generation by ensuring canonical column names are present for the builders (so Correction_Cmd is no longer all-empty).
@@ -186,23 +196,21 @@
     - Fixed issue when `NRCellRelation` or `GUtranCellRelation` have to extract the list of nodes "Pre-retune" or "Post-retune" from SummaryAudit. Since those nodes are calculated by `process_nr_cell_du()` function, that function need to be run before to process other tables.
     - Minor bug fixing.
     
-  - #### 📚 Documentation: 
+- #### 📚 Documentation: 
     - Updated documentation with latest changes.
 
 ---
 
 ## Release: v0.5.7
-- ### Release Date: 2026-01-23
+### Release Date: 2026-01-23
 
-- ### Main Changes:
-  
-  - #### 🚨 Breaking Changes:
+- #### 🚨 Breaking Changes:
 
-  - #### 🌟 New Features:
+- #### 🌟 New Features:
 
-  - #### 🚀 Enhancements:
+- #### 🚀 Enhancements:
 
-  - #### 🐛 Bug fixes:
+- #### 🐛 Bug fixes:
     - Fixed duplicates entries in Excel sheets of `ConfigurationAudit` module when one MO is separated in different log files. Now the tool merge all the logs files and creates only one sheet per MO.
     - Fixed bug in `is_n77_from_string()` function causing bad parsing of values like `653952-30-20-0-1`, `auto_647328`etc...
     - Fixed re-injection of `GUtranSyncSignalFrequency` MO in `ConfigurationAudit` module. Previously the MO re-injected was `GUSyncSignalFrequency` which does not exist.
@@ -210,19 +218,17 @@
     - Fixed potential bug in `n77b_ssb_arfcn` field from Class `ConfigurationAudit` that may cause the constructor fail.
     - Minor bug fixing.
     
-  - #### 📚 Documentation: 
+- #### 📚 Documentation: 
     - Updated documentation with latest changes.
 
 ---
 
 ## Release: v0.5.6
-- ### Release Date: 2026-01-16
+### Release Date: 2026-01-16
 
-- ### Main Changes:
-  
-  - #### 🚨 Breaking Changes:
+- #### 🚨 Breaking Changes:
 
-  - #### 🌟 New Features:
+- #### 🌟 New Features:
     - Added GNodeB_SSB_Target classification to TermPointToGNodeB using the same SummaryAudit node-id based logic (nodes_pre / nodes_post) already used in ExternalNRCellCU, ensuring consistent SSB-Pre/SSB-Post/Unknown targeting.
     - Updated the orchestrator call chain so process_termpoint_to_gnodeb() now receives nodes_id_pre and nodes_id_post, avoiding any dependency on “NR must run first” just to inherit the target.
     - Enhanced the external/termpoint command exporter to split TermPointToGNodeB outputs into two folders: TermPointToGNodeB/SSB-Post and TermPointToGNodeB/Unknown.
@@ -230,55 +236,51 @@
     - Enhanced NRCellRelation processing to add the requested enrichment columns: Frequency (extracted from nRFreqRelationRef) plus ExternalGNBCUCPFunction and ExternalNRCellCU (parsed from nRCellRef), following the same extraction approach used in ExternalNRCellCU.
     - Added support to compute GNodeB_SSB_Target for NRCellRelation using nodes_pre / nodes_post (same target-detection logic as ExternalNRCellCU).
 
-  - #### 🚀 Enhancements:
+- #### 🚀 Enhancements:
     - Added pre- and post-change hget checks around the set in the ExternalNRCellCU correction command, so nRFrequencyRef is displayed before and after applying the SSB update.
     - Updated TermPointToGNodeB correction command template to match the slide’s final format: removed dynamic hget lines using ssb_pre/ssb_post and replaced them with the hardcoded hget ... nRFrequencyRef 64 checks in the correct places, aligning with the expected command sequence.
 
-  - #### 🐛 Bug fixes:
+- #### 🐛 Bug fixes:
    - Minor bug fixing.
     
-  - #### 📚 Documentation: 
+- #### 📚 Documentation: 
     - Updated documentation with latest changes.
 
 ---
 
 ## Release: v0.5.5
-- ### Release Date: 2026-01-15
+### Release Date: 2026-01-15
 
-- ### Main Changes:
-  
-  - #### 🚨 Breaking Changes:
+- #### 🚨 Breaking Changes:
 
-  - #### 🌟 New Features:
+- #### 🌟 New Features:
     - Added a post-processing cleanup step that deletes the extracted ZIP logs folder after processing, while leaving the original ZIP file untouched.
     - Kept cleanup failure-safe (best-effort): any deletion errors are swallowed to avoid breaking the main execution flow.
     - Market is extracted from Step0_<Market>_... and added to filenames; Pre* / Post* are ignored as markets.
     - Bulk mode output filenames now include the detected market prefix (before Pre/Post and before the timestamp) to keep per-market artifacts clearly separated and consistently named.
 
-  - #### 🚀 Enhancements:
+- #### 🚀 Enhancements:
     - Output files now use parent-folder timestamp (if present); otherwise they use the execution timestamp.
     - Output folders still use the execution timestamp (always).
     - ZIP logs are unzipped to the system temp folder, processed from there, then cleaned up.
     - Timestamps are normalized (no seconds, - → _, format YYYYMMDD_HHMM).
 
-  - #### 🐛 Bug fixes:
+- #### 🐛 Bug fixes:
     - Bulk market detection now skips tool output folders so they’re not treated as markets.
     - Tk dialogs now use temporary hidden roots + parent= + destroy() to avoid the blank GUI window hang.
     - Minor bug fixing.
     
-  - #### 📚 Documentation: 
+- #### 📚 Documentation: 
     - Updated documentation with latest changes.
 
 ---
 
 ## Release: v0.5.4
-- ### Release Date: 2026-01-13
+### Release Date: 2026-01-13
 
-- ### Main Changes:
+- #### 🚨 Breaking Changes:
   
-  - #### 🚨 Breaking Changes:
-  
-  - #### 🚀 Enhancements:
+- #### 🚀 Enhancements:
     - Scope ProfilesAudit's checks to nodes that have completed retuning (nodes_post), when provided.
     - Added TrStSaNrFreqRelProfileUeCfg to the ProfilesAudit with the same two checks as McpcPCellNrFreqRelProfileUeCfg (missing old→new clone and parameter discrepancies), scoped to post-retuned nodes (nodes_post_scope).
     - Logging messages now has a timestamp prefix.
@@ -287,27 +289,25 @@
     - Performance Improvements on `ConfigurationAudit` module.
     - `ConfigurationAudit` module now shows details of time per phase to see which phases are more time-consuming.
 
-  - #### 🐛 Bug fixes:
+- #### 🐛 Bug fixes:
     - Fixed bug with table `TrStSaNrFreqRelProfileUeCfg` that was not being collected properly.
     - Exclude any `Id` field from Profiles Discrepancies checks.
     - Avoid filter by nodes that have already been retuned the following check: `Profiles with old N77 SSB (xxxx_648672) but not new N77 SSB (xxxx_647328) (from McpcPCellNrFreqRelProfileUeCfg)`.
     - Minor bug fixing.
     
-  - #### 📚 Documentation: 
+- #### 📚 Documentation: 
     - Updated documentation with latest changes.
 
 ---
 
 ## Release: v0.5.3
-- ### Release Date: 2026-01-08
+### Release Date: 2026-01-08
 
-- ### Main Changes:
+- #### 🚨 Breaking Changes:
   
-  - #### 🚨 Breaking Changes:
-  
-  - #### 🚀 Enhancements:
+- #### 🚀 Enhancements:
 
-  - #### 🐛 Bug fixes:
+- #### 🐛 Bug fixes:
     - Fixed the “same profileRef containing old SSB name” KPI to exclude Default / empty profile refs, so nodes pointing to ...=Default are no longer incorrectly counted as “same old-SSB profile”.
     - Tightened the “same profileRef” condition to only count refs that actually encode an SSB and where the extracted SSB matches n77_ssb_pre, aligning the output with the wording “containing old SSB name”.
     - Corrected the “cloned or Other” KPI so it now represents all nodes having both OLD+NEW SSB minus the “same old-name profileRef” nodes, ensuring “Default/Other” cases fall into the intended bucket (as shown in your slide).
@@ -318,67 +318,61 @@
     - Fixed GitHub repository name.
     - Minor bug fixing.
     
-  - #### 📚 Documentation: 
+- #### 📚 Documentation: 
     - Updated documentation with latest changes.
 
 ---
 
 ## Release: v0.5.2
-- ### Release Date: 2026-01-07
+### Release Date: 2026-01-07
 
-- ### Main Changes:
+- #### 🚨 Breaking Changes:
   
-  - #### 🚨 Breaking Changes:
-  
-  - #### 🌟 New Features:
+- #### 🌟 New Features:
     - New Checks in `McpcPCellNrFreqRelProfileUeCfg` table to consideer the following consraints:
       - Step1 script will create new McpcPCellNrFreqRelProfile with id xxxx_647328, exact replica of existing profiles with ids xxxx_648672.
       - Step2 script will create new McpcPCellNrFreqRelProfile with id 647328_xxxx, exact replica of existing profiles with ids 648672_xxxx.
 
-  - #### 🚀 Enhancements:
+- #### 🚀 Enhancements:
     - Improved Checks in `NRFreqRelation` table to check that all rows with NRFreqRelationId = SSB-Post and with the same NRCellCUId will have column mcpcPCellNrFreqRelProfileRef identical for both, but only difference will be SSB in profile name replacing xxxx_SSB-Pre with xxxx_SSB-Post.  
       - Example: McpcPCellNrFreqRelProfile=430090_648672 -> McpcPCellNrFreqRelProfile=430090_647328 
 
-  - #### 🐛 Bug fixes:
+- #### 🐛 Bug fixes:
     - Minor bug fixing.
     
-  - #### 📚 Documentation: 
+- #### 📚 Documentation: 
     - Updated documentation with latest changes.
 
 ---
 
 ## Release: v0.5.1
-- ### Release Date: 2025-12-23
+### Release Date: 2025-12-23
 
-- ### Main Changes:
-  
-  - #### 🚨 Breaking Changes:
+- #### 🚨 Breaking Changes:
     - Removed module `4. Profiles Audit` and incorporated the logic within module `1. Configuration Audit`.
   
-  - #### 🌟 New Features:
+- #### 🌟 New Features:
 
-  - #### 🚀 Enhancements:
+- #### 🚀 Enhancements:
 
-  - #### 🐛 Bug fixes:
+- #### 🐛 Bug fixes:
     - Fixed error in `NR Frequency Inconsistencies (from NRFreqRelation)`
     - Fixed error in `Profiles Discrepancies (from McpcPCellNrFreqRelProfileUeCfg)`
     - Minor bug fixing.
     
-  - #### 📚 Documentation: 
+- #### 📚 Documentation: 
     - Updated documentation with latest changes.
 
 ---
 
 ## Release: v0.5.0
-- ### Release Date: 2025-12-22
+### Release Date: 2025-12-22
 
-- ### Main Changes:
-  
-  - #### 🚨 Breaking Changes:
+- #### 🚨 Breaking Changes:
     - Renamed Tool name from `RetuningAutomations` to `SSB_RetuningAutomations`.
     - Renamed module `4. Initial Clean-Up` to `4. Profiles Audit`.
   
-  - #### 🌟 New Features:
+- #### 🌟 New Features:
     - Include `Profiles Inconsistencies` to `Configuration Audit` module (in SummaryAudit table) when it is executed from module `4. Profiles Audit` module.
     - Include `Profiles Discrepancies` to `Configuration Audit` module (in SummaryAudit table) when it is executed from module `4. Profiles Audit` module.
     - Added new checks to `ConfigurationAuudit` module to include:
@@ -390,13 +384,13 @@
       - NR nodes with the old N77 SSB and the new SSB pointing to some mcpcPCellNrFreqRelProfileRef (from NRFreqRelation table)
       - NR nodes with the old N77 SSB and the new SSB pointing to clone mcpcPCellNrFreqRelProfileRef (from NRFreqRelation table)
 
-  - #### 🚀 Enhancements:
+- #### 🚀 Enhancements:
 
-  - #### 🐛 Bug fixes:
+- #### 🐛 Bug fixes:
     - Fixed build_all.yml to update the new Tool name.
     - Minor bug fixing.
     
-  - #### 📚 Documentation: 
+- #### 📚 Documentation: 
     - Updated README.md.
     - Updated ROADMAP.md.
     - Logo updated.
@@ -405,36 +399,32 @@
 ---
 
 ## Release: v0.4.3
-- ### Release Date: 2025-12-19
+### Release Date: 2025-12-19
 
-- ### Main Changes:
+- #### 🚨 Breaking Changes:
   
-  - #### 🚨 Breaking Changes:
-  
-  - #### 🌟 New Features:
+- #### 🌟 New Features:
 
-  - #### 🚀 Enhancements:
+- #### 🚀 Enhancements:
     - Added `FoldersCompared.txt` file to output folder when `ConsistencyCheck` module has been executed to show the folders used for Pre and Post. 
 
-  - #### 🐛 Bug fixes:
+- #### 🐛 Bug fixes:
     - Minor bug fixing.
     
-  - #### 📚 Documentation: 
+- #### 📚 Documentation: 
     - Updated README.md.
     - Updated documentation with latest changes.
 
 ---
 
 ## Release: v0.4.2
-- ### Release Date: 2025-12-19
+### Release Date: 2025-12-19
 
-- ### Main Changes:
+- #### 🚨 Breaking Changes:
   
-  - #### 🚨 Breaking Changes:
-  
-  - #### 🌟 New Features:
+- #### 🌟 New Features:
 
-  - #### 🚀 Enhancements:
+- #### 🚀 Enhancements:
     - Optimized TXT Commands file to group all commands within the same nodes and avoid duplicate lines with `confb+, lt all, alt, wait` commands.
     - Modified TermpointToGNB Correction Command.
     - Modified TermpointToGnodeB Correction Command.
@@ -445,50 +435,46 @@
       - from `Missing Relations` to `MissingRelations`
     - Correction_Cmd output subfolders for `RelationsDiscrepancies`, `NewRelations` and `MissingRelations` are now sepparated into two subfolders (`NR` and `GU`) for a better organization.
 
-  - #### 🐛 Bug fixes:
+- #### 🐛 Bug fixes:
     - Fixed bug on table `Summary GU_FreqRelation` that was taking the data from `GUtranSyncSignalFrequency` table instead of `GUtranFreqRelation`.
     - Minor bug fixing.
     
-  - #### 📚 Documentation: 
+- #### 📚 Documentation: 
     - Updated documentation with latest changes.
 
 ---
 
 ## Release: v0.4.1
-- ### Release Date: 2025-12-18
+### Release Date: 2025-12-18
 
-- ### Main Changes:
+- #### 🚨 Breaking Changes:
   
-  - #### 🚨 Breaking Changes:
-  
-  - #### 🌟 New Features:
+- #### 🌟 New Features:
     - When running `ConsistencyCheck` module, the Pre/Post Audits now are saved into the same output folder as the `ConsistencyCheck` output.
 
-  - #### 🚀 Enhancements:
+- #### 🚀 Enhancements:
     - Added Correction Commands for LTE External Cells and Termpoints.
     - External commands and Termpoint commands are now split by Node.
     - External commands are now saved into subfolders `ExternalNRCellCU` and `ExternalGUtranCell`.
     - Termpoint commands are now saved into subfolders `TermPointToGNodeB` and `TermPointToGNB`.
     - Code Refactored to split the module ca_summary into smaller modules for a better management of it.
 
-  - #### 🐛 Bug fixes:
+- #### 🐛 Bug fixes:
     - Fixed `ERROR: 'str' object has no attribute 'astype'` on `ConfigurationAudit` module when `availabilityStatus` column is not found.
     - Fixed Error when any MO has the same name as the expected table but with some letter in upper/lower capital.
     - Minor bug fixing.
     
-  - #### 📚 Documentation: 
+- #### 📚 Documentation: 
     - Updated documentation with latest changes.
 
 ---
 
 ## Release: v0.4.0
-- ### Release Date: 2025-12-16
+### Release Date: 2025-12-16
 
-- ### Main Changes:
+- #### 🚨 Breaking Changes:
   
-  - #### 🚨 Breaking Changes:
-  
-  - #### 🌟 New Features:
+- #### 🌟 New Features:
     - New metrics added to `ConfigurationAudit` module to count:
       - Table/Category: `ExternalNRCellCU`
         - ExternalNRCellCU to old N77 SSB (from ExternalNRCellCU)
@@ -522,50 +508,46 @@
       - `Correction_Cmd`: Contains the correction command to fix the termpoint.
     - Added Correction Commands for NR External Cells and Termpoints.
 
-  - #### 🚀 Enhancements:
+- #### 🚀 Enhancements:
     - Excel columns Autofit now is limited to a maximum column width of 100.
     - `SummaryAudit` Category column now contains links to the source table of each audit.
   
-  - #### 🐛 Bug fixes:
+- #### 🐛 Bug fixes:
     - Minor bug fixing.
     
-  - #### 📚 Documentation: 
+- #### 📚 Documentation: 
     - Updated documentation with latest changes.
 
 ---
 
 ## Release: v0.3.11
-- ### Release Date: 2025-12-04
+### Release Date: 2025-12-04
 
-- ### Main Changes:
+- #### 🚨 Breaking Changes:
   
-  - #### 🚨 Breaking Changes:
-  
-  - #### 🌟 New Features:
+- #### 🌟 New Features:
     - New feature to allow Frequency Filtering for `ConsistencyCheck` module.
     - GUI lanuncher adapted to include the list of frequencies to filter on `ConsistencyCheck` module.
 
-  - #### 🚀 Enhancements:
+- #### 🚀 Enhancements:
     - Some code refactoring to clean-up duplicates functions and group them by logic.
     - Output folder for `ConfigurationAudits` now has the market suffix if they have been executed from `ConsistencyCheck` module and any market have been detected.
     - Removed `timeOfCreation` from list of parameters to find discrepancies on `ConsistencyCheck` moodule.
   
-  - #### 🐛 Bug fixes:
+- #### 🐛 Bug fixes:
     - Minor bug fixing.
     
-  - #### 📚 Documentation: 
+- #### 📚 Documentation: 
     - Updated documentation with latest changes.
 
 ---
 
 ## Release: v0.3.10
-- ### Release Date: 2025-12-03
+### Release Date: 2025-12-03
 
-- ### Main Changes:
+- #### 🚨 Breaking Changes:
   
-  - #### 🚨 Breaking Changes:
-  
-  - #### 🌟 New Features:
+- #### 🌟 New Features:
     - New feature to recursively run Audit on all subfolders of Input Folder where any valid log is found. To run this feature you just need to provide an Input folder with no logs inside but with subfolders with valid logs inside.
     - New feature to auto-detect Pre/Post folders given only one Input folder with a predefined folder structure.
       - For this feature to work, the given input folder should contain subfolders with this naming convention: `yyyymmdd_hhmm_step0` (Optionally they may be a Market Subfolder inside it). 
@@ -581,102 +563,94 @@
     - Added a Blacklist of words to discard any input subfolders from auto-detection function. By default the tool will not consideer as input folder candidates for Audits any folder with any of the following words in its name: "ignore", "old", "discard", "bad".
     - New module called `3. Consistency Check (Bulk mode Pre/Post auto-detection)`. When this module is selected, the tool will automatically run an Smart Consistency Check in all markets detected in the input folder, selecting the most suitable folder for Pre and Post for each market.
 
-  - #### 🚀 Enhancements:
+- #### 🚀 Enhancements:
     - Added column `GNBCUCPFunction` to NR tables in `ConcistencyCheck` module to be able to filter those relations of interest.
     - Added `Freq_Pre` and `FreqPost` columns also to `_new` tables of `ConcistencyCheck` module to be consistent with the other tables generated by this module.
     - Deleted unnecessary columns on all `_new`, `_missing`, `_disc` tables in `ConsistencyCheck` module.
     - The GUI launcher dialog now comes to the foreground when it is reopened after the execution of any module.
     - The GUI launcher dialog now is always centered on screen.
   
-  - #### 🐛 Bug fixes:
+- #### 🐛 Bug fixes:
     - Minor bug fixing.
     
-  - #### 📚 Documentation: 
+- #### 📚 Documentation: 
     - Updated documentation with latest changes.
 
 ---
 
 ## Release: v0.3.9
-- ### Release Date: 2025-12-02
+### Release Date: 2025-12-02
 
-- ### Main Changes:
+- #### 🚨 Breaking Changes:
   
-  - #### 🚨 Breaking Changes:
-  
-  - #### 🌟 New Features:
+- #### 🌟 New Features:
     - Excluded Relations Discrepancies on those relations towards nodes that have not been retuned (buffer) on `ConsistencyCheck` module.
     - Added a new sheet called `SummaryAuditComparison` to `ConsistencyCheck` output Excel file to compare the values of both Audits run (for Pre-folder and Post-folder).
 
-  - #### 🚀 Enhancements:
+- #### 🚀 Enhancements:
     - Fixed `Freq_Pre/Freq_Post` values in `NR_Disc` table on `ConsistencyCheck` module.
     - Renamed sheet `Summary_Detailed` to `Summary_CellRelation`.
     - Removed Exception when input folder does not contain logs files. Now a message is displayed instead of throw an exception.
   
-  - #### 🐛 Bug fixes:
+- #### 🐛 Bug fixes:
     - Removed Duplicated check in `GUtranSyncSignalFrequency` Table.
     - Minor bug fixing.
     
-  - #### 📚 Documentation: 
+- #### 📚 Documentation: 
     - Updated documentation with latest changes.
 
 ---
 
 ## Release: v0.3.8
-- ### Release Date: 2025-12-01
+### Release Date: 2025-12-01
 
-- ### Main Changes:
+- #### 🚨 Breaking Changes:
   
-  - #### 🚨 Breaking Changes:
-  
-  - #### 🌟 New Features:
+- #### 🌟 New Features:
     - Added Correction Commands on GU_Disc and NR_Disc tables.
     - NR Nodes classification MACRO/mmWave (#35)
 
-  - #### 🚀 Enhancements:
+- #### 🚀 Enhancements:
     - Created separated subfolders for each type of Correction Commands.
     - Apply red color font only to Inconsistency rows whose value is higher than zero.
   
-  - #### 🐛 Bug fixes:
+- #### 🐛 Bug fixes:
     - Fixed abnormal prefix for long paths in Windows.
     - Fixed invalid Inconsistency in mixed nodes (MidLowBand & mmWave).
     - Aligned all Audit messages.
     - Modified the mmWave range up to 2.300.000 instead of 2.100.000.
     - Minor bug fixing.
     
-  - #### 📚 Documentation: 
+- #### 📚 Documentation: 
     - Updated documentation with latest changes.
 
 ---
 
 ## Release: v0.3.7
-- ### Release Date: 2025-11-28
+### Release Date: 2025-11-28
 
-- ### Main Changes:
+- #### 🚨 Breaking Changes:
   
-  - #### 🚨 Breaking Changes:
-  
-  - #### 🌟 New Features:
+- #### 🌟 New Features:
 
-  - #### 🚀 Enhancements:
+- #### 🚀 Enhancements:
     - Redesigned GUI Dialog.
   
-  - #### 🐛 Bug fixes:
+- #### 🐛 Bug fixes:
     - Fixed Long path issues on Windows.
     - Minor bug fixing.
     
-  - #### 📚 Documentation: 
+- #### 📚 Documentation: 
     - Updated documentation with latest changes.
 
 ---
 
 ## Release: v0.3.6
-- ### Release Date: 2025-11-27
+### Release Date: 2025-11-27
 
-- ### Main Changes:
+- #### 🚨 Breaking Changes:
   
-  - #### 🚨 Breaking Changes:
-  
-  - #### 🌟 New Features:
+- #### 🌟 New Features:
     - Added commands to `Consistency Checks` module.
       - Correction Commands to `GU_new` table.
       - Correction Commands to `NR_new` table.
@@ -686,27 +660,25 @@
     - Auto-Fit column sizes in Excel sheets.
     - Header is now coloured in different color in Excel sheets.
 
-  - #### 🚀 Enhancements:
+- #### 🚀 Enhancements:
     - Created a scheduled workflow for binary genaration.
   
-  - #### 🐛 Bug fixes:
+- #### 🐛 Bug fixes:
     - Minor bug fixing.
     
-  - #### 📚 Documentation: 
+- #### 📚 Documentation: 
     - Updated documentation with latest changes.
 
 ---
 
 ## Release: v0.3.5
-- ### Release Date: 2025-11-26
+### Release Date: 2025-11-26
 
-- ### Main Changes:
+- #### 🚨 Breaking Changes:
   
-  - #### 🚨 Breaking Changes:
-  
-  - #### 🌟 New Features:
+- #### 🌟 New Features:
 
-  - #### 🚀 Enhancements:
+- #### 🚀 Enhancements:
     - Added new checks to `Configuration Audit` module.
       - NR cellRelations to old SSB (from NRCellRelation table)
       - NR cellRelations to new SSB (from NRCellRelation table)
@@ -718,30 +690,28 @@
     - Added new sheet `Summary NR Params Missmatching` with columns `NodeId`, `GNBCUCPFunctionId`, `NRCellCUId` and `NRFreqRelationId`.
     - Added new sheet `Summary LTE Params Missmatching` with columns `NodeId`, `EUtranCellId` and `GUtranFreqRelationId`.
   
-  - #### 🐛 Bug fixes:
+- #### 🐛 Bug fixes:
     - Minor bug fixing.
     
-  - #### 📚 Documentation: 
+- #### 📚 Documentation: 
     - Updated documentation with latest changes.
 
 ---
 
 ## Release: v0.3.4
-- ### Release Date: 2025-11-25
+### Release Date: 2025-11-25
 
-- ### Main Changes:
+- #### 🚨 Breaking Changes:
   
-  - #### 🚨 Breaking Changes:
-  
-  - #### 🌟 New Features:
+- #### 🌟 New Features:
     - Added new table `Summary Param Missmatching` to `Configuration Audit` module to show which cells/nodes has changed and which params have been changed. 
 
-  - #### 🚀 Enhancements:
+- #### 🚀 Enhancements:
   
-  - #### 🐛 Bug fixes:
+- #### 🐛 Bug fixes:
     - Minor bug fixing.
     
-  - #### 📚 Documentation: 
+- #### 📚 Documentation: 
     - README.md updated.
     - Updated documentation with latest changes.
 
@@ -749,15 +719,13 @@
 ---
 
 ## Release: v0.3.3
-- ### Release Date: 2025-11-24
+### Release Date: 2025-11-24
 
-- ### Main Changes:
+- #### 🚨 Breaking Changes:
   
-  - #### 🚨 Breaking Changes:
-  
-  - #### 🌟 New Features:
+- #### 🌟 New Features:
 
-  - #### 🚀 Enhancements:
+- #### 🚀 Enhancements:
     - Swapped columns Category/SubCategory in `ConfigurationAudit`.
     - Added more Checks to `NRCellDU` Category.
     - Included colors in `SummaryAudit` table for an easier visibility of each category. 
@@ -765,23 +733,21 @@
     - Other changes to `ConfigurationAudit`.
     - Input folders now are not cleaned when a module that requires two input folders is selected.
   
-  - #### 🐛 Bug fixes:
+- #### 🐛 Bug fixes:
     - Fixed errors when running `Consistency Checks` module after refactoring.
     - Minor bug fixing.
     
-  - #### 📚 Documentation: 
+- #### 📚 Documentation: 
     - Updated documentation with latest changes.
 
 ---
 
 ## Release: v0.3.2
-- ### Release Date: 2025-11-21
+### Release Date: 2025-11-21
 
-- ### Main Changes:
+- #### 🚨 Breaking Changes:
   
-  - #### 🚨 Breaking Changes:
-  
-  - #### 🌟 New Features:
+- #### 🌟 New Features:
     - Detect Auto-created NRFreqRelation to new SSB, will not follow VZ naming convention NRFreqRelation=647328.
     - Detect Auto-created GUtranFreqRelation to new SSB, will not follow VZ naming convention GUtranFreqRelation=647328-30-20-0-1.
     - Added two new lists of `Allowed N77 SSB (Post)` and `Allowed N77 ARFCN (Post)` to use in 'ConfigurationAudit'.
@@ -790,26 +756,24 @@
     - Added new check to detect those nodes from NRSectorCarrier whose ARFCN is not in the list of allowed ARFCN (Pre) nor allowed ARFCN (Post).
     - Added mismatching params between cells with old SSB and cells with new SSB in tables NRFreqRelation and GUtranFreqRelation
 
-  - #### 🚀 Enhancements:
+- #### 🚀 Enhancements:
   
-  - #### 🐛 Bug fixes:
+- #### 🐛 Bug fixes:
     - Minor bug fixing.
     
-  - #### 📚 Documentation: 
+- #### 📚 Documentation: 
     - Updated documentation with latest changes.
 
 ---
 
 ## Release: v0.3.1
-- ### Release Date: 2025-11-20
+### Release Date: 2025-11-20
 
-- ### Main Changes:
+- #### 🚨 Breaking Changes:
   
-  - #### 🚨 Breaking Changes:
-  
-  - #### 🌟 New Features:
+- #### 🌟 New Features:
 
-  - #### 🚀 Enhancements:
+- #### 🚀 Enhancements:
     - Included Pivot `GUtranFreqRelation` in `ConfigurationAudit` module.
     - Included LogPath in Summary tab of `ConfigurationAudit`.
     - Check that all nodes with NrFrequency=old_arfcn also have NrFrequency=new_arfcn. (#36)
@@ -821,54 +785,50 @@
     - Increased up to 100 nodes/slide (max 4 columns) for the Inconsistencies slides in `ConfigurationAudit` module.
     - Other minor changes to `ConfigurationAudit`.
   
-  - #### 🐛 Bug fixes:
+- #### 🐛 Bug fixes:
     - Minor bug fixing.
     
-  - #### 📚 Documentation: 
+- #### 📚 Documentation: 
     - Updated documentation with latest changes.
 
 ---
 
 ## Release: v0.3.0
-- ### Release Date: 2025-11-19
+### Release Date: 2025-11-19
 
-- ### Main Changes:
+- #### 🚨 Breaking Changes:
   
-  - #### 🚨 Breaking Changes:
-  
-  - #### 🌟 New Features:
+- #### 🌟 New Features:
 
-  - #### 🚀 Enhancements:
+- #### 🚀 Enhancements:
     - Refactor main module `RetuningAutomations` to simplify the logic.
     - Added ARFCN 650006 to default Allowed ARFCN list.
     - Added 'LTE nodes with GUtranSyncSignalFrequency defined' to LTE Frequency Audit.
     - Changed N77 band detection to filter freqs within range 646600-660000.
     - Avoid adding Inconsistencies slides if there is no any inconsistency found for each metric.
   
-  - #### 🐛 Bug fixes:
+- #### 🐛 Bug fixes:
     - Fix PPT template not found.
     - Fixed some Configuration Audit Metrics.
     - Fixed truncated lists of nodes in Configuration Audit.
     - Fixed duplicates in extra column of NR_Sector_Carrier Inconsistencies.
     - Minor bug fixing.
     
-  - #### 📚 Documentation: 
+- #### 📚 Documentation: 
     - Updated documentation with latest changes.
 
 ---
 
 ## Release: v0.2.9
-- ### Release Date: 2025-11-18
+### Release Date: 2025-11-18
 
-- ### Main Changes:
+- #### 🚨 Breaking Changes:
   
-  - #### 🚨 Breaking Changes:
-  
-  - #### 🌟 New Features:
+- #### 🌟 New Features:
     - Check if all EndcDistrProfile gUtranFreqRef is always set to (old_arfcn or new_arfcn) and & n77b_ssb (653952)
     - Added N77B SSB fields to GUI and CLI intefaces.
 
-  - #### 🚀 Enhancements:
+- #### 🚀 Enhancements:
     - Refactor module `ConfigurationAudit` and split in different submodules
     - Network Audit Enhancements (#26) now includes: 
       - Count/List of Nodes/Cells per category:
@@ -881,45 +841,41 @@
       - Check if any nodes reached max 64 NRFrequency definitions
       - Check if all EndcDistrProfile gUtranFreqRef always set to 648672&653952
   
-  - #### 🐛 Bug fixes:
+- #### 🐛 Bug fixes:
     - Minor bug fixing.
     
-  - #### 📚 Documentation: 
+- #### 📚 Documentation: 
     - Updated documentation with latest changes
 
 ---
 
 ## Release: v0.2.8
-- ### Release Date: 2025-11-17
+### Release Date: 2025-11-17
 
-- ### Main Changes:
+- #### 🚨 Breaking Changes:
   
-  - #### 🚨 Breaking Changes:
-  
-  - #### 🌟 New Features:
+- #### 🌟 New Features:
 
-  - #### 🚀 Enhancements:
+- #### 🚀 Enhancements:
     - Added PPT Template.
     - Modified PPT to split nodes in chunks of 50 nodes per slide (2 columns of 50 nodes).
     - Persist Allowed SSB and ARFCN lists between different executions.
     - Improvements on Configuration Audit.
     
-  - #### 🐛 Bug fixes:
+- #### 🐛 Bug fixes:
     - Minor bug fixing.
     
-  - #### 📚 Documentation: 
+- #### 📚 Documentation: 
     - Updated documentation with latest changes
 
 ---
 
 ## Release: v0.2.7
-- ### Release Date: 2025-11-14
+### Release Date: 2025-11-14
 
-- ### Main Changes:
+- #### 🚨 Breaking Changes:
   
-  - #### 🚨 Breaking Changes:
-  
-  - #### 🌟 New Features:
+- #### 🌟 New Features:
     - If Consistency Check module is selected, then use two input folders, one for Pre and one for Post (#25)
     - Network Audit Enhancements:
       - Count/List of Nodes/Cells per category:
@@ -933,75 +889,69 @@
       - Check if all EndcDistrProfile gUtranFreqRef always set to 648672&653952
     - Configuration Audit now generates a PPT with a Text Summary.
 
-  - #### 🚀 Enhancements:
+- #### 🚀 Enhancements:
     - Align Summary headers to left (#23)
     - Include input log folder in Summary sheets of Consistency Check (#24)
     - Modified GUI to accept `ALLOWED_SSB_N77` and `ALLOWED_N77B_ARFCN` lists for Configuration Audit.
     
-  - #### 🐛 Bug fixes:
+- #### 🐛 Bug fixes:
     - Minor bug fixing.
     
-  - #### 📚 Documentation: 
+- #### 📚 Documentation: 
     - Updated documentation with latest changes
   
 ---
 
 ## Release: v0.2.6
-- ### Release Date: 2025-11-12
+### Release Date: 2025-11-12
 
-- ### Main Changes:
+- #### 🚨 Breaking Changes:
   
-  - #### 🚨 Breaking Changes:
-  
-  - #### 🌟 New Features:
+- #### 🌟 New Features:
 
-  - #### 🚀 Enhancements:
+- #### 🚀 Enhancements:
     - Improvements on Date detection method to do an smart detection of any date included in the input folder.
     - Changed date format to YYYY-MM-DD for a better visualization.
     - Changed color of Summary Sheets in output Excel to green for a better visualization. 
     - Changed macos-x64 runer on GitHub workflow.
     
-  - #### 🐛 Bug fixes:
+- #### 🐛 Bug fixes:
     - Minor bug fixing.
     - Added `Summary NRFrequency` table to `Configuration Audit` module.
     
-  - #### 📚 Documentation: 
+- #### 📚 Documentation: 
     - Updated documentation with latest changes
 
 ---
 
 ## Release: v0.2.5
-- ### Release Date: 2025-11-11
+### Release Date: 2025-11-11
 
-- ### Main Changes:
+- #### 🚨 Breaking Changes:
   
-  - #### 🚨 Breaking Changes:
-  
-  - #### 🌟 New Features:
+- #### 🌟 New Features:
     - Configuration Audit now creates Pivot Table with useful Summary Information. 
     - Added Frequencies selector in GUI to select which frequencies you want to run Audit for.
 
-  - #### 🚀 Enhancements:
+- #### 🚀 Enhancements:
     
-  - #### 🐛 Bug fixes:
+- #### 🐛 Bug fixes:
     - Minor bug fixing.
     - Fixed Exception on `Consistency Check` module when Pre or Post folder has not been found in Input Folder
     
-  - #### 📚 Documentation: 
+- #### 📚 Documentation: 
     - Updated documentation with latest changes
 
 ---
 
 ## Release: v0.2.4
-- ### Release Date: 2025-11-10
+### Release Date: 2025-11-10
 
-- ### Main Changes:
+- #### 🚨 Breaking Changes:
   
-  - #### 🚨 Breaking Changes:
-  
-  - #### 🌟 New Features:
+- #### 🌟 New Features:
 
-  - #### 🚀 Enhancements:
+- #### 🚀 Enhancements:
     - Common methods and helpers from different Automation Modules extracted from their classes and added to a new Python module called common.py for a better efficiency and maintainance.
     - Smart sorting of MO names based on prefefined list `TABLES_ORDER` or log filename.
     - Added timer to measure the execution time of each module.
@@ -1011,48 +961,44 @@
       `3. Initial Clean-Up (During Maintenance Window)`  
       `4. Final Clean-Up (After Retune is completed)`  
     
-  - #### 🐛 Bug fixes:
+- #### 🐛 Bug fixes:
     - Minor bug fixing.
     
-  - #### 📚 Documentation: 
+- #### 📚 Documentation: 
     - Updated documentation with latest changes
 
 ---
 
 ## Release: v0.2.3
-- ### Release Date: 2025-11-07
-
-- ### Main Changes:
-   
-  - #### 🌟 New Features:
+### Release Date: 2025-11-07
+ 
+- #### 🌟 New Features:
     - Logger support for all print outputs.
     - `Input Folder` persistent between executions.
 
-  - #### 🚀 Enhancements:
+- #### 🚀 Enhancements:
     - GUI for module selection/launcher open again when any module finish successfully.
     - MO autodetection based on content instead of log filename.
     - Multiple table detection for each MO log file.
     - Capture exceptions during modules executions and avoid the tool to exit when any error is found.
     - Added 2 new columns in Summary sheet of module `2. Create Excel from Logs` with the Log filename where the table have been found and with the number of tables of each log file.
     
-  - #### 🐛 Bug fixes:
+- #### 🐛 Bug fixes:
     - Minor bug fixing.
 
-  - #### 📚 Documentation: 
+- #### 📚 Documentation: 
     - Updated documentation with latest changes
     
 ---
 
 ## Release: v0.2.2
-- ### Release Date: 2025-11-06
+### Release Date: 2025-11-06
 
-- ### Main Changes:
-
-  - #### 🚀 Enhancements:
+- #### 🚀 Enhancements:
     - Improvements on GitHub Automatic Release creation.
     - Added Splash Logo on Windows executable while loading.
      
-  - #### 📚 Documentation: 
+- #### 📚 Documentation: 
     - Created DOWNLOAD.md
     - Created CONTRIBUTING.md
     - Created CODE_OF_CONDUCT.md
@@ -1060,22 +1006,20 @@
 ---
 
 ## Release: v0.2.1
-- ### Release Date: 2025-11-06
+### Release Date: 2025-11-06
 
-- ### Main Changes:
-   
-  - #### 🌟 New Features:
+- #### 🌟 New Features:
     - Module '2. Create Excel from Logs' ready.
 
-  - #### 🚀 Enhancements:
+- #### 🚀 Enhancements:
     - Created module to compile the tool and generate binaries files for the different OS and architecture.
     - Created GitHub repository.
     - Created GitHub workflow to automatically generate binaries for the different OS and architecture.
     
-  - #### 🐛 Bug fixes:
+- #### 🐛 Bug fixes:
     - Fixed bug on Summary_CellRelation that was creating pairs of frequencies where Freq_Pre or Freq_Post was empty.
 
-  - #### 📚 Documentation: 
+- #### 📚 Documentation: 
     - Created README.md
     - Created CHANGELOG.md
     - Created ROADMAP.md
@@ -1083,37 +1027,32 @@
 ---
 
 ## Release: v0.2.0
-- ### Release Date: 2025-11-05
+### Release Date: 2025-11-05
 
-- ### Main Changes:
-   
-  - #### 🌟 New Features:
+- #### 🌟 New Features:
     - Create a Module Selector & Configuration window.
 
-  - #### 🚀 Enhancements:
+- #### 🚀 Enhancements:
     - Improvements on Module '1. Pre/Post Relations Consistency Check' to satisfy the requirements.
     
-  - #### 🐛 Bug fixes:
+- #### 🐛 Bug fixes:
     - Fixed bug on Summary_CellRelation that was creating pairs of frequencies where Freq_Pre or Freq_Post was empty.
 
 ---
 
 ## Release: v0.1.1
-- ### Release Date: 2025-11-04
+### Release Date: 2025-11-04
 
-- ### Main Changes:
-
-  - #### 🚀 Enhancements:
+- #### 🚀 Enhancements:
     - Improvements on Module '1. Pre/Post Relations Consistency Check' to satisfy the requirements.
 
 ---
 
 ## Release: v0.1.0
-- ### Release Date: 2025-11-03
+### Release Date: 2025-11-03
 
-- ### Main Changes:
-   
-  - #### 🌟 New Features:
+ 
+- #### 🌟 New Features:
     - Module '1. Pre/Post Relations Consistency Check' first release.
 
     

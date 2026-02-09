@@ -814,17 +814,17 @@ class ConfigurationAudit:
                                     s_n77_old = _count_by_node(df_nr_cell_du, nr_node_col, nr_ssb_num.eq(self.N77_SSB_PRE))
                                     s_n77_new = _count_by_node(df_nr_cell_du, nr_node_col, nr_ssb_num.eq(self.N77_SSB_POST))
 
-                                    df_me_out["mmWave Cells (from NRCellDU table)"] = df_me_out[me_node_col].map(s_mmwave).fillna(0).astype(int)
-                                    df_me_out["LowMidBand Cells (from NRCellDU table)"] = df_me_out[me_node_col].map(s_lowmid).fillna(0).astype(int)
-                                    df_me_out["N77 Cells (646600-660000) (from NRCellDU table)"] = df_me_out[me_node_col].map(s_lowmid).fillna(0).astype(int)
-                                    df_me_out[f"N77A old SSB cells ({self.N77_SSB_PRE}) (from NRCellDU table)"] = df_me_out[me_node_col].map(s_n77_old).fillna(0).astype(int)
-                                    df_me_out[f"N77A new SSB cells ({self.N77_SSB_POST}) (from NRCellDU table)"] = df_me_out[me_node_col].map(s_n77_new).fillna(0).astype(int)
+                                    df_me_out["mmWave Cells"] = df_me_out[me_node_col].map(s_mmwave).fillna(0).astype(int)
+                                    df_me_out["LowMidBand Cells"] = df_me_out[me_node_col].map(s_lowmid).fillna(0).astype(int)
+                                    df_me_out["N77 Cells"] = df_me_out[me_node_col].map(s_lowmid).fillna(0).astype(int)
+                                    df_me_out["N77A old SSB cells"] = df_me_out[me_node_col].map(s_n77_old).fillna(0).astype(int)
+                                    df_me_out["N77A new SSB cells"] = df_me_out[me_node_col].map(s_n77_new).fillna(0).astype(int)
                                 else:
-                                    df_me_out["mmWave Cells (from NRCellDU table)"] = 0
-                                    df_me_out["LowMidBand Cells (from NRCellDU table)"] = 0
-                                    df_me_out["N77 Cells (646600-660000) (from NRCellDU table)"] = 0
-                                    df_me_out[f"N77A old SSB cells ({self.N77_SSB_PRE}) (from NRCellDU table)"] = 0
-                                    df_me_out[f"N77A new SSB cells ({self.N77_SSB_POST}) (from NRCellDU table)"] = 0
+                                    df_me_out["mmWave Cells"] = 0
+                                    df_me_out["LowMidBand Cells"] = 0
+                                    df_me_out["N77 Cells"] = 0
+                                    df_me_out["N77A old SSB cells"] = 0
+                                    df_me_out["N77A new SSB cells"] = 0
 
                                 # NRFreqRelation derived counts (substring match on NRFreqRelationId)
                                 nrfr_node_col = _find_col_ci(df_nr_freq_rel, ["NodeId"])
@@ -832,11 +832,11 @@ class ConfigurationAudit:
                                 if df_nr_freq_rel is not None and not df_nr_freq_rel.empty and nrfr_node_col and nrfr_id_col:
                                     s_old_rel = _count_by_node(df_nr_freq_rel, nrfr_node_col, df_nr_freq_rel[nrfr_id_col].astype(str).str.contains(str(self.N77_SSB_PRE), na=False))
                                     s_new_rel = _count_by_node(df_nr_freq_rel, nrfr_node_col, df_nr_freq_rel[nrfr_id_col].astype(str).str.contains(str(self.N77_SSB_POST), na=False))
-                                    df_me_out[f"NRFreqRelation to old N77A SSB ({self.N77_SSB_PRE}) (from NRFreqRelation table)"] = df_me_out[me_node_col].map(s_old_rel).fillna(0).astype(int)
-                                    df_me_out[f"NRFreqRelation to new N77A SSB ({self.N77_SSB_POST}) (from NRFreqRelation table)"] = df_me_out[me_node_col].map(s_new_rel).fillna(0).astype(int)
+                                    df_me_out["NRFreqRelation to old N77A SSB"] = df_me_out[me_node_col].map(s_old_rel).fillna(0).astype(int)
+                                    df_me_out["NRFreqRelation to new N77A SSB"] = df_me_out[me_node_col].map(s_new_rel).fillna(0).astype(int)
                                 else:
-                                    df_me_out[f"NRFreqRelation to old N77A SSB ({self.N77_SSB_PRE}) (from NRFreqRelation table)"] = 0
-                                    df_me_out[f"NRFreqRelation to new N77A SSB ({self.N77_SSB_POST}) (from NRFreqRelation table)"] = 0
+                                    df_me_out["NRFreqRelation to old N77A SSB"] = 0
+                                    df_me_out["NRFreqRelation to new N77A SSB"] = 0
 
                                 # GUtranFreqRelation derived counts (substring match on GUtranFreqRelationId)
                                 gufr_node_col = _find_col_ci(df_gu_freq_rel, ["NodeId"])
@@ -844,11 +844,11 @@ class ConfigurationAudit:
                                 if df_gu_freq_rel is not None and not df_gu_freq_rel.empty and gufr_node_col and gufr_id_col:
                                     s_old_gufr = _count_by_node(df_gu_freq_rel, gufr_node_col, df_gu_freq_rel[gufr_id_col].astype(str).str.contains(str(self.N77_SSB_PRE), na=False))
                                     s_new_gufr = _count_by_node(df_gu_freq_rel, gufr_node_col, df_gu_freq_rel[gufr_id_col].astype(str).str.contains(str(self.N77_SSB_POST), na=False))
-                                    df_me_out[f"LTE nodes with the old N77A SSB ({self.N77_SSB_PRE}) (from GUtranFreqRelation table)"] = df_me_out[me_node_col].map(s_old_gufr).fillna(0).astype(int)
-                                    df_me_out[f"LTE nodes with the new N77A SSB ({self.N77_SSB_POST}) (from GUtranFreqRelation table)"] = df_me_out[me_node_col].map(s_new_gufr).fillna(0).astype(int)
+                                    df_me_out["GUtranFreqRelation to old N77A SSB"] = df_me_out[me_node_col].map(s_old_gufr).fillna(0).astype(int)
+                                    df_me_out["GUtranFreqRelation to new N77A SSB"] = df_me_out[me_node_col].map(s_new_gufr).fillna(0).astype(int)
                                 else:
-                                    df_me_out[f"LTE nodes with the old N77A SSB ({self.N77_SSB_PRE}) (from GUtranFreqRelation table)"] = 0
-                                    df_me_out[f"LTE nodes with the new N77A SSB ({self.N77_SSB_POST}) (from GUtranFreqRelation table)"] = 0
+                                    df_me_out["GUtranFreqRelation to old N77A SSB"] = 0
+                                    df_me_out["GUtranFreqRelation to new N77A SSB"] = 0
 
                                 # Placeholders for manual workflow columns (as per slide 3)
                                 df_me_out["Next Step"] = ""

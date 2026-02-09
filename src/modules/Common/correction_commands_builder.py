@@ -550,6 +550,7 @@ def build_correction_command_nr_missing_relations(
         is_ho = pick_non_empty_value(rel_row, row, "isHoAllowed")
         is_remove = pick_non_empty_value(rel_row, row, "isRemoveAllowed")
         s_cell_candidate = pick_non_empty_value(rel_row, row, "sCellCandidate")
+        aca_mode = pick_non_empty_value(rel_row, row, "acaMode")
         nrcell_ref = pick_non_empty_value(rel_row, row, "nRCellRef")
         nrfreq_ref = pick_non_empty_value(rel_row, row, "nRFreqRelationRef")
 
@@ -599,6 +600,11 @@ def build_correction_command_nr_missing_relations(
             (
                 f"set NRCellCU={nr_cell_cu},NRCellRelation={nr_cell_rel} sCellCandidate {s_cell_candidate}"
                 if s_cell_candidate
+                else ""
+            ),
+            (
+                f"set NRCellCU={nr_cell_cu},NRCellRelation={nr_cell_rel} acaMode {aca_mode}"
+                if aca_mode
                 else ""
             ),
         ]
