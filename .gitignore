@@ -229,3 +229,6 @@ cython_debug/
 
 /.idea/easycode.ignore
 /.idea/easycode/codebase-v2.xml
+
+# Web frontend runtime data
+webapp/data/

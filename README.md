@@ -460,3 +460,41 @@ Check the `LICENSE` file at the root of the repo.
 > - OS/arch and Python version (or binary flavor)  
 > - A redacted screenshot or snippet of the input folder structure  
 > - The generated timestamp/version suffix
+
+---
+
+## 🌐 Frontend Web Privado (Docker, puerto 7878)
+
+Se añadió un frontend web privado para ejecutar los mismos módulos del launcher usando CLI por detrás.
+
+### Funcionalidades incluidas
+- Login privado con gestión de sesiones.
+- Panel principal para lanzar módulos (`configuration-audit`, `consistency-check`, `consistency-check-bulk`, `final-cleanup`).
+- Persistencia de parámetros por usuario (se guardan los últimos valores usados por cada usuario).
+- Panel de administración para:
+  - crear usuarios,
+  - activar/desactivar accesos,
+  - resetear contraseña,
+  - ver tiempo acumulado logueado,
+  - ver tiempo acumulado de ejecución de tareas backend.
+- Registro de accesos HTTP en `webapp/data/access.log`.
+
+### Arranque con Docker
+```bash
+docker compose -f docker-compose.web.yml up --build -d
+```
+
+Frontend disponible en:
+- `http://localhost:7878`
+
+Credenciales iniciales:
+- usuario: `admin`
+- contraseña: `admin123`
+
+> ⚠️ Cambia la contraseña del admin nada más iniciar.
+
+### Datos persistentes
+- Base de datos y logs en `webapp/data/`.
+  - `web_frontend.db`
+  - `access.log`
+  - `app.log`

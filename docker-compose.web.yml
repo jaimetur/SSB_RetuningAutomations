@@ -1,0 +1,13 @@
+version: '3.9'
+services:
+  ssb_web_frontend:
+    build:
+      context: .
+      dockerfile: webapp/Dockerfile
+    container_name: ssb_web_frontend
+    ports:
+      - "7878:7878"
+    volumes:
+      - ./webapp/data:/app/webapp/data
+      - ./:/app
+    restart: unless-stopped

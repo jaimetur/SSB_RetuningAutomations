@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Panel Admin - SSB Retuning</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <main class="container">
+    <header class="topbar">
+      <div>
+        <h1>Panel de Administración</h1>
+        <p>Gestiona accesos, contraseñas y tiempos de uso.</p>
+      </div>
+      <nav>
+        <a href="/">Inicio</a>
+        <a href="/logout">Salir</a>
+      </nav>
+    </header>
+
+    <section class="card">
+      <h2>Crear usuario</h2>
+      <form method="post" action="/admin/users/create" class="inline">
+        <input type="text" name="username" placeholder="usuario" required />
+        <input type="password" name="password" placeholder="contraseña temporal" required />
+        <select name="role">
+          <option value="user">user</option>
+          <option value="admin">admin</option>
+        </select>
+        <button type="submit">Crear</button>
+      </form>
+    </section>
+
+    <section class="card">
+      <h2>Usuarios</h2>
+      <table>
+        <thead><tr><th>Usuario</th><th>Rol</th><th>Estado</th><th>Tiempo logueado (s)</th><th>Tiempo ejecución (s)</th><th>Acciones</th></tr></thead>
+        <tbody>
+          {% for u in users %}
+          <tr>
+            <td>{{ u.username }}</td>
+            <td>{{ u.role }}</td>
+            <td>{{ 'activo' if u.active else 'inactivo' }}</td>
+            <td>{{ '%.0f'|format(u.total_login_seconds or 0) }}</td>
+            <td>{{ '%.2f'|format(u.total_execution_seconds or 0) }}</td>
+            <td>
+              <form method="post" action="/admin/users/{{ u.id }}/toggle" class="inline">
+                <button type="submit">Activar/Desactivar</button>
+              </form>
+              <form method="post" action="/admin/users/{{ u.id }}/reset_password" class="inline">
+                <input type="password" name="new_password" placeholder="nueva contraseña" required />
+                <button type="submit">Reset password</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </section>
+
+    <section class="card">
+      <h2>Últimas ejecuciones globales</h2>
+      <table>
+        <thead><tr><th>ID</th><th>Usuario</th><th>Módulo</th><th>Estado</th><th>Inicio</th><th>Fin</th><th>Duración (s)</th></tr></thead>
+        <tbody>
+          {% for r in recent_runs %}
+          <tr>
+            <td>{{ r.id }}</td><td>{{ r.username }}</td><td>{{ r.module }}</td><td>{{ r.status }}</td>
+            <td>{{ r.started_at }}</td><td>{{ r.finished_at }}</td><td>{{ '%.2f'|format(r.duration_seconds or 0) }}</td>
+          </tr>
+          {% else %}
+            <tr><td colspan="7">Sin ejecuciones aún.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </section>
+  </main>
+</body>
+</html>
