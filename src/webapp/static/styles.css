@@ -1,3 +1,4 @@
+/* Base layout and typography for the web frontend. */
 body{font-family:Arial,sans-serif;background:#f4f7fb;margin:0;padding:0;color:#1b2430}
 .container{max-width:1200px;margin:2rem auto;padding:0 1rem}
 .container.small{max-width:500px}

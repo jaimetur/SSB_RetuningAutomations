@@ -1,55 +1,56 @@
 <!doctype html>
-<html lang="es">
+<html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Panel Admin - SSB Retuning</title>
+  <title>Admin Panel - SSB Retuning</title>
   <link rel="stylesheet" href="/static/styles.css" />
 </head>
 <body>
+  <!-- Admin management dashboard -->
   <main class="container">
     <header class="topbar">
       <div>
-        <h1>Panel de Administración</h1>
-        <p>Gestiona accesos, contraseñas y tiempos de uso.</p>
+        <h1>Administration Panel</h1>
+        <p>Manage access, passwords, and usage times.</p>
       </div>
       <nav>
-        <a href="/">Inicio</a>
-        <a href="/logout">Salir</a>
+        <a href="/">Home</a>
+        <a href="/logout">Sign out</a>
       </nav>
     </header>
 
     <section class="card">
-      <h2>Crear usuario</h2>
+      <h2>Create user</h2>
       <form method="post" action="/admin/users/create" class="inline">
-        <input type="text" name="username" placeholder="usuario" required />
-        <input type="password" name="password" placeholder="contraseña temporal" required />
+        <input type="text" name="username" placeholder="username" required />
+        <input type="password" name="password" placeholder="temporary password" required />
         <select name="role">
           <option value="user">user</option>
           <option value="admin">admin</option>
         </select>
-        <button type="submit">Crear</button>
+        <button type="submit">Create</button>
       </form>
     </section>
 
     <section class="card">
-      <h2>Usuarios</h2>
+      <h2>Users</h2>
       <table>
-        <thead><tr><th>Usuario</th><th>Rol</th><th>Estado</th><th>Tiempo logueado (s)</th><th>Tiempo ejecución (s)</th><th>Acciones</th></tr></thead>
+        <thead><tr><th>User</th><th>Role</th><th>Status</th><th>Logged time (s)</th><th>Execution time (s)</th><th>Actions</th></tr></thead>
         <tbody>
           {% for u in users %}
           <tr>
             <td>{{ u.username }}</td>
             <td>{{ u.role }}</td>
-            <td>{{ 'activo' if u.active else 'inactivo' }}</td>
+            <td>{{ 'active' if u.active else 'inactive' }}</td>
             <td>{{ '%.0f'|format(u.total_login_seconds or 0) }}</td>
             <td>{{ '%.2f'|format(u.total_execution_seconds or 0) }}</td>
             <td>
               <form method="post" action="/admin/users/{{ u.id }}/toggle" class="inline">
-                <button type="submit">Activar/Desactivar</button>
+                <button type="submit">Toggle</button>
               </form>
               <form method="post" action="/admin/users/{{ u.id }}/reset_password" class="inline">
-                <input type="password" name="new_password" placeholder="nueva contraseña" required />
+                <input type="password" name="new_password" placeholder="new password" required />
                 <button type="submit">Reset password</button>
               </form>
             </td>
@@ -60,9 +61,9 @@
     </section>
 
     <section class="card">
-      <h2>Últimas ejecuciones globales</h2>
+      <h2>Latest global runs</h2>
       <table>
-        <thead><tr><th>ID</th><th>Usuario</th><th>Módulo</th><th>Estado</th><th>Inicio</th><th>Fin</th><th>Duración (s)</th></tr></thead>
+        <thead><tr><th>ID</th><th>User</th><th>Module</th><th>Status</th><th>Start</th><th>End</th><th>Duration (s)</th></tr></thead>
         <tbody>
           {% for r in recent_runs %}
           <tr>
@@ -70,7 +71,7 @@
             <td>{{ r.started_at }}</td><td>{{ r.finished_at }}</td><td>{{ '%.2f'|format(r.duration_seconds or 0) }}</td>
           </tr>
           {% else %}
-            <tr><td colspan="7">Sin ejecuciones aún.</td></tr>
+            <tr><td colspan="7">No runs yet.</td></tr>
           {% endfor %}
         </tbody>
       </table>

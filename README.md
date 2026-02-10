@@ -463,38 +463,38 @@ Check the `LICENSE` file at the root of the repo.
 
 ---
 
-## 🌐 Frontend Web Privado (Docker, puerto 7878)
+## 🌐 Private Web Frontend (Docker, port 7878)
 
-Se añadió un frontend web privado para ejecutar los mismos módulos del launcher usando CLI por detrás.
+A private web frontend was added to run the same launcher modules using CLI under the hood.
 
-### Funcionalidades incluidas
-- Login privado con gestión de sesiones.
-- Panel principal para lanzar módulos (`configuration-audit`, `consistency-check`, `consistency-check-bulk`, `final-cleanup`).
-- Persistencia de parámetros por usuario (se guardan los últimos valores usados por cada usuario).
-- Panel de administración para:
-  - crear usuarios,
-  - activar/desactivar accesos,
-  - resetear contraseña,
-  - ver tiempo acumulado logueado,
-  - ver tiempo acumulado de ejecución de tareas backend.
-- Registro de accesos HTTP en `webapp/data/access.log`.
+### Included features
+- Private login with session management.
+- Main dashboard to run modules (`configuration-audit`, `consistency-check`, `consistency-check-bulk`, `final-cleanup`).
+- Per-user parameter persistence (stores the last values used by each user).
+- Admin panel to:
+  - create users,
+  - enable/disable access,
+  - reset passwords,
+  - view total logged-in time,
+  - view total backend task execution time.
+- HTTP access log at `webapp/data/access.log`.
 
-### Arranque con Docker
+### Docker startup
 ```bash
-docker compose -f docker-compose.web.yml up --build -d
+docker compose -f src/webapp/docker-compose-webapp.yml up --build -d
 ```
 
-Frontend disponible en:
+Frontend available at:
 - `http://localhost:7878`
 
-Credenciales iniciales:
-- usuario: `admin`
-- contraseña: `admin123`
+Initial credentials:
+- user: `admin`
+- password: `admin123`
 
-> ⚠️ Cambia la contraseña del admin nada más iniciar.
+> ⚠️ Change the admin password immediately after first login.
 
-### Datos persistentes
-- Base de datos y logs en `webapp/data/`.
+### Persistent data
+- Database and logs stored in `webapp/data/`.
   - `web_frontend.db`
   - `access.log`
   - `app.log`

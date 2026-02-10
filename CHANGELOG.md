@@ -4,6 +4,24 @@
 
 ---
 
+## Release: v0.7.0
+### Release Date: 2026-02-11
+  
+- #### 🚨 Breaking Changes:
+
+- #### 🌟 New Features:
+
+- #### 🚀 Enhancements:
+  - Added a new webapp frontend (using docker) to use the tool from a browser.
+
+- #### 🐛 Bug fixes:
+  - Minor bug fixing.
+    
+- #### 📚 Documentation: 
+  - Updated documentation with the latest changes.
+
+---
+
 ## Release: v0.6.5
 ### Release Date: 2026-02-10
   

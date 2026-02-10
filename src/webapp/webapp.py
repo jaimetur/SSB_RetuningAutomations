@@ -19,19 +19,21 @@ from fastapi.templating import Jinja2Templates
 from passlib.context import CryptContext
 
 BASE_DIR = Path(__file__).resolve().parent
+PROJECT_ROOT = BASE_DIR.parents[1]
 DATA_DIR = BASE_DIR / "data"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 DB_PATH = DATA_DIR / "web_frontend.db"
 ACCESS_LOG_PATH = DATA_DIR / "access.log"
 APP_LOG_PATH = DATA_DIR / "app.log"
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 
 
 def setup_logging() -> logging.Logger:
     logger = logging.getLogger("web_frontend")
     logger.setLevel(logging.INFO)
     if not logger.handlers:
+        # Persist application logs across restarts.
         app_handler = RotatingFileHandler(APP_LOG_PATH, maxBytes=2_000_000, backupCount=3)
         app_handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
         logger.addHandler(app_handler)
@@ -42,6 +44,7 @@ def setup_access_logger() -> logging.Logger:
     logger = logging.getLogger("web_access")
     logger.setLevel(logging.INFO)
     if not logger.handlers:
+        # Keep HTTP access logs separate from application logs.
         access_handler = RotatingFileHandler(ACCESS_LOG_PATH, maxBytes=2_000_000, backupCount=3)
         access_handler.setFormatter(logging.Formatter("%(asctime)s %(message)s"))
         logger.addHandler(access_handler)
@@ -67,6 +70,7 @@ def get_conn() -> sqlite3.Connection:
 
 
 def init_db() -> None:
+    # Initialize schema and seed the default admin account if missing.
     conn = get_conn()
     cur = conn.cursor()
     cur.execute(
@@ -120,7 +124,9 @@ def init_db() -> None:
         """
     )
 
-    admin = cur.execute("SELECT id FROM users WHERE username = ?", ("admin",)).fetchone()
+    admin = cur.execute(
+        "SELECT id, password_hash FROM users WHERE username = ?", ("admin",)
+    ).fetchone()
     if admin is None:
         default_password = "admin123"
         cur.execute(
@@ -133,6 +139,16 @@ def init_db() -> None:
             ),
         )
         logger.info("Admin user created with default credentials admin/admin123. Change it immediately.")
+    else:
+        password_hash = admin["password_hash"] or ""
+        if password_hash.startswith(("$2a$", "$2b$", "$2y$")):
+            # Reset legacy bcrypt hashes to avoid backend errors in minimal containers.
+            default_password = "admin123"
+            cur.execute(
+                "UPDATE users SET password_hash = ? WHERE id = ?",
+                (pwd_context.hash(default_password), admin["id"]),
+            )
+            logger.info("Admin password hash reset to pbkdf2_sha256 defaults. Change it immediately.")
 
     conn.commit()
     conn.close()
@@ -210,6 +226,7 @@ def parse_bool(value: str | None) -> bool:
 
 
 def build_cli_command(payload: dict[str, Any]) -> list[str]:
+    # Build the CLI command executed by the backend worker.
     cmd = [sys.executable, "src/SSB_RetuningAutomations.py", "--no-gui", "--module", payload["module"]]
 
     if payload.get("input"):
@@ -322,11 +339,15 @@ def login_post(request: Request, username: str = Form(...), password: str = Form
     user = conn.execute(
         "SELECT * FROM users WHERE username = ? AND active = 1", (username.strip(),)
     ).fetchone()
-    if not user or not pwd_context.verify(password, user["password_hash"]):
+    try:
+        verified = user and pwd_context.verify(password, user["password_hash"])
+    except (ValueError, TypeError):
+        verified = False
+    if not verified:
         conn.close()
         return templates.TemplateResponse(
             "login.html",
-            {"request": request, "error": "Credenciales inválidas o usuario desactivado."},
+            {"request": request, "error": "Invalid credentials or disabled user."},
             status_code=401,
         )
 
@@ -413,7 +434,7 @@ def run_module(
     try:
         proc = subprocess.run(
             cmd,
-            cwd=str(BASE_DIR.parent),
+            cwd=str(PROJECT_ROOT),
             capture_output=True,
             text=True,
             check=False,

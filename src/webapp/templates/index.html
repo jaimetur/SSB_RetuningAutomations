@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="es">
+<html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -7,22 +7,23 @@
   <link rel="stylesheet" href="/static/styles.css" />
 </head>
 <body>
+  <!-- Main dashboard -->
   <main class="container">
     <header class="topbar">
       <div>
         <h1>SSB Retuning - Frontend Web</h1>
-        <p>Usuario: <b>{{ user.username }}</b> ({{ user.role }})</p>
+        <p>User: <b>{{ user.username }}</b> ({{ user.role }})</p>
       </div>
       <nav>
-        {% if user.role == 'admin' %}<a href="/admin">Panel admin</a>{% endif %}
-        <a href="/logout">Salir</a>
+        {% if user.role == 'admin' %}<a href="/admin">Admin panel</a>{% endif %}
+        <a href="/logout">Sign out</a>
       </nav>
     </header>
 
     <section class="card">
-      <h2>Ejecutar módulo</h2>
+      <h2>Run module</h2>
       <form action="/run" method="post" class="grid">
-        <label>Módulo
+        <label>Module
           <select name="module" required>
             {% for value, label in module_options %}
               <option value="{{ value }}" {% if settings.get('module') == value %}selected{% endif %}>{{ label }}</option>
@@ -75,14 +76,14 @@
         <label><input type="checkbox" name="export_correction_cmd" {% if settings.get('export_correction_cmd') %}checked{% endif %}> Export Correction Cmd</label>
         <label><input type="checkbox" name="fast_excel_export" {% if settings.get('fast_excel_export') %}checked{% endif %}> Fast Excel Export</label>
 
-        <button type="submit">Ejecutar</button>
+        <button type="submit">Run</button>
       </form>
     </section>
 
     <section class="card">
-      <h2>Últimas ejecuciones</h2>
+      <h2>Latest runs</h2>
       <table>
-        <thead><tr><th>Módulo</th><th>Estado</th><th>Inicio</th><th>Fin</th><th>Duración (s)</th></tr></thead>
+        <thead><tr><th>Module</th><th>Status</th><th>Start</th><th>End</th><th>Duration (s)</th></tr></thead>
         <tbody>
         {% for r in latest_runs %}
           <tr>
@@ -93,7 +94,7 @@
             <td>{{ '%.2f'|format(r.duration_seconds or 0) }}</td>
           </tr>
         {% else %}
-          <tr><td colspan="5">Sin ejecuciones aún.</td></tr>
+          <tr><td colspan="5">No runs yet.</td></tr>
         {% endfor %}
         </tbody>
       </table>

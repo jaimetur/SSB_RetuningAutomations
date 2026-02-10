@@ -9,4 +9,5 @@ COPY . /app
 
 EXPOSE 7878
 
-CMD ["uvicorn", "webapp.app:app", "--host", "0.0.0.0", "--port", "7878"]
+# Run the FastAPI app from the refactored src/webapp package.
+CMD ["uvicorn", "src.webapp.webapp:app", "--host", "0.0.0.0", "--port", "7878"]

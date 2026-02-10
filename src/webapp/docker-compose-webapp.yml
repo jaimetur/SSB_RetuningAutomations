@@ -1,0 +1,14 @@
+version: '3.9'
+# Web frontend compose configuration.
+services:
+  ssb_webapp:
+    build:
+      context: ../..
+      dockerfile: src/webapp/Dockerfile
+    container_name: ssb_webapp
+    ports:
+      - "7878:7878"
+    volumes:
+      - ./data:/app/src/webapp/data
+      - ../..:/app
+    restart: unless-stopped
