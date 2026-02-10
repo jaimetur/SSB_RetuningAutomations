@@ -13,10 +13,12 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, Form, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from passlib.context import CryptContext
+
+from src.utils.utils_io import load_cfg_values, save_cfg_values
 
 BASE_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = BASE_DIR.parents[1]
@@ -25,6 +27,35 @@ DATA_DIR.mkdir(parents=True, exist_ok=True)
 DB_PATH = DATA_DIR / "web_frontend.db"
 ACCESS_LOG_PATH = DATA_DIR / "access.log"
 APP_LOG_PATH = DATA_DIR / "app.log"
+
+CONFIG_DIR = Path.home() / ".retuning_automations"
+CONFIG_PATH = CONFIG_DIR / "config.cfg"
+CONFIG_SECTION = "general"
+
+CFG_FIELD_MAP = {
+    "last_input": "last_input_dir",
+    "last_input_audit": "last_input_dir_audit",
+    "last_input_cc_pre": "last_input_dir_cc_pre",
+    "last_input_cc_post": "last_input_dir_cc_post",
+    "last_input_cc_bulk": "last_input_dir_cc_bulk",
+    "last_input_final_cleanup": "last_input_dir_final_cleanup",
+    "n77_ssb_pre": "n77_ssb_pre",
+    "n77_ssb_post": "n77_ssb_post",
+    "n77b_ssb": "n77b_ssb",
+    "ca_freq_filters": "ca_freq_filters",
+    "cc_freq_filters": "cc_freq_filters",
+    "allowed_n77_ssb_pre": "allowed_n77_ssb_pre_csv",
+    "allowed_n77_arfcn_pre": "allowed_n77_arfcn_pre_csv",
+    "allowed_n77_ssb_post": "allowed_n77_ssb_post_csv",
+    "allowed_n77_arfcn_post": "allowed_n77_arfcn_post_csv",
+    "profiles_audit": "profiles_audit",
+    "frequency_audit": "frequency_audit",
+    "export_correction_cmd": "export_correction_cmd",
+    "fast_excel_export": "fast_excel_export",
+    "network_frequencies": "network_frequencies",
+}
+
+CFG_FIELDS = tuple(CFG_FIELD_MAP.keys())
 
 pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 
@@ -62,11 +93,30 @@ MODULE_OPTIONS = [
     ("final-cleanup", "4. Final Clean-Up"),
 ]
 
+TOOL_METADATA_PATH = PROJECT_ROOT / "src" / "SSB_RetuningAutomations.py"
+
 
 def get_conn() -> sqlite3.Connection:
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     return conn
+
+
+def load_tool_metadata() -> dict[str, str]:
+    version = "unknown"
+    date = "unknown"
+    try:
+        content = TOOL_METADATA_PATH.read_text(encoding="utf-8", errors="ignore")
+        for line in content.splitlines():
+            if line.strip().startswith("TOOL_VERSION"):
+                version = line.split("=", 1)[1].strip().strip('"').strip("'")
+            if line.strip().startswith("TOOL_DATE"):
+                date = line.split("=", 1)[1].strip().strip('"').strip("'")
+            if version != "unknown" and date != "unknown":
+                break
+    except OSError:
+        pass
+    return {"version": version, "date": date}
 
 
 def init_db() -> None:
@@ -221,8 +271,93 @@ def load_user_settings(user_id: int) -> dict[str, Any]:
         return {}
 
 
-def parse_bool(value: str | None) -> bool:
-    return value in {"on", "true", "1", "yes"}
+def parse_bool(value: str | bool | None) -> bool:
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return False
+    return str(value).lower() in {"on", "true", "1", "yes"}
+
+
+def load_persistent_config() -> dict[str, str]:
+    return load_cfg_values(CONFIG_PATH, CONFIG_SECTION, CFG_FIELD_MAP, *CFG_FIELDS)
+
+
+def build_settings_defaults(module_value: str, config_values: dict[str, str]) -> dict[str, Any]:
+    settings: dict[str, Any] = {
+        "module": module_value,
+        "n77_ssb_pre": config_values.get("n77_ssb_pre", ""),
+        "n77_ssb_post": config_values.get("n77_ssb_post", ""),
+        "n77b_ssb": config_values.get("n77b_ssb", ""),
+        "allowed_n77_ssb_pre": config_values.get("allowed_n77_ssb_pre", ""),
+        "allowed_n77_arfcn_pre": config_values.get("allowed_n77_arfcn_pre", ""),
+        "allowed_n77_ssb_post": config_values.get("allowed_n77_ssb_post", ""),
+        "allowed_n77_arfcn_post": config_values.get("allowed_n77_arfcn_post", ""),
+        "ca_freq_filters": config_values.get("ca_freq_filters", ""),
+        "cc_freq_filters": config_values.get("cc_freq_filters", ""),
+        "profiles_audit": parse_bool(config_values.get("profiles_audit")),
+        "frequency_audit": parse_bool(config_values.get("frequency_audit")),
+        "export_correction_cmd": parse_bool(config_values.get("export_correction_cmd")),
+        "fast_excel_export": parse_bool(config_values.get("fast_excel_export")),
+    }
+
+    if module_value == "consistency-check":
+        settings["input_pre"] = config_values.get("last_input_cc_pre", "")
+        settings["input_post"] = config_values.get("last_input_cc_post", "")
+        settings["input"] = ""
+        return settings
+
+    if module_value == "consistency-check-bulk":
+        settings["input"] = config_values.get("last_input_cc_bulk", "") or config_values.get("last_input", "")
+    elif module_value == "final-cleanup":
+        settings["input"] = config_values.get("last_input_final_cleanup", "") or config_values.get("last_input", "")
+    else:
+        settings["input"] = config_values.get("last_input_audit", "") or config_values.get("last_input", "")
+
+    settings["input_pre"] = ""
+    settings["input_post"] = ""
+    return settings
+
+
+def persist_settings_to_config(module_value: str, payload: dict[str, Any]) -> None:
+    persist_kwargs: dict[str, str] = {
+        "n77_ssb_pre": payload.get("n77_ssb_pre", ""),
+        "n77_ssb_post": payload.get("n77_ssb_post", ""),
+        "n77b_ssb": payload.get("n77b_ssb", ""),
+        "ca_freq_filters": payload.get("ca_freq_filters", ""),
+        "cc_freq_filters": payload.get("cc_freq_filters", ""),
+        "allowed_n77_ssb_pre": payload.get("allowed_n77_ssb_pre", ""),
+        "allowed_n77_arfcn_pre": payload.get("allowed_n77_arfcn_pre", ""),
+        "allowed_n77_ssb_post": payload.get("allowed_n77_ssb_post", ""),
+        "allowed_n77_arfcn_post": payload.get("allowed_n77_arfcn_post", ""),
+        "profiles_audit": "1" if parse_bool(payload.get("profiles_audit")) else "0",
+        "frequency_audit": "1" if parse_bool(payload.get("frequency_audit")) else "0",
+        "export_correction_cmd": "1" if parse_bool(payload.get("export_correction_cmd")) else "0",
+        "fast_excel_export": "1" if parse_bool(payload.get("fast_excel_export")) else "0",
+    }
+
+    if module_value == "consistency-check":
+        persist_kwargs["last_input_cc_pre"] = payload.get("input_pre", "")
+        persist_kwargs["last_input_cc_post"] = payload.get("input_post", "")
+    else:
+        input_dir = payload.get("input", "")
+        if module_value == "consistency-check-bulk":
+            persist_kwargs["last_input_cc_bulk"] = input_dir
+            persist_kwargs["last_input"] = input_dir
+        elif module_value == "final-cleanup":
+            persist_kwargs["last_input_final_cleanup"] = input_dir
+            persist_kwargs["last_input"] = input_dir
+        else:
+            persist_kwargs["last_input_audit"] = input_dir
+            persist_kwargs["last_input"] = input_dir
+
+    save_cfg_values(
+        config_dir=CONFIG_DIR,
+        config_path=CONFIG_PATH,
+        config_section=CONFIG_SECTION,
+        cfg_field_map=CFG_FIELD_MAP,
+        **persist_kwargs,
+    )
 
 
 def build_cli_command(payload: dict[str, Any]) -> list[str]:
@@ -302,7 +437,13 @@ def index(request: Request):
     if user is None:
         return RedirectResponse("/login", status_code=302)
 
-    settings = load_user_settings(user["id"])
+    config_values = load_persistent_config()
+    user_settings = load_user_settings(user["id"])
+    module_value = user_settings.get("module") or "configuration-audit"
+    settings = build_settings_defaults(module_value, config_values)
+    tool_meta = load_tool_metadata()
+    settings.update(user_settings)
+    settings["module"] = module_value
     conn = get_conn()
     latest_runs = conn.execute(
         """
@@ -324,6 +465,7 @@ def index(request: Request):
             "module_options": MODULE_OPTIONS,
             "settings": settings,
             "latest_runs": latest_runs,
+            "tool_meta": tool_meta,
         },
     )
 
@@ -423,6 +565,7 @@ def run_module(
         "fast_excel_export": fast_excel_export,
     }
     save_user_settings(user["id"], payload)
+    persist_settings_to_config(module, payload)
 
     cmd = build_cli_command(payload)
 
@@ -461,6 +604,48 @@ def run_module(
     conn.close()
 
     return RedirectResponse("/", status_code=302)
+
+
+@app.post("/settings/update")
+async def update_settings(request: Request):
+    try:
+        user = require_user(request)
+    except PermissionError:
+        return {"ok": False}
+
+    payload = await request.json()
+    save_user_settings(user["id"], payload)
+    module_value = payload.get("module") or "configuration-audit"
+    persist_settings_to_config(module_value, payload)
+    return {"ok": True}
+
+
+@app.get("/config/load")
+def load_config():
+    return load_persistent_config()
+
+
+@app.get("/config/export")
+def export_config():
+    if CONFIG_PATH.exists():
+        return FileResponse(CONFIG_PATH, filename="config.cfg")
+    return PlainTextResponse("", media_type="text/plain")
+
+
+@app.get("/logs/latest")
+def latest_logs(request: Request):
+    try:
+        user = require_user(request)
+    except PermissionError:
+        return {"log": ""}
+
+    conn = get_conn()
+    row = conn.execute(
+        "SELECT output_log FROM task_runs WHERE user_id = ? ORDER BY id DESC LIMIT 1",
+        (user["id"],),
+    ).fetchone()
+    conn.close()
+    return {"log": row["output_log"] if row else ""}
 
 
 @app.get("/admin", response_class=HTMLResponse)

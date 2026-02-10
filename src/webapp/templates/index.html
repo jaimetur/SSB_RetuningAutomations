@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Frontend Web - SSB Retuning</title>
+  <title>SSB Retuning Automations - Web Frontend</title>
   <link rel="stylesheet" href="/static/styles.css" />
 </head>
 <body>
@@ -11,7 +11,7 @@
   <main class="container">
     <header class="topbar">
       <div>
-        <h1>SSB Retuning - Frontend Web</h1>
+        <h1>SSB Retuning Automations - Web Frontend</h1>
         <p>User: <b>{{ user.username }}</b> ({{ user.role }})</p>
       </div>
       <nav>
@@ -20,63 +20,131 @@
       </nav>
     </header>
 
-    <section class="card">
-      <h2>Run module</h2>
-      <form action="/run" method="post" class="grid">
-        <label>Module
-          <select name="module" required>
-            {% for value, label in module_options %}
-              <option value="{{ value }}" {% if settings.get('module') == value %}selected{% endif %}>{{ label }}</option>
-            {% endfor %}
-          </select>
-        </label>
+    <section class="card module-card">
+      <div class="module-meta">v{{ tool_meta.version }} - {{ tool_meta.date }}</div>
+      <div class="module-header">
+        <img class="module-logo" src="/static/logo_02.png" alt="SSB Retuning Automations logo" />
+        <div class="module-title">
+          <h2>SSB Retuning Automations</h2>
+          <p class="module-eyebrow">Web Frontend</p>
+          <p class="module-subtitle">1️⃣ Select Module. 2️⃣ Configure Paths & Freqs. 3️⃣ Press Run to execute...</p>
+        </div>
+        <div class="module-actions">
+          <button type="button" class="browse-button" id="load_config_button">Load config.cfg</button>
+          <button type="button" class="browse-button" id="export_config_button">Export config.cfg</button>
+        </div>
+      </div>
+      <form action="/run" method="post" class="module-form">
+        <div class="form-row">
+          <label class="label-wide">Module to execute
+            <select name="module" required>
+              {% for value, label in module_options %}
+                <option value="{{ value }}" {% if settings.get('module') == value %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+            </select>
+          </label>
+        </div>
 
-        <label>Input
-          <input type="text" name="input" value="{{ settings.get('input', '') }}" placeholder="/ruta/input" />
-        </label>
-        <label>Input PRE
-          <input type="text" name="input_pre" value="{{ settings.get('input_pre', '') }}" />
-        </label>
-        <label>Input POST
-          <input type="text" name="input_post" value="{{ settings.get('input_post', '') }}" />
-        </label>
+        <div class="form-section">
+          <p class="section-title">Input folders</p>
+          <div class="grid grid-1" id="single-input-row">
+            <label>Input
+              <span class="input-with-button">
+                <input type="text" name="input" id="input_path" value="{{ settings.get('input', '') }}" placeholder="/path/input" />
+                <button type="button" class="browse-button" data-target="input_path" data-picker="input_picker">Browse</button>
+              </span>
+            </label>
+          </div>
+          <div class="grid grid-1 hidden" id="prepost-input-rows">
+            <label>Input PRE
+              <span class="input-with-button">
+                <input type="text" name="input_pre" id="input_pre_path" value="{{ settings.get('input_pre', '') }}" />
+                <button type="button" class="browse-button" data-target="input_pre_path" data-picker="input_pre_picker">Browse</button>
+              </span>
+            </label>
+            <label>Input POST
+              <span class="input-with-button">
+                <input type="text" name="input_post" id="input_post_path" value="{{ settings.get('input_post', '') }}" />
+                <button type="button" class="browse-button" data-target="input_post_path" data-picker="input_post_picker">Browse</button>
+              </span>
+            </label>
+          </div>
+          <input type="file" id="input_picker" class="hidden" webkitdirectory directory />
+          <input type="file" id="input_pre_picker" class="hidden" webkitdirectory directory />
+          <input type="file" id="input_post_picker" class="hidden" webkitdirectory directory />
+          <input type="file" id="config_picker" class="hidden" accept=".cfg" />
+        </div>
 
-        <label>N77 SSB PRE
-          <input type="text" name="n77_ssb_pre" value="{{ settings.get('n77_ssb_pre', '') }}" />
-        </label>
-        <label>N77 SSB POST
-          <input type="text" name="n77_ssb_post" value="{{ settings.get('n77_ssb_post', '') }}" />
-        </label>
-        <label>N77B SSB
-          <input type="text" name="n77b_ssb" value="{{ settings.get('n77b_ssb', '') }}" />
-        </label>
+        <div class="form-section">
+          <p class="section-title">SSB frequencies</p>
+          <div class="grid grid-3">
+            <label>N77 SSB PRE
+              <input type="text" name="n77_ssb_pre" value="{{ settings.get('n77_ssb_pre', '') }}" />
+            </label>
+            <label>N77 SSB POST
+              <input type="text" name="n77_ssb_post" value="{{ settings.get('n77_ssb_post', '') }}" />
+            </label>
+            <label>N77B SSB
+              <input type="text" name="n77b_ssb" value="{{ settings.get('n77b_ssb', '') }}" />
+            </label>
+          </div>
+        </div>
 
-        <label>Allowed N77 SSB PRE
-          <input type="text" name="allowed_n77_ssb_pre" value="{{ settings.get('allowed_n77_ssb_pre', '') }}" />
-        </label>
-        <label>Allowed N77 ARFCN PRE
-          <input type="text" name="allowed_n77_arfcn_pre" value="{{ settings.get('allowed_n77_arfcn_pre', '') }}" />
-        </label>
-        <label>Allowed N77 SSB POST
-          <input type="text" name="allowed_n77_ssb_post" value="{{ settings.get('allowed_n77_ssb_post', '') }}" />
-        </label>
-        <label>Allowed N77 ARFCN POST
-          <input type="text" name="allowed_n77_arfcn_post" value="{{ settings.get('allowed_n77_arfcn_post', '') }}" />
-        </label>
+        <div class="form-section">
+          <p class="section-title">Allowed SSB and ARFCN lists (comma-separated values)</p>
+          <div class="grid grid-2">
+            <label>Allowed N77 SSB PRE
+              <input type="text" name="allowed_n77_ssb_pre" value="{{ settings.get('allowed_n77_ssb_pre', '') }}" />
+            </label>
+            <label>Allowed N77 ARFCN PRE
+              <input type="text" name="allowed_n77_arfcn_pre" value="{{ settings.get('allowed_n77_arfcn_pre', '') }}" />
+            </label>
+            <label>Allowed N77 SSB POST
+              <input type="text" name="allowed_n77_ssb_post" value="{{ settings.get('allowed_n77_ssb_post', '') }}" />
+            </label>
+            <label>Allowed N77 ARFCN POST
+              <input type="text" name="allowed_n77_arfcn_post" value="{{ settings.get('allowed_n77_arfcn_post', '') }}" />
+            </label>
+          </div>
+        </div>
 
-        <label>CA Freq Filters
-          <input type="text" name="ca_freq_filters" value="{{ settings.get('ca_freq_filters', '') }}" />
-        </label>
-        <label>CC Freq Filters
-          <input type="text" name="cc_freq_filters" value="{{ settings.get('cc_freq_filters', '') }}" />
-        </label>
+        <div class="form-section">
+          <p class="section-title">Frequency filters</p>
+          <div class="grid grid-2">
+            <label>Configuration Audit filters
+              <input type="text" name="ca_freq_filters" value="{{ settings.get('ca_freq_filters', '') }}" />
+            </label>
+            <label>Consistency Checks filters
+              <input type="text" name="cc_freq_filters" value="{{ settings.get('cc_freq_filters', '') }}" />
+            </label>
+          </div>
+        </div>
 
-        <label><input type="checkbox" name="profiles_audit" {% if settings.get('profiles_audit') %}checked{% endif %}> Profiles Audit</label>
-        <label><input type="checkbox" name="frequency_audit" {% if settings.get('frequency_audit') %}checked{% endif %}> Frequency Audit</label>
-        <label><input type="checkbox" name="export_correction_cmd" {% if settings.get('export_correction_cmd') %}checked{% endif %}> Export Correction Cmd</label>
-        <label><input type="checkbox" name="fast_excel_export" {% if settings.get('fast_excel_export') %}checked{% endif %}> Fast Excel Export</label>
+        <div class="form-section options-section">
+          <p class="section-title">Options</p>
+          <div class="grid grid-2">
+            <label class="checkbox">
+              <input type="checkbox" name="profiles_audit" {% if settings.get('profiles_audit') %}checked{% endif %}>
+              Profiles Audit
+            </label>
+            <label class="checkbox">
+              <input type="checkbox" name="frequency_audit" {% if settings.get('frequency_audit') %}checked{% endif %}>
+              Frequency Audit
+            </label>
+            <label class="checkbox">
+              <input type="checkbox" name="export_correction_cmd" {% if settings.get('export_correction_cmd') %}checked{% endif %}>
+              Export Correction Cmd
+            </label>
+            <label class="checkbox">
+              <input type="checkbox" name="fast_excel_export" {% if settings.get('fast_excel_export') %}checked{% endif %}>
+              Fast Excel Export
+            </label>
+          </div>
+        </div>
 
-        <button type="submit">Run</button>
+        <div class="form-actions">
+          <button type="submit">Run</button>
+        </div>
       </form>
     </section>
 
@@ -99,6 +167,300 @@
         </tbody>
       </table>
     </section>
+
+    <section class="card log-card">
+      <div class="log-header">
+        <h2>Log output</h2>
+        <button type="button" id="refresh_log">Refresh</button>
+      </div>
+      <pre id="log_output" class="log-output">No logs yet.</pre>
+    </section>
   </main>
+  <script>
+    const moduleSelect = document.querySelector('select[name="module"]');
+    const singleInputRow = document.getElementById("single-input-row");
+    const prepostInputRows = document.getElementById("prepost-input-rows");
+
+    const pickers = {
+      input_picker: document.getElementById("input_picker"),
+      input_pre_picker: document.getElementById("input_pre_picker"),
+      input_post_picker: document.getElementById("input_post_picker")
+    };
+    const loadConfigButton = document.getElementById("load_config_button");
+    const exportConfigButton = document.getElementById("export_config_button");
+    const refreshLogButton = document.getElementById("refresh_log");
+    const logOutput = document.getElementById("log_output");
+    const configPicker = document.getElementById("config_picker");
+
+    const inputFields = {
+      input: document.getElementById("input_path"),
+      input_pre: document.getElementById("input_pre_path"),
+      input_post: document.getElementById("input_post_path"),
+      n77_ssb_pre: document.querySelector('input[name="n77_ssb_pre"]'),
+      n77_ssb_post: document.querySelector('input[name="n77_ssb_post"]'),
+      n77b_ssb: document.querySelector('input[name="n77b_ssb"]'),
+      allowed_n77_ssb_pre: document.querySelector('input[name="allowed_n77_ssb_pre"]'),
+      allowed_n77_arfcn_pre: document.querySelector('input[name="allowed_n77_arfcn_pre"]'),
+      allowed_n77_ssb_post: document.querySelector('input[name="allowed_n77_ssb_post"]'),
+      allowed_n77_arfcn_post: document.querySelector('input[name="allowed_n77_arfcn_post"]'),
+      ca_freq_filters: document.querySelector('input[name="ca_freq_filters"]'),
+      cc_freq_filters: document.querySelector('input[name="cc_freq_filters"]'),
+      profiles_audit: document.querySelector('input[name="profiles_audit"]'),
+      frequency_audit: document.querySelector('input[name="frequency_audit"]'),
+      export_correction_cmd: document.querySelector('input[name="export_correction_cmd"]'),
+      fast_excel_export: document.querySelector('input[name="fast_excel_export"]')
+    };
+
+    function toggleInputRows() {
+      const isConsistencyCheck = moduleSelect.value === "consistency-check";
+      singleInputRow.classList.toggle("hidden", isConsistencyCheck);
+      prepostInputRows.classList.toggle("hidden", !isConsistencyCheck);
+    }
+
+    function extractFolderName(fileList) {
+      if (!fileList || fileList.length === 0) {
+        return "";
+      }
+      const firstPath = fileList[0].webkitRelativePath || fileList[0].name;
+      return firstPath.split("/")[0];
+    }
+
+    async function pickDirectory(button) {
+      const targetInput = document.getElementById(button.dataset.target);
+      if (!targetInput) {
+        return;
+      }
+      if (window.showDirectoryPicker) {
+        try {
+          const handle = await window.showDirectoryPicker();
+          targetInput.value = handle.name;
+          scheduleAutoSave();
+          return;
+        } catch (error) {
+          return;
+        }
+      }
+      const picker = pickers[button.dataset.picker];
+      if (picker) {
+        picker.click();
+      }
+    }
+
+    document.querySelectorAll(".browse-button").forEach((button) => {
+      button.addEventListener("click", () => {
+        if (button.id === "load_config_button" || button.id === "export_config_button") {
+          return;
+        }
+        pickDirectory(button);
+      });
+    });
+
+    Object.entries(pickers).forEach(([pickerId, picker]) => {
+      picker.addEventListener("change", () => {
+        const folderName = extractFolderName(picker.files);
+        const targetButton = document.querySelector(`[data-picker="${pickerId}"]`);
+        const targetInput = targetButton ? document.getElementById(targetButton.dataset.target) : null;
+        if (targetInput) {
+          targetInput.value = folderName;
+          picker.value = "";
+          scheduleAutoSave();
+        }
+      });
+    });
+
+    function toBool(value) {
+      if (!value) {
+        return false;
+      }
+      return ["true", "1", "yes", "on"].includes(value.toLowerCase());
+    }
+
+    function normalizeConfig(config) {
+      const source = config.general || config || {};
+      const keyMap = {
+        last_input_dir: "last_input",
+        last_input_dir_audit: "last_input_audit",
+        last_input_dir_cc_pre: "last_input_cc_pre",
+        last_input_dir_cc_post: "last_input_cc_post",
+        last_input_dir_cc_bulk: "last_input_cc_bulk",
+        last_input_dir_final_cleanup: "last_input_final_cleanup",
+        allowed_n77_ssb_pre_csv: "allowed_n77_ssb_pre",
+        allowed_n77_arfcn_pre_csv: "allowed_n77_arfcn_pre",
+        allowed_n77_ssb_post_csv: "allowed_n77_ssb_post",
+        allowed_n77_arfcn_post_csv: "allowed_n77_arfcn_post"
+      };
+      const normalized = { ...source };
+      Object.entries(keyMap).forEach(([rawKey, logicalKey]) => {
+        if (rawKey in source && !(logicalKey in normalized)) {
+          normalized[logicalKey] = source[rawKey];
+        }
+      });
+      return normalized;
+    }
+
+    function applyConfigValues(config) {
+      const general = normalizeConfig(config);
+      const moduleValue = moduleSelect.value;
+      const inputMappings = {
+        "configuration-audit": general.last_input_audit || general.last_input || "",
+        "consistency-check-bulk": general.last_input_cc_bulk || general.last_input || "",
+        "final-cleanup": general.last_input_final_cleanup || general.last_input || ""
+      };
+
+      if (moduleValue === "consistency-check") {
+        inputFields.input_pre.value = general.last_input_cc_pre || "";
+        inputFields.input_post.value = general.last_input_cc_post || "";
+      } else {
+        inputFields.input.value = inputMappings[moduleValue] || "";
+      }
+
+      inputFields.n77_ssb_pre.value = general.n77_ssb_pre || inputFields.n77_ssb_pre.value;
+      inputFields.n77_ssb_post.value = general.n77_ssb_post || inputFields.n77_ssb_post.value;
+      inputFields.n77b_ssb.value = general.n77b_ssb || inputFields.n77b_ssb.value;
+      inputFields.allowed_n77_ssb_pre.value = general.allowed_n77_ssb_pre || inputFields.allowed_n77_ssb_pre.value;
+      inputFields.allowed_n77_arfcn_pre.value = general.allowed_n77_arfcn_pre || inputFields.allowed_n77_arfcn_pre.value;
+      inputFields.allowed_n77_ssb_post.value = general.allowed_n77_ssb_post || inputFields.allowed_n77_ssb_post.value;
+      inputFields.allowed_n77_arfcn_post.value = general.allowed_n77_arfcn_post || inputFields.allowed_n77_arfcn_post.value;
+      inputFields.ca_freq_filters.value = general.ca_freq_filters || inputFields.ca_freq_filters.value;
+      inputFields.cc_freq_filters.value = general.cc_freq_filters || inputFields.cc_freq_filters.value;
+      inputFields.profiles_audit.checked = toBool(general.profiles_audit);
+      inputFields.frequency_audit.checked = toBool(general.frequency_audit);
+      inputFields.export_correction_cmd.checked = toBool(general.export_correction_cmd);
+      inputFields.fast_excel_export.checked = toBool(general.fast_excel_export);
+    }
+
+    function escapeHtml(text) {
+      return text.replace(/[&<>"']/g, (char) => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;"
+      }[char]));
+    }
+
+    function parseIni(content) {
+      const result = {};
+      let currentSection = "";
+      content.split(/\r?\n/).forEach((line) => {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith(";") || trimmed.startsWith("#")) {
+          return;
+        }
+        const sectionMatch = trimmed.match(/^\[(.+)\]$/);
+        if (sectionMatch) {
+          currentSection = sectionMatch[1].trim();
+          return;
+        }
+        const equalsIndex = trimmed.indexOf("=");
+        if (equalsIndex === -1) {
+          return;
+        }
+        const key = trimmed.slice(0, equalsIndex).trim();
+        const value = trimmed.slice(equalsIndex + 1).trim();
+        if (!result[currentSection]) {
+          result[currentSection] = {};
+        }
+        result[currentSection][key] = value;
+      });
+      return result;
+    }
+
+    function renderLog(text) {
+      if (!text) {
+        logOutput.textContent = "No logs yet.";
+        return;
+      }
+      const lines = text.split(/\r?\n/);
+      logOutput.innerHTML = lines.map((line) => {
+        let cls = "log-info";
+        if (line.includes("[ERROR]")) {
+          cls = "log-error";
+        } else if (line.includes("[WARNING]")) {
+          cls = "log-warning";
+        } else if (line.includes("[DEBUG]")) {
+          cls = "log-debug";
+        }
+        return `<span class="${cls}">${escapeHtml(line)}</span>`;
+      }).join("\n");
+    }
+
+    function fetchLatestLog() {
+      fetch("/logs/latest")
+        .then((res) => res.json())
+        .then((data) => {
+          renderLog(data.log || "");
+        })
+        .catch(() => {
+          renderLog("");
+        });
+    }
+
+    function collectFormValues() {
+      const form = document.querySelector(".module-form");
+      const data = new FormData(form);
+      const payload = {};
+      data.forEach((value, key) => {
+        payload[key] = value;
+      });
+      ["profiles_audit", "frequency_audit", "export_correction_cmd", "fast_excel_export"].forEach((key) => {
+        payload[key] = form.querySelector(`input[name="${key}"]`).checked;
+      });
+      return payload;
+    }
+
+    let saveTimeout = null;
+    function scheduleAutoSave() {
+      if (saveTimeout) {
+        clearTimeout(saveTimeout);
+      }
+      saveTimeout = setTimeout(() => {
+        fetch("/settings/update", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(collectFormValues())
+        }).catch(() => {});
+      }, 400);
+    }
+
+    document.querySelectorAll(".module-form input, .module-form select").forEach((field) => {
+      field.addEventListener("change", scheduleAutoSave);
+      field.addEventListener("input", scheduleAutoSave);
+    });
+
+    loadConfigButton.addEventListener("click", () => {
+      configPicker.click();
+    });
+
+    configPicker.addEventListener("change", () => {
+      const file = configPicker.files[0];
+      if (!file) {
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = () => {
+        const parsed = parseIni(reader.result || "");
+        applyConfigValues(parsed);
+        scheduleAutoSave();
+      };
+      reader.readAsText(file);
+    });
+
+    exportConfigButton.addEventListener("click", () => {
+      window.location.href = "/config/export";
+    });
+
+    refreshLogButton.addEventListener("click", fetchLatestLog);
+
+    moduleSelect.addEventListener("change", toggleInputRows);
+    toggleInputRows();
+    fetch("/config/load")
+      .then((res) => res.json())
+      .then((data) => {
+        applyConfigValues(data);
+      })
+      .catch(() => {});
+    fetchLatestLog();
+  </script>
 </body>
 </html>
