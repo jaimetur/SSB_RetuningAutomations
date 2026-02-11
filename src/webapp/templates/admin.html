@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Admin Panel - SSB Retuning</title>
+  <title>SSB Retuning Automations - Administration Panel</title>
   <link rel="stylesheet" href="/static/styles.css" />
 </head>
 <body>
@@ -11,12 +11,15 @@
   <main class="container">
     <header class="topbar">
       <div>
-        <h1>Administration Panel</h1>
+        <h1>SSB Retuning Automations - Administration Panel</h1>
         <p>Manage access, passwords, and usage times.</p>
       </div>
       <nav>
-        <a href="/">Home</a>
-        <a href="/logout">Sign out</a>
+        <div class="user-meta">User: <b>{{ user.username }}</b> ({{ user.role }})</div>
+        <div class="nav-links">
+          <a href="/">Home</a>
+          <a href="/logout">Sign out</a>
+        </div>
       </nav>
     </header>
 
@@ -35,7 +38,7 @@
 
     <section class="card">
       <h2>Users</h2>
-      <div class="table-scroll">
+      <div class="table-scroll latest-global-scroll">
       <table>
         <thead><tr><th>User</th><th>Password</th><th>Role</th><th>Status</th><th>Logged time (s)</th><th>Execution time (s)</th><th>Storage</th><th>Actions</th></tr></thead>
         <tbody>
@@ -83,21 +86,33 @@
     </section>
 
     <section class="card">
-      <h2>Latest global runs</h2>
+      <div class="runs-header">
+        <h2>Latest Global Executions</h2>
+        <div class="runs-actions">
+          <span class="runs-total">Total size: {{ global_runs_size }}</span>
+          <button type="button" id="select_all_runs">Select All</button>
+          <button type="button" id="unselect_all_runs">Un-Select All</button>
+          <button type="button" id="select_older_runs" class="btn btn-accent">Select Older</button>
+          <button type="button" id="select_error_runs" class="btn btn-accent">Select Error</button>
+          <button type="button" id="delete_selected_runs" class="btn btn-danger">Delete Selected</button>
+        </div>
+      </div>
+      <input type="date" id="older_date_picker" class="hidden" />
       <div class="table-scroll">
       <table>
-        <thead><tr><th>ID</th><th>User</th><th>Module</th><th>Version</th><th>Status</th><th>Start</th><th>End</th><th>Duration (s)</th><th>Output</th><th>Log</th><th>Size</th></tr></thead>
+        <thead><tr><th></th><th>ID</th><th>User</th><th>Module</th><th>Version</th><th>Status</th><th>Start</th><th>End</th><th>Duration</th><th>Output</th><th>Log</th><th>Size</th></tr></thead>
         <tbody>
           {% for r in recent_runs %}
-          <tr>
+          <tr class="{% if r.status_lower == 'error' %}run-error{% elif r.status_lower == 'success' %}run-success{% endif %}" data-status="{{ r.status_lower }}">
+            <td><input type="checkbox" class="run-checkbox" value="{{ r.id }}" data-start="{{ r.started_at }}" data-status="{{ r.status_lower }}" /></td>
             <td>{{ r.id }}</td>
             <td>{{ r.username }}</td>
             <td>{{ r.module }}</td>
             <td>{{ r.tool_version or '—' }}</td>
-            <td>{{ r.status }}</td>
+            <td>{% if r.status_lower == 'success' %}success{% else %}{{ r.status }}{% endif %}</td>
             <td>{{ r.started_at }}</td>
             <td>{{ r.finished_at }}</td>
-            <td>{{ '%.2f'|format(r.duration_seconds or 0) }}</td>
+            <td>{{ r.duration_hms }}</td>
             <td>
               {% if r.output_zip %}
                 <a href="/runs/{{ r.id }}/download">Download zip</a>
@@ -115,7 +130,7 @@
             <td>{{ r.size_mb }}</td>
           </tr>
           {% else %}
-            <tr><td colspan="11">No runs yet.</td></tr>
+            <tr><td colspan="12">No runs yet.</td></tr>
           {% endfor %}
         </tbody>
       </table>
@@ -131,6 +146,126 @@
         }
       });
     });
+
+    const selectAllRunsButton = document.getElementById("select_all_runs");
+    const unselectAllRunsButton = document.getElementById("unselect_all_runs");
+    const selectOlderRunsButton = document.getElementById("select_older_runs");
+    const selectErrorRunsButton = document.getElementById("select_error_runs");
+    const deleteSelectedRunsButton = document.getElementById("delete_selected_runs");
+
+    function getSelectedRunIds() {
+      return Array.from(document.querySelectorAll(".run-checkbox:checked")).map((box) => Number(box.value));
+    }
+
+    if (selectAllRunsButton) {
+      selectAllRunsButton.addEventListener("click", () => {
+        document.querySelectorAll(".run-checkbox").forEach((box) => {
+          box.checked = true;
+        });
+      });
+    }
+
+    if (unselectAllRunsButton) {
+      unselectAllRunsButton.addEventListener("click", () => {
+        document.querySelectorAll(".run-checkbox").forEach((box) => {
+          box.checked = false;
+        });
+      });
+    }
+
+    function selectErrorRuns() {
+      const table = document.querySelector(".latest-global-scroll table");
+      const headerCells = table ? table.querySelectorAll("thead th") : [];
+      let statusIndex = -1;
+      headerCells.forEach((cell, index) => {
+        if (cell.textContent.trim().toLowerCase() === "status") {
+          statusIndex = index;
+        }
+      });
+      document.querySelectorAll(".run-checkbox").forEach((box) => {
+        const row = box.closest("tr");
+        const statusColumn = row && statusIndex >= 0 ? row.cells[statusIndex] : null;
+        const statusText = statusColumn ? statusColumn.textContent.trim().toLowerCase() : "";
+        const statusAttr = (row?.dataset.status || box.dataset.status || "").trim().toLowerCase();
+        if (statusText === "error" || statusAttr === "error" || row?.classList.contains("run-error")) {
+          box.checked = true;
+        }
+      });
+    }
+
+    if (selectErrorRunsButton) {
+      selectErrorRunsButton.addEventListener("click", selectErrorRuns);
+    }
+
+    let lastChecked = null;
+    document.querySelectorAll(".run-checkbox").forEach((box) => {
+      box.addEventListener("click", (event) => {
+        if (!event.shiftKey || !lastChecked) {
+          lastChecked = box;
+          return;
+        }
+        const checkboxes = Array.from(document.querySelectorAll(".run-checkbox"));
+        const start = checkboxes.indexOf(box);
+        const end = checkboxes.indexOf(lastChecked);
+        const [min, max] = start < end ? [start, end] : [end, start];
+        for (let i = min; i <= max; i += 1) {
+          checkboxes[i].checked = lastChecked.checked;
+        }
+      });
+    });
+
+    if (selectOlderRunsButton) {
+      selectOlderRunsButton.addEventListener("click", () => {
+        const picker = document.getElementById("older_date_picker");
+        if (picker) {
+          picker.showPicker();
+        }
+      });
+    }
+
+    const olderDatePicker = document.getElementById("older_date_picker");
+    if (olderDatePicker) {
+      olderDatePicker.addEventListener("change", () => {
+        const selected = olderDatePicker.value;
+        if (!selected) {
+          return;
+        }
+        const threshold = new Date(`${selected}T00:00:00`);
+        if (Number.isNaN(threshold.getTime())) {
+          return;
+        }
+        document.querySelectorAll(".run-checkbox").forEach((box) => {
+          const startValue = box.dataset.start;
+          if (!startValue) {
+            return;
+          }
+          const parts = startValue.split("-");
+          const normalized = `${parts[0]}-${parts[1]}-${parts[2]}T${parts[3] || "00:00:00"}`;
+          const startDate = new Date(normalized);
+          if (!Number.isNaN(startDate.getTime()) && startDate < threshold) {
+            box.checked = true;
+          }
+        });
+        olderDatePicker.value = "";
+      });
+    }
+
+    if (deleteSelectedRunsButton) {
+      deleteSelectedRunsButton.addEventListener("click", () => {
+        const ids = getSelectedRunIds();
+        if (ids.length === 0) {
+          return;
+        }
+        if (!confirm("This will delete the Uploads and Exports for the selected executions. Continue?")) {
+          return;
+        }
+        fetch("/admin/runs/delete", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ids })
+        }).then(() => window.location.reload());
+      });
+    }
   </script>
 </body>
 </html>

@@ -178,12 +178,12 @@
           <button type="submit" class="btn btn-success" id="run_module_button">Run Module</button>
         </div>
       </form>
-      <span class="run-status" id="run_status"></span>
+      <span class="run-status" id="run_status" data-latest-status="{{ latest_runs[0].status_lower if latest_runs else '' }}"></span>
     </section>
 
     <section class="card">
       <div class="runs-header">
-        <h2>Latest Runs</h2>
+        <h2>Latest Executions</h2>
         <div class="runs-actions">
           <span class="runs-total">Total size: {{ total_runs_size }}</span>
           <button type="button" id="select_all_runs">Select All</button>
@@ -199,11 +199,11 @@
         <thead><tr><th></th><th>Module</th><th>Version</th><th>Status</th><th>Start</th><th>End</th><th>Duration</th><th>Output</th><th>Log</th><th>Size</th></tr></thead>
         <tbody>
         {% for r in latest_runs %}
-          <tr class="{% if r.status_lower == 'error' %}run-error{% endif %}" data-status="{{ r.status_lower }}">
+          <tr class="{% if r.status_lower == 'error' %}run-error{% elif r.status_lower == 'success' %}run-success{% endif %}" data-status="{{ r.status_lower }}">
             <td><input type="checkbox" class="run-checkbox" value="{{ r.id }}" data-start="{{ r.started_at }}" data-status="{{ r.status_lower }}" /></td>
             <td>{{ r.module }}</td>
             <td>{{ r.tool_version or '—' }}</td>
-            <td>{{ r.status }}</td>
+            <td>{% if r.status_lower == 'success' %}success{% else %}{{ r.status }}{% endif %}</td>
             <td>{{ r.started_at }}</td>
             <td>{{ r.finished_at }}</td>
             <td>{{ r.duration_hms }}</td>
@@ -233,8 +233,13 @@
 
     <section class="card log-card">
       <div class="log-header">
-        <h2>Output Log</h2>
+        <h2>Execution Logs</h2>
         <div class="log-actions">
+          <select id="log_run_selector">
+            {% for r in latest_runs %}
+              <option value="{{ r.id }}" {% if loop.first %}selected{% endif %}>{{ r.run_label }}</option>
+            {% endfor %}
+          </select>
           <button type="button" id="refresh_log">Refresh</button>
           <button type="button" id="clear_log">Clear</button>
           <button type="button" id="copy_log">Copy all</button>
@@ -242,6 +247,27 @@
         </div>
       </div>
       <pre id="log_output" class="log-output">No logs yet.</pre>
+    </section>
+
+    <section class="card log-card">
+      <div class="log-header">
+        <h2>System Logs</h2>
+        <div class="log-actions">
+          <select id="system_log_source">
+            <option value="app" selected>Application</option>
+            <option value="access">Access</option>
+          </select>
+          <label class="checkbox">
+            <input type="checkbox" id="system_log_auto" />
+            Auto refresh
+          </label>
+          <button type="button" id="refresh_system_log">Refresh</button>
+          <button type="button" id="clear_system_log">Clear</button>
+          <button type="button" id="copy_system_log">Copy all</button>
+          <button type="button" id="copy_system_selection">Copy selection</button>
+        </div>
+      </div>
+      <pre id="system_log_output" class="log-output">No logs yet.</pre>
     </section>
   </main>
   <script>
@@ -262,6 +288,7 @@
     const copyLogButton = document.getElementById("copy_log");
     const copySelectionButton = document.getElementById("copy_selection");
     const logOutput = document.getElementById("log_output");
+    const logRunSelector = document.getElementById("log_run_selector");
     const configPicker = document.getElementById("config_picker");
     const selectAllRunsButton = document.getElementById("select_all_runs");
     const unselectAllRunsButton = document.getElementById("unselect_all_runs");
@@ -270,6 +297,13 @@
     const deleteSelectedRunsButton = document.getElementById("delete_selected_runs");
     const runStatusLabel = document.getElementById("run_status");
     const runModuleButton = document.getElementById("run_module_button");
+    const systemLogOutput = document.getElementById("system_log_output");
+    const systemLogSource = document.getElementById("system_log_source");
+    const systemLogAuto = document.getElementById("system_log_auto");
+    const refreshSystemLogButton = document.getElementById("refresh_system_log");
+    const clearSystemLogButton = document.getElementById("clear_system_log");
+    const copySystemLogButton = document.getElementById("copy_system_log");
+    const copySystemSelectionButton = document.getElementById("copy_system_selection");
 
     const inputFields = {
       input: document.getElementById("input_path"),
@@ -559,6 +593,53 @@
         });
     }
 
+    function fetchLogByRun() {
+      const runId = logRunSelector?.value;
+      if (!runId) {
+        fetchLatestLog();
+        return;
+      }
+      fetch(`/logs/by_run/${runId}`)
+        .then((res) => res.json())
+        .then((data) => {
+          renderLog(data.log || "");
+        })
+        .catch(() => {
+          renderLog("");
+        });
+    }
+
+    function renderSystemLog(text) {
+      if (!text) {
+        systemLogOutput.textContent = "No logs yet.";
+        return;
+      }
+      const lines = text.split(/\r?\n/);
+      systemLogOutput.innerHTML = lines.map((line) => {
+        let cls = "log-info";
+        if (line.includes("[ERROR]")) {
+          cls = "log-error";
+        } else if (line.includes("[WARNING]")) {
+          cls = "log-warning";
+        } else if (line.includes("[DEBUG]")) {
+          cls = "log-debug";
+        }
+        return `<span class="${cls}">${escapeHtml(line)}</span>`;
+      }).join("\n");
+    }
+
+    function fetchSystemLog() {
+      const source = systemLogSource?.value || "app";
+      fetch(`/logs/system?source=${encodeURIComponent(source)}`)
+        .then((res) => res.json())
+        .then((data) => {
+          renderSystemLog(data.log || "");
+        })
+        .catch(() => {
+          renderSystemLog("");
+        });
+    }
+
     function collectFormValues() {
       const form = document.querySelector(".module-form");
       const data = new FormData(form);
@@ -630,7 +711,7 @@
       });
     });
 
-    refreshLogButton.addEventListener("click", fetchLatestLog);
+    refreshLogButton.addEventListener("click", fetchLogByRun);
     clearLogButton.addEventListener("click", () => {
       logOutput.textContent = "";
     });
@@ -661,6 +742,31 @@
         copyToClipboard(selection.toString());
       }
     });
+
+    if (refreshSystemLogButton) {
+      refreshSystemLogButton.addEventListener("click", fetchSystemLog);
+    }
+    if (clearSystemLogButton) {
+      clearSystemLogButton.addEventListener("click", () => {
+        systemLogOutput.textContent = "";
+      });
+    }
+    if (copySystemLogButton) {
+      copySystemLogButton.addEventListener("click", () => {
+        copyToClipboard(systemLogOutput.textContent || "");
+      });
+    }
+    if (copySystemSelectionButton) {
+      copySystemSelectionButton.addEventListener("click", () => {
+        const selection = window.getSelection();
+        if (selection) {
+          copyToClipboard(selection.toString());
+        }
+      });
+    }
+    if (systemLogSource) {
+      systemLogSource.addEventListener("change", fetchSystemLog);
+    }
 
     function getTargetFiltersInput() {
       return freqTargetSelect.value === "cc" ? ccFiltersInput : caFiltersInput;
@@ -766,6 +872,9 @@
       if (ids.length === 0) {
         return;
       }
+      if (!confirm("This will delete the Uploads and Exports for the selected executions. Continue?")) {
+        return;
+      }
       fetch("/runs/delete", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -795,15 +904,41 @@
       logOutput.textContent = "";
       uploadSessionId = buildSessionId();
       runStatusLabel.textContent = "Running Module... (see Output Log below)";
+      runStatusLabel.className = "run-status status-running";
       runModuleButton.disabled = true;
     });
+    if (runStatusLabel) {
+      const latestStatus = (runStatusLabel.dataset.latestStatus || "").trim().toLowerCase();
+      if (latestStatus === "ok") {
+        runStatusLabel.textContent = "SUCCESS!!!";
+        runStatusLabel.className = "run-status status-done";
+      } else if (latestStatus === "error") {
+        runStatusLabel.textContent = "ERROR!!!";
+        runStatusLabel.className = "run-status status-error";
+      }
+    }
     fetch("/config/load")
       .then((res) => res.json())
       .then((data) => {
         applyConfigValues(data);
       })
       .catch(() => {});
-    fetchLatestLog();
+    logRunSelector?.addEventListener("change", fetchLogByRun);
+    fetchLogByRun();
+    fetchSystemLog();
+
+    let systemLogTimer = null;
+    if (systemLogAuto) {
+      systemLogAuto.addEventListener("change", () => {
+        if (systemLogAuto.checked) {
+          fetchSystemLog();
+          systemLogTimer = setInterval(fetchSystemLog, 3000);
+        } else if (systemLogTimer) {
+          clearInterval(systemLogTimer);
+          systemLogTimer = null;
+        }
+      });
+    }
   </script>
 </body>
 </html>

@@ -72,6 +72,12 @@ def setup_logging() -> logging.Logger:
         app_handler = RotatingFileHandler(APP_LOG_PATH, maxBytes=2_000_000, backupCount=3)
         app_handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
         logger.addHandler(app_handler)
+
+        for name in ("uvicorn", "uvicorn.error"):
+            uv_logger = logging.getLogger(name)
+            uv_logger.setLevel(logging.INFO)
+            if all(handler is not app_handler for handler in uv_logger.handlers):
+                uv_logger.addHandler(app_handler)
     return logger
 
 
@@ -139,6 +145,19 @@ def strip_ansi(text: str) -> str:
     if not text:
         return text
     return re.sub(r"\x1b\\[[0-9;]*[A-Za-z]", "", text)
+
+
+def read_tail(path: Path, max_lines: int = 400) -> str:
+    if not path.exists():
+        return ""
+    try:
+        content = path.read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        return ""
+    lines = content.splitlines()
+    if len(lines) <= max_lines:
+        return "\n".join(lines)
+    return "\n".join(lines[-max_lines:])
 
 
 def sanitize_component(value: str) -> str:
@@ -640,7 +659,7 @@ def index(request: Request):
         FROM task_runs
         WHERE user_id = ?
         ORDER BY id DESC
-        
+       
         """,
         (user["id"],),
     ).fetchall()
@@ -649,7 +668,9 @@ def index(request: Request):
         row["started_at"] = format_timestamp(row["started_at"])
         row["finished_at"] = format_timestamp(row["finished_at"])
         row["duration_hms"] = format_seconds_hms(row.get("duration_seconds"))
-        row["status_lower"] = (row.get("status") or "").strip().lower()
+        raw_status = (row.get("status") or "").strip().lower()
+        row["status_lower"] = "success" if raw_status == "ok" else raw_status
+        row["run_label"] = f"{row['module']}_{row['started_at']}_v{row.get('tool_version') or '—'}"
 
     all_runs = conn.execute(
         "SELECT id, input_dir, output_dir FROM task_runs WHERE user_id = ?",
@@ -689,6 +710,22 @@ def index(request: Request):
             "total_runs_size": total_size_mb,
         },
     )
+
+
+def compute_runs_size(rows: list[sqlite3.Row]) -> tuple[dict[int, int], int]:
+    run_sizes: dict[int, int] = {}
+    total_bytes = 0
+    for row in rows:
+        input_dir = Path(row["input_dir"]) if row["input_dir"] else None
+        output_dir = Path(row["output_dir"]) if row["output_dir"] else None
+        input_size = compute_dir_size(input_dir) if input_dir else 0
+        output_size = 0
+        if output_dir and not (input_dir and is_safe_path(input_dir, output_dir)):
+            output_size = compute_dir_size(output_dir)
+        size_bytes = input_size + output_size
+        run_sizes[row["id"]] = size_bytes
+        total_bytes += size_bytes
+    return run_sizes, total_bytes
 
 
 @app.get("/login", response_class=HTMLResponse)
@@ -790,6 +827,8 @@ def run_module(
     save_user_settings(user["id"], payload)
     persist_settings_to_config(module, payload)
 
+    tool_meta = load_tool_metadata()
+    tool_version = tool_meta.get("version", "unknown")
     cmd = build_cli_command(payload)
 
     start = time.perf_counter()
@@ -833,26 +872,22 @@ def run_module(
         output_dir = find_latest_output_dir(Path(base_dir), build_output_prefixes(module))
         if output_dir:
             output_dir_value = str(output_dir)
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             try:
                 for existing in output_dir.glob("RetuningAutomation_*.log"):
                     existing.unlink(missing_ok=True)
                 legacy_log = output_dir / "webapp_output.log"
                 if legacy_log.exists():
                     legacy_log.unlink()
-                tool_meta = load_tool_metadata()
-                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                version = tool_meta.get("version", "unknown")
-                log_name = f"RetuningAutomation_{timestamp}_v{version}.log"
+                log_name = f"RetuningAutomation_{timestamp}_v{tool_version}.log"
                 output_log_file = output_dir / log_name
                 output_log_file.write_text(output_log, encoding="utf-8")
                 output_log_file_value = str(output_log_file)
             except OSError:
                 output_log_file_value = ""
+
             exports_dir = DATA_DIR / "users" / sanitize_component(user["username"]) / "export"
             exports_dir.mkdir(parents=True, exist_ok=True)
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            tool_meta = load_tool_metadata()
-            tool_version = tool_meta.get("version", "unknown")
             zip_name = f"{sanitize_component(module)}_{timestamp}_v{sanitize_component(tool_version)}.zip"
             output_zip_path = exports_dir / zip_name
             try:
@@ -860,6 +895,11 @@ def run_module(
                 output_zip_value = str(output_zip_path)
             except OSError:
                 output_zip_value = ""
+
+            try:
+                shutil.rmtree(output_dir, ignore_errors=True)
+            except OSError:
+                pass
 
     conn = get_conn()
     conn.execute(
@@ -1006,6 +1046,38 @@ def latest_logs(request: Request):
     return {"log": row["output_log"] if row else ""}
 
 
+@app.get("/logs/by_run/{run_id}")
+def logs_by_run(request: Request, run_id: int):
+    try:
+        user = require_user(request)
+    except PermissionError:
+        return {"log": ""}
+
+    conn = get_conn()
+    row = conn.execute(
+        "SELECT output_log FROM task_runs WHERE id = ? AND user_id = ?",
+        (run_id, user["id"]),
+    ).fetchone()
+    conn.close()
+    return {"log": row["output_log"] if row else ""}
+
+
+@app.get("/logs/system")
+def logs_system(request: Request, source: str = "app"):
+    try:
+        require_user(request)
+    except PermissionError:
+        return {"log": ""}
+
+    source_key = (source or "app").lower().strip()
+    if source_key == "access":
+        path = ACCESS_LOG_PATH
+    else:
+        path = APP_LOG_PATH
+
+    return {"log": read_tail(path)}
+
+
 @app.get("/runs/{run_id}/download")
 def download_run_output(request: Request, run_id: int):
     try:
@@ -1083,14 +1155,58 @@ async def delete_runs(request: Request):
             shutil.rmtree(input_dir, ignore_errors=True)
         if output_dir and is_safe_path(DATA_DIR / "users", output_dir):
             shutil.rmtree(output_dir, ignore_errors=True)
-        if output_zip and is_safe_path(DATA_DIR / "users", output_zip):
+        if output_zip and output_zip.is_file() and is_safe_path(DATA_DIR / "users", output_zip):
             output_zip.unlink(missing_ok=True)
-        if output_log and is_safe_path(DATA_DIR / "users", output_log):
+        if output_log and output_log.is_file() and is_safe_path(DATA_DIR / "users", output_log):
             output_log.unlink(missing_ok=True)
 
     conn.execute(
         "DELETE FROM task_runs WHERE user_id = ? AND id IN (%s)" % ",".join("?" for _ in run_ids),
         (user["id"], *run_ids),
+    )
+    conn.commit()
+    conn.close()
+
+    return {"ok": True}
+
+
+@app.post("/admin/runs/delete")
+async def admin_delete_runs(request: Request):
+    try:
+        require_admin(request)
+    except PermissionError:
+        return {"ok": False}
+
+    payload = await request.json()
+    run_ids = payload.get("ids", [])
+    if not run_ids:
+        return {"ok": False}
+
+    conn = get_conn()
+    rows = conn.execute(
+        "SELECT id, input_dir, output_dir, output_zip, output_log_file FROM task_runs WHERE id IN (%s)"
+        % ",".join("?" for _ in run_ids),
+        tuple(run_ids),
+    ).fetchall()
+
+    for row in rows:
+        input_dir = Path(row["input_dir"]) if row["input_dir"] else None
+        output_dir = Path(row["output_dir"]) if row["output_dir"] else None
+        output_zip = Path(row["output_zip"]) if row["output_zip"] else None
+        output_log = Path(row["output_log_file"]) if row["output_log_file"] else None
+
+        if input_dir and is_safe_path(DATA_DIR / "users", input_dir):
+            shutil.rmtree(input_dir, ignore_errors=True)
+        if output_dir and is_safe_path(DATA_DIR / "users", output_dir):
+            shutil.rmtree(output_dir, ignore_errors=True)
+        if output_zip and output_zip.is_file() and is_safe_path(DATA_DIR / "users", output_zip):
+            output_zip.unlink(missing_ok=True)
+        if output_log and output_log.is_file() and is_safe_path(DATA_DIR / "users", output_log):
+            output_log.unlink(missing_ok=True)
+
+    conn.execute(
+        "DELETE FROM task_runs WHERE id IN (%s)" % ",".join("?" for _ in run_ids),
+        tuple(run_ids),
     )
     conn.commit()
     conn.close()
@@ -1131,22 +1247,19 @@ def admin_panel(request: Request):
         FROM task_runs tr
         JOIN users u ON u.id = tr.user_id
         ORDER BY tr.id DESC
-        LIMIT 50
         """
     ).fetchall()
     conn.close()
 
+    run_sizes, total_bytes = compute_runs_size(recent_runs)
     recent_runs = [dict(row) for row in recent_runs]
     for row in recent_runs:
         row["started_at"] = format_timestamp(row["started_at"])
         row["finished_at"] = format_timestamp(row["finished_at"])
-        input_dir = Path(row["input_dir"]) if row["input_dir"] else None
-        output_dir = Path(row["output_dir"]) if row["output_dir"] else None
-        input_size = compute_dir_size(input_dir) if input_dir else 0
-        output_size = 0
-        if output_dir and not (input_dir and is_safe_path(input_dir, output_dir)):
-            output_size = compute_dir_size(output_dir)
-        row["size_mb"] = format_mb(input_size + output_size)
+        row["duration_hms"] = format_seconds_hms(row.get("duration_seconds"))
+        raw_status = (row.get("status") or "").strip().lower()
+        row["status_lower"] = "success" if raw_status == "ok" else raw_status
+        row["size_mb"] = format_mb(run_sizes.get(row["id"], 0))
 
     return templates.TemplateResponse(
         "admin.html",
@@ -1155,6 +1268,7 @@ def admin_panel(request: Request):
             "user": admin,
             "users": users,
             "recent_runs": recent_runs,
+            "global_runs_size": format_mb(total_bytes),
         },
     )
 
