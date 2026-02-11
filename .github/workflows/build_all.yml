@@ -199,7 +199,7 @@ jobs:
     with:
       final_release: ${{ inputs.final_release }}
     secrets:
-      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_USER: ${{ secrets.DOCKERHUB_USER }}
       DOCKERHUB_PASSWORD: ${{ secrets.DOCKERHUB_PASSWORD }}
 
   check-dockerhub-secrets:
@@ -209,8 +209,8 @@ jobs:
       - name: Check DockerHub secrets (caller)
         shell: bash
         run: |
-          if [ -z "${{ secrets.DOCKERHUB_USERNAME }}" ]; then
-            echo "Caller DOCKERHUB_USERNAME is empty"
+          if [ -z "${{ secrets.DOCKERHUB_USER }}" ]; then
+            echo "Caller DOCKERHUB_USER is empty"
             exit 1
           fi
           if [ -z "${{ secrets.DOCKERHUB_PASSWORD }}" ]; then
