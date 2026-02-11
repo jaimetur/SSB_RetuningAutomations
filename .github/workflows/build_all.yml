@@ -197,7 +197,7 @@ jobs:
     with:
       final_release: ${{ inputs.final_release }}
     secrets:
-      TOKEN_GITHUB: ${{ secrets.TOKEN_GITHUB }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
       DOCKERHUB_PASSWORD: ${{ secrets.DOCKERHUB_PASSWORD }}
 
@@ -257,7 +257,7 @@ jobs:
       - name: 🧾 Checkout Repository
         uses: actions/checkout@v4
         with:
-          token: ${{ secrets.TOKEN_GITHUB }}
+          token: ${{ secrets.GITHUB_TOKEN }}
           persist-credentials: true            # keep creds for later git push
           fetch-depth: 0                       # fetch tags if needed
 
@@ -571,7 +571,7 @@ jobs:
             exit 1
           fi
         env:
-          GITHUB_TOKEN: ${{ secrets.TOKEN_GITHUB }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: 📥 Download Artifacts (RELEASE-NOTES.md and Binaries)
         uses: actions/download-artifact@v4
@@ -609,7 +609,7 @@ jobs:
           files: |
             ./release_files/*
         env:
-          GITHUB_TOKEN: ${{ secrets.TOKEN_GITHUB }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       # 🚀 Crear prerelease (final_release == false)
       - name: 🚀 Create GitHub Release (prerelease)
@@ -627,6 +627,6 @@ jobs:
           files: |
             ./release_files/*
         env:
-          GITHUB_TOKEN: ${{ secrets.TOKEN_GITHUB }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
 
