@@ -62,9 +62,9 @@
                   <option value="0" {% if not u.active %}selected{% endif %}>inactive</option>
                 </select>
             </td>
-            <td>{{ u.total_login_hms }}</td>
-            <td>{{ u.total_execution_hms }}</td>
-            <td class="storage-cell">{{ u.storage_size }}</td>
+            <td class="cell-middle">{{ u.total_login_hms }}</td>
+            <td class="cell-middle">{{ u.total_execution_hms }}</td>
+            <td class="storage-cell cell-middle">{{ u.storage_size }}</td>
             <td>
               <div class="action-row">
                 <form method="post" action="/admin/users/{{ u.id }}/clear_storage" class="inline confirm-form" data-confirm="This will delete all Uploads and Exports for this user. Continue?">
