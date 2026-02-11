@@ -1,13 +1,18 @@
 /* Base layout and typography for the web frontend. */
-body{font-family:Arial,sans-serif;background:#f4f7fb;margin:0;padding:0;color:#1b2430}
+body{font-family:Arial,sans-serif;background:radial-gradient(circle at top left,#eef3ff,transparent 55%),radial-gradient(circle at 20% 20%,#f9fbff 0%,#edf2f7 35%,#eef2f6 100%);margin:0;padding:0;color:#1b2430}
+body::before{content:"";position:fixed;inset:0;background-image:linear-gradient(135deg,rgba(17,24,39,.06) 0,rgba(17,24,39,.06) 1px,transparent 1px,transparent 8px),linear-gradient(45deg,rgba(17,24,39,.04) 0,rgba(17,24,39,.04) 1px,transparent 1px,transparent 10px);background-size:8px 8px,10px 10px;pointer-events:none;z-index:-1}
 .container{max-width:1200px;margin:2rem auto;padding:0 1rem}
 .container.small{max-width:500px}
 .card{background:#fff;border-radius:12px;padding:1.4rem 1.6rem;margin-bottom:1rem;box-shadow:0 4px 14px rgba(15,35,66,.08)}
-.topbar{display:flex;justify-content:space-between;align-items:center;gap:1rem}
+.topbar{display:flex;justify-content:space-between;align-items:flex-start;gap:1rem}
+.topbar nav{display:flex;flex-direction:column;align-items:flex-end;gap:.35rem}
 .topbar a{margin-left:.8rem}
+.user-meta{font-size:.85rem;color:#5a6a80}
 .runs-header{display:flex;justify-content:space-between;align-items:center;gap:1rem;margin-bottom:.6rem}
 .runs-actions{display:flex;align-items:center;gap:.6rem;flex-wrap:wrap}
 .runs-total{color:#5a6a80;font-size:.9rem}
+.latest-runs-scroll{max-height:380px;overflow-y:auto}
+.run-error{background:#ffe6e6}
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:.8rem;align-items:end}
 .grid-2{grid-template-columns:repeat(2,minmax(0,1fr))}
 .grid-3{grid-template-columns:repeat(3,minmax(0,1fr))}
@@ -30,6 +35,8 @@ table{min-width:1100px}
 .btn-success:hover{background:#16632d}
 .btn-danger{background:#c0302b}
 .btn-danger:hover{background:#9b2622}
+.btn-accent{background:#f4a226}
+.btn-accent:hover{background:#d9880f}
 .action-row{display:flex;align-items:center;gap:.5rem;flex-wrap:nowrap}
 table{width:100%;border-collapse:collapse}
 th,td{border-bottom:1px solid #e3e8ee;padding:.55rem;text-align:left;font-size:.9rem;vertical-align:top}
@@ -37,7 +44,7 @@ th,td{border-bottom:1px solid #e3e8ee;padding:.55rem;text-align:left;font-size:.
 .hint{font-size:.9rem;color:#4a5b70}
 .module-card{position:relative}
 .module-header{display:flex;align-items:center;gap:1.2rem;margin-bottom:1.2rem}
-.module-logo{width:192px;height:192px;object-fit:contain;border-radius:20px;background:#f4f7fb;padding:.9rem;box-shadow:inset 0 0 0 1px #e4eaf2}
+.module-logo{width:160px;height:160px;object-fit:contain;border-radius:18px;background:#f4f7fb;padding:.8rem;box-shadow:inset 0 0 0 1px #e4eaf2}
 .module-title h2{margin:.2rem 0 .1rem}
 .module-eyebrow{margin:0;color:#5a6a80;font-size:.9rem;text-transform:uppercase;letter-spacing:.08em}
 .module-subtitle{margin:.2rem 0 0;color:#6b7c93;font-size:.95rem}
@@ -52,8 +59,9 @@ th,td{border-bottom:1px solid #e3e8ee;padding:.55rem;text-align:left;font-size:.
 .options-section .grid{align-items:center}
 .checkbox{flex-direction:row;gap:.6rem;align-items:center;font-size:.95rem}
 .checkbox input{width:16px;height:16px;margin:0}
-.form-actions{display:flex;justify-content:center;padding-top:.4rem}
+.form-actions{display:flex;justify-content:center;align-items:center;gap:.8rem;padding-top:.4rem}
 .form-actions button{min-width:160px}
+.run-status{position:absolute;right:16px;bottom:14px;color:#1a56db;font-weight:600;font-size:.75rem}
 .input-with-button{display:flex;gap:.6rem;align-items:center}
 .input-with-button input{flex:1;min-width:0}
 .browse-button{padding:.5rem .9rem;white-space:nowrap}
@@ -66,7 +74,7 @@ th,td{border-bottom:1px solid #e3e8ee;padding:.55rem;text-align:left;font-size:.
 .log-warning{color:#c87b00}
 .log-error{color:#c0302b}
 .log-debug{color:#0891b2}
-.freq-selector{display:grid;grid-template-columns:minmax(240px,1fr) 120px 160px;gap:1rem;align-items:start}
+.freq-selector{display:grid;grid-template-columns:minmax(240px,1fr) 160px 120px;gap:1rem;align-items:start}
 .freq-list select{width:100%;min-height:350px}
 .freq-buttons{display:flex;flex-direction:column;gap:.6rem}
 .freq-group{border:1px solid #e3e8ee;border-radius:10px;padding:.6rem;background:#f9fbff}

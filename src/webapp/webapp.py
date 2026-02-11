@@ -215,9 +215,10 @@ def format_seconds_hms(value: float | int | None) -> str:
 
 def get_user_storage_dirs(username: str) -> dict[str, Path]:
     safe_name = sanitize_component(username)
+    user_root = DATA_DIR / "users" / safe_name
     return {
-        "uploads": DATA_DIR / "uploads" / safe_name,
-        "exports": DATA_DIR / "exports" / safe_name,
+        "uploads": user_root / "upload",
+        "exports": user_root / "export",
     }
 
 
@@ -639,7 +640,7 @@ def index(request: Request):
         FROM task_runs
         WHERE user_id = ?
         ORDER BY id DESC
-        LIMIT 10
+        
         """,
         (user["id"],),
     ).fetchall()
@@ -647,6 +648,8 @@ def index(request: Request):
     for row in latest_runs:
         row["started_at"] = format_timestamp(row["started_at"])
         row["finished_at"] = format_timestamp(row["finished_at"])
+        row["duration_hms"] = format_seconds_hms(row.get("duration_seconds"))
+        row["status_lower"] = (row.get("status") or "").strip().lower()
 
     all_runs = conn.execute(
         "SELECT id, input_dir, output_dir FROM task_runs WHERE user_id = ?",
@@ -845,10 +848,12 @@ def run_module(
                 output_log_file_value = str(output_log_file)
             except OSError:
                 output_log_file_value = ""
-            exports_dir = DATA_DIR / "exports" / sanitize_component(user["username"])
+            exports_dir = DATA_DIR / "users" / sanitize_component(user["username"]) / "export"
             exports_dir.mkdir(parents=True, exist_ok=True)
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            zip_name = f"{sanitize_component(module)}_{timestamp}.zip"
+            tool_meta = load_tool_metadata()
+            tool_version = tool_meta.get("version", "unknown")
+            zip_name = f"{sanitize_component(module)}_{timestamp}_v{sanitize_component(tool_version)}.zip"
             output_zip_path = exports_dir / zip_name
             try:
                 create_zip_from_dir(output_dir, output_zip_path)
@@ -857,9 +862,6 @@ def run_module(
                 output_zip_value = ""
 
     conn = get_conn()
-    tool_meta = load_tool_metadata()
-    tool_version = tool_meta.get("version", "unknown")
-
     conn.execute(
         """
         INSERT INTO task_runs(user_id, module, tool_version, status, started_at, finished_at, duration_seconds, command, output_log, input_dir, output_dir, output_zip, output_log_file)
@@ -938,6 +940,7 @@ async def upload_zip(
     request: Request,
     module: str = Form(...),
     kind: str = Form(...),
+    session_id: str = Form(""),
     files: list[UploadFile] = File(...),
 ):
     try:
@@ -949,10 +952,10 @@ async def upload_zip(
         return {"ok": False, "error": "invalid_file"}
 
     tool_meta = load_tool_metadata()
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    timestamp = session_id.strip() or datetime.now().strftime("%Y%m%d_%H%M%S")
     version = tool_meta.get("version", "unknown")
-    user_root = DATA_DIR / "uploads" / sanitize_component(user["username"])
-    run_root = user_root / sanitize_component(module) / f"{timestamp}_v{sanitize_component(version)}"
+    user_root = DATA_DIR / "users" / sanitize_component(user["username"]) / "upload"
+    run_root = user_root / f"{sanitize_component(module)}_{sanitize_component(timestamp)}_v{sanitize_component(version)}"
     target_dir = run_root / sanitize_component(kind)
     target_dir.mkdir(parents=True, exist_ok=True)
     for upload in files:
@@ -1076,13 +1079,13 @@ async def delete_runs(request: Request):
         output_zip = Path(row["output_zip"]) if row["output_zip"] else None
         output_log = Path(row["output_log_file"]) if row["output_log_file"] else None
 
-        if input_dir and is_safe_path(DATA_DIR, input_dir):
+        if input_dir and is_safe_path(DATA_DIR / "users", input_dir):
             shutil.rmtree(input_dir, ignore_errors=True)
-        if output_dir and is_safe_path(DATA_DIR, output_dir):
+        if output_dir and is_safe_path(DATA_DIR / "users", output_dir):
             shutil.rmtree(output_dir, ignore_errors=True)
-        if output_zip and is_safe_path(DATA_DIR, output_zip):
+        if output_zip and is_safe_path(DATA_DIR / "users", output_zip):
             output_zip.unlink(missing_ok=True)
-        if output_log and is_safe_path(DATA_DIR, output_log):
+        if output_log and is_safe_path(DATA_DIR / "users", output_log):
             output_log.unlink(missing_ok=True)
 
     conn.execute(
@@ -1293,13 +1296,13 @@ def admin_clear_storage(request: Request, user_id: int):
         output_zip = Path(row["output_zip"]) if row["output_zip"] else None
         output_log = Path(row["output_log_file"]) if row["output_log_file"] else None
 
-        if input_dir and is_safe_path(DATA_DIR, input_dir):
+        if input_dir and is_safe_path(DATA_DIR / "users", input_dir):
             shutil.rmtree(input_dir, ignore_errors=True)
-        if output_dir and is_safe_path(DATA_DIR, output_dir):
+        if output_dir and is_safe_path(DATA_DIR / "users", output_dir):
             shutil.rmtree(output_dir, ignore_errors=True)
-        if output_zip and is_safe_path(DATA_DIR, output_zip):
+        if output_zip and is_safe_path(DATA_DIR / "users", output_zip):
             output_zip.unlink(missing_ok=True)
-        if output_log and is_safe_path(DATA_DIR, output_log):
+        if output_log and is_safe_path(DATA_DIR / "users", output_log):
             output_log.unlink(missing_ok=True)
 
     conn.execute("DELETE FROM task_runs WHERE user_id = ?", (user_id,))

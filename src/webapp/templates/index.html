@@ -12,9 +12,9 @@
     <header class="topbar">
       <div>
         <h1>SSB Retuning Automations - Web Frontend</h1>
-        <p>User: <b>{{ user.username }}</b> ({{ user.role }})</p>
       </div>
       <nav>
+        <div class="user-meta">User: <b>{{ user.username }}</b> ({{ user.role }})</div>
         {% if user.role == 'admin' %}<a href="/admin">Admin panel</a>{% endif %}
         <a href="/logout">Sign out</a>
       </nav>
@@ -47,11 +47,11 @@
         </div>
 
         <div class="form-section">
-          <p class="section-title">Input folders</p>
+          <p class="section-title">Inputs</p>
           <div class="grid grid-1" id="single-input-row">
-            <label>Input
+            <label>
               <span class="input-with-button">
-                <input type="text" name="input" id="input_path" value="{{ settings.get('input', '') }}" placeholder="/path/input" />
+                <input type="text" name="input" id="input_path" value="{{ settings.get('input', '') }}" placeholder="/path/input" aria-label="Input" />
                 <button type="button" class="browse-button upload-button" data-target="input_path" data-file="input_zip" data-kind="input">Upload MOs</button>
               </span>
             </label>
@@ -120,6 +120,21 @@
                 <input type="text" name="cc_freq_filters" id="cc_freq_filters" value="{{ settings.get('cc_freq_filters', '') }}" />
               </label>
             </div>
+            <div class="freq-buttons">
+              <div class="freq-group">
+                <p>Configuration Audit</p>
+                <button type="button" id="ca_add" class="btn btn-primary">← Add</button>
+                <button type="button" id="ca_clear" class="btn btn-danger">Clear</button>
+                <button type="button" id="ca_remove" class="btn btn-accent">Remove →</button>
+              </div>
+              <div class="freq-group">
+                <p>Consistency Checks</p>
+                <button type="button" id="cc_add" class="btn btn-primary">← Add</button>
+                <button type="button" id="cc_clear" class="btn btn-danger">Clear</button>
+                <button type="button" id="cc_remove" class="btn btn-accent">Remove →</button>
+              </div>
+              <button type="button" id="freq_select_all">Select all in list</button>
+            </div>
             <div class="freq-list">
               <label>Network frequencies
                 <select id="freq_list" multiple size="10">
@@ -128,21 +143,6 @@
                   {% endfor %}
                 </select>
               </label>
-            </div>
-            <div class="freq-buttons">
-              <div class="freq-group">
-                <p>Configuration Audit</p>
-                <button type="button" id="ca_add">Add →</button>
-                <button type="button" id="ca_remove">← Remove</button>
-                <button type="button" id="ca_clear">Clear</button>
-              </div>
-              <div class="freq-group">
-                <p>Consistency Checks</p>
-                <button type="button" id="cc_add">Add →</button>
-                <button type="button" id="cc_remove">← Remove</button>
-                <button type="button" id="cc_clear">Clear</button>
-              </div>
-              <button type="button" id="freq_select_all">Select all in list</button>
             </div>
           </div>
           <input type="hidden" name="network_frequencies" id="network_frequencies" value="{{ ','.join(network_frequencies) }}" />
@@ -171,33 +171,38 @@
         </div>
 
         <div class="form-actions">
-          <button type="submit" class="btn btn-success">Run Module</button>
+          <button type="submit" class="btn btn-success" id="run_module_button">Run Module</button>
         </div>
       </form>
+      <span class="run-status" id="run_status"></span>
     </section>
 
     <section class="card">
       <div class="runs-header">
-        <h2>Latest runs</h2>
+        <h2>Latest Runs</h2>
         <div class="runs-actions">
           <span class="runs-total">Total size: {{ total_runs_size }}</span>
-          <button type="button" id="select_all_runs">Select all</button>
-          <button type="button" id="unselect_all_runs">Un-select all</button>
-          <button type="button" id="delete_selected_runs">Delete selected</button>
+          <button type="button" id="select_all_runs">Select All</button>
+          <button type="button" id="unselect_all_runs">Un-Select All</button>
+          <button type="button" id="select_older_runs" class="btn btn-accent">Select Older</button>
+          <button type="button" id="select_error_runs" class="btn btn-accent">Select Error</button>
+          <button type="button" id="delete_selected_runs" class="btn btn-danger">Delete Selected</button>
         </div>
       </div>
+      <input type="date" id="older_date_picker" class="hidden" />
+      <div class="latest-runs-scroll">
       <table>
-        <thead><tr><th></th><th>Module</th><th>Version</th><th>Status</th><th>Start</th><th>End</th><th>Duration (s)</th><th>Output</th><th>Log</th><th>Size</th></tr></thead>
+        <thead><tr><th></th><th>Module</th><th>Version</th><th>Status</th><th>Start</th><th>End</th><th>Duration</th><th>Output</th><th>Log</th><th>Size</th></tr></thead>
         <tbody>
         {% for r in latest_runs %}
-          <tr>
-            <td><input type="checkbox" class="run-checkbox" value="{{ r.id }}" /></td>
+          <tr class="{% if r.status_lower == 'error' %}run-error{% endif %}" data-status="{{ r.status_lower }}">
+            <td><input type="checkbox" class="run-checkbox" value="{{ r.id }}" data-start="{{ r.started_at }}" data-status="{{ r.status_lower }}" /></td>
             <td>{{ r.module }}</td>
             <td>{{ r.tool_version or '—' }}</td>
             <td>{{ r.status }}</td>
             <td>{{ r.started_at }}</td>
             <td>{{ r.finished_at }}</td>
-            <td>{{ '%.2f'|format(r.duration_seconds or 0) }}</td>
+            <td>{{ r.duration_hms }}</td>
             <td>
               {% if r.output_zip %}
                 <a href="/runs/{{ r.id }}/download">Download zip</a>
@@ -219,11 +224,12 @@
         {% endfor %}
         </tbody>
       </table>
+      </div>
     </section>
 
     <section class="card log-card">
       <div class="log-header">
-        <h2>Log output</h2>
+        <h2>Output Log</h2>
         <div class="log-actions">
           <button type="button" id="refresh_log">Refresh</button>
           <button type="button" id="clear_log">Clear</button>
@@ -255,7 +261,11 @@
     const configPicker = document.getElementById("config_picker");
     const selectAllRunsButton = document.getElementById("select_all_runs");
     const unselectAllRunsButton = document.getElementById("unselect_all_runs");
+    const selectOlderRunsButton = document.getElementById("select_older_runs");
+    const selectErrorRunsButton = document.getElementById("select_error_runs");
     const deleteSelectedRunsButton = document.getElementById("delete_selected_runs");
+    const runStatusLabel = document.getElementById("run_status");
+    const runModuleButton = document.getElementById("run_module_button");
 
     const inputFields = {
       input: document.getElementById("input_path"),
@@ -300,6 +310,7 @@
       });
       formData.append("module", moduleValue);
       formData.append("kind", kindValue);
+      formData.append("session_id", uploadSessionId);
       return fetch("/uploads/zip", {
         method: "POST",
         body: formData
@@ -673,6 +684,55 @@
       });
     });
 
+    let lastChecked = null;
+    document.querySelectorAll(".run-checkbox").forEach((box) => {
+      box.addEventListener("click", (event) => {
+        if (!event.shiftKey || !lastChecked) {
+          lastChecked = box;
+          return;
+        }
+        const checkboxes = Array.from(document.querySelectorAll(".run-checkbox"));
+        const start = checkboxes.indexOf(box);
+        const end = checkboxes.indexOf(lastChecked);
+        const [min, max] = start < end ? [start, end] : [end, start];
+        for (let i = min; i <= max; i += 1) {
+          checkboxes[i].checked = lastChecked.checked;
+        }
+      });
+    });
+
+    selectOlderRunsButton.addEventListener("click", () => {
+      const picker = document.getElementById("older_date_picker");
+      if (picker) {
+        picker.showPicker();
+      }
+    });
+
+    const olderDatePicker = document.getElementById("older_date_picker");
+    olderDatePicker.addEventListener("change", () => {
+      const selected = olderDatePicker.value;
+      if (!selected) {
+        return;
+      }
+      const threshold = new Date(`${selected}T00:00:00`);
+      if (Number.isNaN(threshold.getTime())) {
+        return;
+      }
+      document.querySelectorAll(".run-checkbox").forEach((box) => {
+        const startValue = box.dataset.start;
+        if (!startValue) {
+          return;
+        }
+        const parts = startValue.split("-");
+        const normalized = `${parts[0]}-${parts[1]}-${parts[2]}T${parts[3] || "00:00:00"}`;
+        const startDate = new Date(normalized);
+        if (!Number.isNaN(startDate.getTime()) && startDate < threshold) {
+          box.checked = true;
+        }
+      });
+      olderDatePicker.value = "";
+    });
+
     deleteSelectedRunsButton.addEventListener("click", () => {
       const ids = getSelectedRunIds();
       if (ids.length === 0) {
@@ -685,10 +745,29 @@
       }).then(() => window.location.reload());
     });
 
+    function buildSessionId() {
+      const now = new Date();
+      const pad = (value) => String(value).padStart(2, "0");
+      return (
+        now.getFullYear().toString() +
+        pad(now.getMonth() + 1) +
+        pad(now.getDate()) +
+        "_" +
+        pad(now.getHours()) +
+        pad(now.getMinutes()) +
+        pad(now.getSeconds())
+      );
+    }
+
+    let uploadSessionId = buildSessionId();
+
     moduleSelect.addEventListener("change", toggleInputRows);
     toggleInputRows();
     document.querySelector(".module-form").addEventListener("submit", () => {
       logOutput.textContent = "";
+      uploadSessionId = buildSessionId();
+      runStatusLabel.textContent = "Running Module... (see Output Log below)";
+      runModuleButton.disabled = true;
     });
     fetch("/config/load")
       .then((res) => res.json())
@@ -700,3 +779,12 @@
   </script>
 </body>
 </html>
+    selectErrorRunsButton.addEventListener("click", () => {
+      document.querySelectorAll(".run-checkbox").forEach((box) => {
+        const row = box.closest("tr");
+        const status = (row?.dataset.status || "").trim().toLowerCase();
+        if (status === "error") {
+          box.checked = true;
+        }
+      });
+    });
