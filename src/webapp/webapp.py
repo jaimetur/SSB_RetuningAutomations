@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from logging.handlers import RotatingFileHandler
 import secrets
 import sqlite3
@@ -117,6 +118,46 @@ def load_tool_metadata() -> dict[str, str]:
     except OSError:
         pass
     return {"version": version, "date": date}
+
+
+def parse_frequency_csv(raw: str) -> list[str]:
+    values = [v.strip() for v in (raw or "").split(",") if v.strip()]
+    return values
+
+
+def sort_frequencies(values: list[str]) -> list[str]:
+    def sort_key(value: str) -> tuple[int, int | str]:
+        try:
+            return (0, int(value))
+        except ValueError:
+            return (1, value)
+
+    return sorted(values, key=sort_key)
+
+
+def load_default_network_frequencies() -> list[str]:
+    try:
+        content = TOOL_METADATA_PATH.read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        return []
+
+    match = re.search(r"NETWORK_FREQUENCIES\s*:\s*List\[str\]\s*=\s*\[(.*?)\]", content, re.DOTALL)
+    if not match:
+        match = re.search(r"NETWORK_FREQUENCIES\s*=\s*\[(.*?)\]", content, re.DOTALL)
+    if not match:
+        return []
+
+    block = match.group(1)
+    values = re.findall(r"['\"](\d+)['\"]", block)
+    return sort_frequencies(values)
+
+
+def load_network_frequencies() -> list[str]:
+    config_values = load_persistent_config()
+    persisted = parse_frequency_csv(config_values.get("network_frequencies", ""))
+    if persisted:
+        return sort_frequencies(persisted)
+    return load_default_network_frequencies()
 
 
 def init_db() -> None:
@@ -334,6 +375,7 @@ def persist_settings_to_config(module_value: str, payload: dict[str, Any]) -> No
         "frequency_audit": "1" if parse_bool(payload.get("frequency_audit")) else "0",
         "export_correction_cmd": "1" if parse_bool(payload.get("export_correction_cmd")) else "0",
         "fast_excel_export": "1" if parse_bool(payload.get("fast_excel_export")) else "0",
+        "network_frequencies": payload.get("network_frequencies", ""),
     }
 
     if module_value == "consistency-check":
@@ -442,6 +484,7 @@ def index(request: Request):
     module_value = user_settings.get("module") or "configuration-audit"
     settings = build_settings_defaults(module_value, config_values)
     tool_meta = load_tool_metadata()
+    network_frequencies = load_network_frequencies()
     settings.update(user_settings)
     settings["module"] = module_value
     conn = get_conn()
@@ -466,6 +509,7 @@ def index(request: Request):
             "settings": settings,
             "latest_runs": latest_runs,
             "tool_meta": tool_meta,
+            "network_frequencies": network_frequencies,
         },
     )
 

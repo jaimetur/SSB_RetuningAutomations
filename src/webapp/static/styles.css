@@ -49,3 +49,15 @@ th,td{border-bottom:1px solid #e3e8ee;padding:.55rem;text-align:left;font-size:.
 .log-warning{color:#c87b00}
 .log-error{color:#c0302b}
 .log-debug{color:#0891b2}
+.freq-selector{display:grid;grid-template-columns:minmax(240px,1fr) 120px 160px;gap:1rem;align-items:start}
+.freq-list select{width:100%;min-height:350px}
+.freq-buttons{display:flex;flex-direction:column;gap:.6rem}
+.freq-group{border:1px solid #e3e8ee;border-radius:10px;padding:.6rem;background:#f9fbff}
+.freq-group p{margin:0 0 .5rem;font-weight:600;color:#4a5b70}
+.freq-buttons button{width:100%}
+.freq-fields{display:flex;flex-direction:column;gap:.8rem}
+@media (max-width: 900px){
+  .freq-selector{grid-template-columns:1fr}
+  .freq-buttons{flex-direction:row;flex-wrap:wrap}
+  .freq-buttons button{width:auto}
+}

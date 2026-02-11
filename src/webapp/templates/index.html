@@ -110,14 +110,41 @@
 
         <div class="form-section">
           <p class="section-title">Frequency filters</p>
-          <div class="grid grid-2">
-            <label>Configuration Audit filters
-              <input type="text" name="ca_freq_filters" value="{{ settings.get('ca_freq_filters', '') }}" />
-            </label>
-            <label>Consistency Checks filters
-              <input type="text" name="cc_freq_filters" value="{{ settings.get('cc_freq_filters', '') }}" />
-            </label>
+          <div class="freq-selector">
+            <div class="freq-fields">
+              <label>Configuration Audit filters (empty = no filter)
+                <input type="text" name="ca_freq_filters" id="ca_freq_filters" value="{{ settings.get('ca_freq_filters', '') }}" />
+              </label>
+              <label>Consistency Checks filters (empty = no filter)
+                <input type="text" name="cc_freq_filters" id="cc_freq_filters" value="{{ settings.get('cc_freq_filters', '') }}" />
+              </label>
+            </div>
+            <div class="freq-list">
+              <label>Network frequencies
+                <select id="freq_list" multiple size="10">
+                  {% for freq in network_frequencies %}
+                    <option value="{{ freq }}">{{ freq }}</option>
+                  {% endfor %}
+                </select>
+              </label>
+            </div>
+            <div class="freq-buttons">
+              <div class="freq-group">
+                <p>Configuration Audit</p>
+                <button type="button" id="ca_add">Add →</button>
+                <button type="button" id="ca_remove">← Remove</button>
+                <button type="button" id="ca_clear">Clear</button>
+              </div>
+              <div class="freq-group">
+                <p>Consistency Checks</p>
+                <button type="button" id="cc_add">Add →</button>
+                <button type="button" id="cc_remove">← Remove</button>
+                <button type="button" id="cc_clear">Clear</button>
+              </div>
+              <button type="button" id="freq_select_all">Select all in list</button>
+            </div>
           </div>
+          <input type="hidden" name="network_frequencies" id="network_frequencies" value="{{ ','.join(network_frequencies) }}" />
         </div>
 
         <div class="form-section options-section">
@@ -210,6 +237,17 @@
       export_correction_cmd: document.querySelector('input[name="export_correction_cmd"]'),
       fast_excel_export: document.querySelector('input[name="fast_excel_export"]')
     };
+    const freqList = document.getElementById("freq_list");
+    const networkFrequenciesField = document.getElementById("network_frequencies");
+    const caFiltersInput = document.getElementById("ca_freq_filters");
+    const ccFiltersInput = document.getElementById("cc_freq_filters");
+    const caAddButton = document.getElementById("ca_add");
+    const caRemoveButton = document.getElementById("ca_remove");
+    const caClearButton = document.getElementById("ca_clear");
+    const ccAddButton = document.getElementById("cc_add");
+    const ccRemoveButton = document.getElementById("cc_remove");
+    const ccClearButton = document.getElementById("cc_clear");
+    const selectAllButton = document.getElementById("freq_select_all");
 
     function toggleInputRows() {
       const isConsistencyCheck = moduleSelect.value === "consistency-check";
@@ -327,6 +365,9 @@
       inputFields.frequency_audit.checked = toBool(general.frequency_audit);
       inputFields.export_correction_cmd.checked = toBool(general.export_correction_cmd);
       inputFields.fast_excel_export.checked = toBool(general.fast_excel_export);
+      if (general.network_frequencies) {
+        updateNetworkFrequencies(parseCsv(general.network_frequencies));
+      }
     }
 
     function escapeHtml(text) {
@@ -364,6 +405,75 @@
         result[currentSection][key] = value;
       });
       return result;
+    }
+
+    function parseCsv(value) {
+      return value
+        .split(",")
+        .map((item) => item.trim())
+        .filter((item) => item);
+    }
+
+    function formatCsv(values) {
+      const unique = Array.from(new Set(values));
+      unique.sort((a, b) => {
+        const aNum = Number(a);
+        const bNum = Number(b);
+        if (!Number.isNaN(aNum) && !Number.isNaN(bNum)) {
+          return aNum - bNum;
+        }
+        return a.localeCompare(b);
+      });
+      return unique.join(",");
+    }
+
+    function getSelectedFrequencies() {
+      return Array.from(freqList.selectedOptions).map((option) => option.value);
+    }
+
+    function updateNetworkFrequencies(values) {
+      if (!values || values.length === 0) {
+        return;
+      }
+      freqList.innerHTML = "";
+      values.forEach((value) => {
+        const option = document.createElement("option");
+        option.value = value;
+        option.textContent = value;
+        freqList.appendChild(option);
+      });
+      networkFrequenciesField.value = formatCsv(values);
+    }
+
+    function addToFilters(targetInput) {
+      const selected = getSelectedFrequencies();
+      if (selected.length === 0) {
+        return;
+      }
+      const current = parseCsv(targetInput.value);
+      targetInput.value = formatCsv([...current, ...selected]);
+      scheduleAutoSave();
+    }
+
+    function removeFromFilters(targetInput) {
+      const selected = new Set(getSelectedFrequencies());
+      if (selected.size === 0) {
+        return;
+      }
+      const current = parseCsv(targetInput.value).filter((value) => !selected.has(value));
+      targetInput.value = current.join(",");
+      scheduleAutoSave();
+    }
+
+    function clearFilters(targetInput) {
+      targetInput.value = "";
+      scheduleAutoSave();
+    }
+
+    function selectAllFrequencies() {
+      Array.from(freqList.options).forEach((option) => {
+        option.selected = true;
+      });
     }
 
     function renderLog(text) {
@@ -451,6 +561,14 @@
     });
 
     refreshLogButton.addEventListener("click", fetchLatestLog);
+
+    caAddButton.addEventListener("click", () => addToFilters(caFiltersInput));
+    caRemoveButton.addEventListener("click", () => removeFromFilters(caFiltersInput));
+    caClearButton.addEventListener("click", () => clearFilters(caFiltersInput));
+    ccAddButton.addEventListener("click", () => addToFilters(ccFiltersInput));
+    ccRemoveButton.addEventListener("click", () => removeFromFilters(ccFiltersInput));
+    ccClearButton.addEventListener("click", () => clearFilters(ccFiltersInput));
+    selectAllButton.addEventListener("click", selectAllFrequencies);
 
     moduleSelect.addEventListener("change", toggleInputRows);
     toggleInputRows();
