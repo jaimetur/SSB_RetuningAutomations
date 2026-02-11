@@ -216,6 +216,49 @@ python SSB_RetuningAutomations.py
 
 ---
 
+## 🌐 Private Web Frontend (Docker, port 7878)
+
+A private web frontend was added to run the same launcher modules using CLI under the hood.
+
+### Included features
+- Private login with session management.
+- Main dashboard to run modules (`configuration-audit`, `consistency-check`, `consistency-check-bulk`, `final-cleanup`).
+- Per-user parameter persistence (stores the last values used by each user).
+- Upload MO inputs via **Upload MOs** (accepts `.zip`, `.log`, `.txt`) instead of local input folders.
+- Export results are downloadable as ZIPs from the **Latest Runs** panel (output logs are also downloadable).
+- Admin panel to:
+  - create users,
+  - enable/disable access,
+  - reset passwords,
+  - view total logged-in time,
+  - view total backend task execution time.
+- HTTP access log at `src/webapp/data/access.log`.
+
+### Docker startup
+```bash
+docker compose -f src/webapp/docker-compose-webapp.yml up --build -d
+```
+
+Frontend available at:
+- `http://localhost:7878`
+
+Initial credentials:
+- user: `admin`
+- password: `admin123`
+
+> ⚠️ Change the admin password immediately after first login.
+
+### Persistent data
+- Database and logs stored in `src/webapp/data/`.
+  - `web_frontend.db`
+  - `access.log`
+  - `app.log`
+- User uploads/exports stored under `src/webapp/data/users/<user>/`:
+  - `upload/` for uploaded inputs
+  - `export/` for downloadable outputs
+
+---
+
 ## ⌨️ Command-Line Usage
 
 This tool can be executed either with **GUI mode** (default when no arguments are provided) or entirely through **CLI mode** using the options described below.
@@ -461,40 +504,3 @@ Check the `LICENSE` file at the root of the repo.
 > - A redacted screenshot or snippet of the input folder structure  
 > - The generated timestamp/version suffix
 
----
-
-## 🌐 Private Web Frontend (Docker, port 7878)
-
-A private web frontend was added to run the same launcher modules using CLI under the hood.
-
-### Included features
-- Private login with session management.
-- Main dashboard to run modules (`configuration-audit`, `consistency-check`, `consistency-check-bulk`, `final-cleanup`).
-- Per-user parameter persistence (stores the last values used by each user).
-- Admin panel to:
-  - create users,
-  - enable/disable access,
-  - reset passwords,
-  - view total logged-in time,
-  - view total backend task execution time.
-- HTTP access log at `webapp/data/access.log`.
-
-### Docker startup
-```bash
-docker compose -f src/webapp/docker-compose-webapp.yml up --build -d
-```
-
-Frontend available at:
-- `http://localhost:7878`
-
-Initial credentials:
-- user: `admin`
-- password: `admin123`
-
-> ⚠️ Change the admin password immediately after first login.
-
-### Persistent data
-- Database and logs stored in `webapp/data/`.
-  - `web_frontend.db`
-  - `access.log`
-  - `app.log`
