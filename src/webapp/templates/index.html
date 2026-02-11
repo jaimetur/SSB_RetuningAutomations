@@ -176,6 +176,7 @@
 
         <div class="form-actions">
           <button type="submit" class="btn btn-success" id="run_module_button">Run Module</button>
+          <span class="module-unavailable hidden" id="module_unavailable_message">Este modulo no esta disponible desde el Web Frontend.</span>
         </div>
       </form>
       <span class="run-status" id="run_status" data-latest-status="{{ latest_runs[0].status_lower if latest_runs else '' }}"></span>
@@ -297,6 +298,7 @@
     const deleteSelectedRunsButton = document.getElementById("delete_selected_runs");
     const runStatusLabel = document.getElementById("run_status");
     const runModuleButton = document.getElementById("run_module_button");
+    const moduleUnavailableMessage = document.getElementById("module_unavailable_message");
     const systemLogOutput = document.getElementById("system_log_output");
     const systemLogSource = document.getElementById("system_log_source");
     const systemLogAuto = document.getElementById("system_log_auto");
@@ -332,11 +334,25 @@
     const freqRemoveButton = document.getElementById("freq_remove");
     const freqClearButton = document.getElementById("freq_clear");
     const selectAllButton = document.getElementById("freq_select_all");
+    const blockedModuleValue = "consistency-check-bulk";
 
     function toggleInputRows() {
       const isConsistencyCheck = moduleSelect.value === "consistency-check";
       singleInputRow.classList.toggle("hidden", isConsistencyCheck);
       prepostInputRows.classList.toggle("hidden", !isConsistencyCheck);
+    }
+
+    function isModuleBlocked() {
+      return moduleSelect.value === blockedModuleValue;
+    }
+
+    function updateModuleAvailability() {
+      if (!runModuleButton || !moduleUnavailableMessage) {
+        return;
+      }
+      const blocked = isModuleBlocked();
+      runModuleButton.disabled = blocked;
+      moduleUnavailableMessage.classList.toggle("hidden", !blocked);
     }
 
     function uploadZip(files, moduleValue, kindValue) {
@@ -898,9 +914,18 @@
 
     let uploadSessionId = buildSessionId();
 
-    moduleSelect.addEventListener("change", toggleInputRows);
+    moduleSelect.addEventListener("change", () => {
+      toggleInputRows();
+      updateModuleAvailability();
+    });
     toggleInputRows();
-    document.querySelector(".module-form").addEventListener("submit", () => {
+    updateModuleAvailability();
+    document.querySelector(".module-form").addEventListener("submit", (event) => {
+      if (isModuleBlocked()) {
+        event.preventDefault();
+        updateModuleAvailability();
+        return;
+      }
       logOutput.textContent = "";
       uploadSessionId = buildSessionId();
       runStatusLabel.textContent = "Running Module... (see Output Log below)";

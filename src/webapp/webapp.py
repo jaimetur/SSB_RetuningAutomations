@@ -12,7 +12,7 @@ import sqlite3
 import subprocess
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -102,6 +102,8 @@ MODULE_OPTIONS = [
     ("consistency-check-bulk", "3. Consistency Check (Bulk mode Pre/Post auto-detection)"),
     ("final-cleanup", "4. Final Clean-Up"),
 ]
+WEB_FRONTEND_BLOCKED_MODULES = {"consistency-check-bulk"}
+SESSION_IDLE_TIMEOUT_SECONDS = 600
 
 TOOL_METADATA_PATH = PROJECT_ROOT / "src" / "SSB_RetuningAutomations.py"
 
@@ -408,15 +410,48 @@ def now_iso() -> str:
     return datetime.now().astimezone().isoformat()
 
 
+def parse_iso_datetime(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc).astimezone()
+    return parsed.astimezone()
+
+
+def apply_session_idle_timeout(conn: sqlite3.Connection, session_row: sqlite3.Row, now: datetime) -> bool:
+    if session_row["active"] == 0:
+        return False
+    last_seen = parse_iso_datetime(session_row["last_seen_at"])
+    if not last_seen:
+        return False
+    idle_seconds = (now - last_seen).total_seconds()
+    if idle_seconds <= SESSION_IDLE_TIMEOUT_SECONDS:
+        return False
+    cutoff = last_seen + timedelta(seconds=SESSION_IDLE_TIMEOUT_SECONDS)
+    conn.execute(
+        "UPDATE sessions SET active = 0, last_seen_at = ? WHERE token = ?",
+        (cutoff.isoformat(), session_row["token"]),
+    )
+    conn.commit()
+    return True
+
+
 def get_current_user(request: Request) -> sqlite3.Row | None:
     token = request.cookies.get("session_token")
     if not token:
         return None
     conn = get_conn()
     session = conn.execute(
-        "SELECT token, user_id, active FROM sessions WHERE token = ?", (token,)
+        "SELECT token, user_id, active, last_seen_at FROM sessions WHERE token = ?", (token,)
     ).fetchone()
     if not session or session["active"] == 0:
+        conn.close()
+        return None
+    if apply_session_idle_timeout(conn, session, datetime.now().astimezone()):
         conn.close()
         return None
 
@@ -826,6 +861,9 @@ def run_module(
     }
     save_user_settings(user["id"], payload)
     persist_settings_to_config(module, payload)
+    if module in WEB_FRONTEND_BLOCKED_MODULES:
+        logger.info("Blocked module run from web frontend: %s", module)
+        return RedirectResponse("/", status_code=302)
 
     tool_meta = load_tool_metadata()
     tool_version = tool_meta.get("version", "unknown")
@@ -1225,13 +1263,25 @@ def admin_panel(request: Request):
     users = conn.execute(
         """
         SELECT u.id, u.username, u.role, u.active, u.created_at,
-               COALESCE(SUM(CASE WHEN s.active = 1 THEN (julianday('now') - julianday(s.created_at))*86400 ELSE (julianday(s.last_seen_at) - julianday(s.created_at))*86400 END), 0) AS total_login_seconds,
+               COALESCE(SUM(
+                    CASE
+                        WHEN s.active = 1 THEN
+                            CASE
+                                WHEN (julianday('now') - julianday(s.last_seen_at)) * 86400 > ?
+                                THEN (julianday(s.last_seen_at) + ? / 86400.0 - julianday(s.created_at)) * 86400
+                                ELSE (julianday('now') - julianday(s.created_at)) * 86400
+                            END
+                        ELSE (julianday(s.last_seen_at) - julianday(s.created_at)) * 86400
+                    END
+               ), 0) AS total_login_seconds,
                COALESCE((SELECT SUM(duration_seconds) FROM task_runs tr WHERE tr.user_id = u.id), 0) AS total_execution_seconds
         FROM users u
         LEFT JOIN sessions s ON s.user_id = u.id
         GROUP BY u.id
         ORDER BY u.username
         """
+        ,
+        (SESSION_IDLE_TIMEOUT_SECONDS, SESSION_IDLE_TIMEOUT_SECONDS),
     ).fetchall()
     users = [dict(row) for row in users]
     for row in users:

@@ -3,12 +3,12 @@ version: '3.9'
 services:
   ssb_webapp:
     build:
-      context: ../..
+      context: ${APP_DIR}
       dockerfile: src/webapp/Dockerfile
     container_name: ssb_webapp
     ports:
-      - "7878:7878"
-    command: ["uvicorn", "src.webapp.webapp:app", "--host", "0.0.0.0", "--port", "7878", "--reload", "--reload-dir", "/app/src/webapp"]
+      - "7979:7979"
+    command: ["uvicorn", "src.webapp.webapp:app", "--host", "0.0.0.0", "--port", "7979", "--reload", "--reload-dir", "/app/src/webapp"]
     env_file:
       - .env
     volumes:

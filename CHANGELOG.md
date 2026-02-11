@@ -15,6 +15,7 @@
   - New docker image with the whole application (GUI + CLI) available on DockerHub.
 
 - #### 🚀 Enhancements:
+  - Disabled the `Consistency Check (Bulk mode)` module in the Web Frontend due to incompatibility.
 
 - #### 🐛 Bug fixes:
   - Minor bug fixing.
