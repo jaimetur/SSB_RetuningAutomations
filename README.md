@@ -232,7 +232,7 @@ A private web frontend was added to run the same launcher modules using CLI unde
   - reset passwords,
   - view total logged-in time,
   - view total backend task execution time.
-- HTTP access log at `src/webapp/data/access.log`.
+- HTTP access log at `data/access.log`.
 
 ### Docker startup
 ```bash
@@ -249,11 +249,11 @@ Initial credentials:
 > ⚠️ Change the admin password immediately after first login.
 
 ### Persistent data
-- Database and logs stored in `src/webapp/data/`.
+- Database and logs stored in `data/`.
   - `web_frontend.db`
   - `access.log`
   - `app.log`
-- User uploads/exports stored under `src/webapp/data/users/<user>/`:
+- User uploads/exports stored under `data/users/<user>/`:
   - `upload/` for uploaded inputs
   - `export/` for downloadable outputs
 

@@ -1,0 +1,150 @@
+name: 🐳 Build and Push Docker Image
+
+on:
+  # ──────────────── 1) Disparador manual desde GitHub Actions ────────────────
+  workflow_dispatch:      # Allows manual execution of the workflow
+    inputs:
+      create_release:
+        description: "Create Release ?"
+        type: boolean
+        required: false
+        default: false
+      final_release:
+        description: "Is this a Final Release?"
+        required: false
+        default: false
+        type: boolean
+
+  # ──────────────── 2) Disparador  desde otro workflow ────────────────
+  workflow_call:          # Allow to call this workflow from another workflow
+    inputs:
+      final_release:
+        description: "Is this a Final Release?"
+        required: false
+        default: false
+        type: boolean
+    secrets:
+      TOKEN_GITHUB:
+        required: true
+      DOCKERHUB_USERNAME:
+        required: true
+      DOCKERHUB_PASSWORD:
+        required: true
+
+  # ──────────────── 3) Disparador automático por push ──────────────────────
+  push:                   # Ejecución tras push en cualquier rama, excepto en los path-ignore
+    branches:
+      - main             # Ejecución tras push en main, excepto en los path-ignore
+      # - development      # Ejecución tras push en developer, excepto en los path-ignore
+    paths-ignore:
+      - .gitignore
+      - .idea/**
+      - gpth*/**
+      - README.md
+
+  # ──────────────── 4) Disparador automático por cron ──────────────────────
+  #  schedule:
+  #    - cron: '0 2 * * *' # Ejecución diaria a las 2 AM UTC
+  # ─────────────────────────────────────────────────────────────────────────
+
+jobs:
+  build:
+    strategy:
+      matrix:
+#        os: [ubuntu-latest, windows-latest]  # os list
+        os: [ubuntu-latest]  # os list
+        python-version: [ "3.12.10" ]
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      # 🧾 Checkout Repository
+      - name: 🧾 Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ inputs.token_github || secrets.TOKEN_GITHUB }}
+
+      # 🏷️ Extract TOOL_VERSION from SSB_RetuningAutomations.py
+      - name: 🏷️ Extract TOOL_VERSION from SSB_RetuningAutomations.py
+        shell: bash
+        run: |
+          TOOL_VERSION=$(grep -oP "^TOOL_VERSION\s*=\s*\"\K[^\"]+" ./src/SSB_RetuningAutomations.py)
+          echo "TOOL_VERSION=${TOOL_VERSION}" >> $GITHUB_ENV
+          echo "TOOL_VERSION: ${TOOL_VERSION}"
+
+      # Generate the Docker version
+      # ===========================
+      # 🐳 Log in to Docker Hub
+      - name: 🐳 Log in to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_PASSWORD }}
+
+      # 🐳 Build & Push Docker image
+      - name: 🐳 Build & Push Docker image
+        if: ${{ startsWith(matrix.os, 'ubuntu') }}
+        run: |
+          # Define FINAL_RELEASE=false con fallback si está vacío (por ejemplo, en eventos push)
+          FINAL_RELEASE="${{ inputs.final_release }}"
+          FINAL_RELEASE=${FINAL_RELEASE:-false}
+      
+          echo "→ FINAL_RELEASE = $FINAL_RELEASE"
+          
+          # Fuerza a Docker a:
+          #  1) descargar la base actualizada ( --pull )
+          #  2) ignorar todas las capas cacheadas ( --no-cache )
+          docker build --pull --no-cache \
+                -t jaimetur/ssb-retuning-automations:${TOOL_VERSION} \
+                -f docker/Dockerfile .
+          
+          # Push siempre etiqueta obligatoria con la versión
+          docker push jaimetur/ssb-retuning-automations:${TOOL_VERSION}
+          
+          # Push 'latest' if final_release is false OR it's alpha/beta/RC
+          if [[ "${FINAL_RELEASE}" == "false" || "${TOOL_VERSION}" == *alpha* || "${TOOL_VERSION}" == *beta* || "${TOOL_VERSION}" == *RC* ]]; then
+            docker tag jaimetur/ssb-retuning-automations:${TOOL_VERSION} jaimetur/ssb-retuning-automations:latest
+            docker push jaimetur/ssb-retuning-automations:latest
+          fi
+      
+          # Push 'latest-stable' only if final_release is true AND not alpha/beta/RC
+          if [[ "${FINAL_RELEASE}" == "true" && "${TOOL_VERSION}" != *alpha* && "${TOOL_VERSION}" != *beta* && "${TOOL_VERSION}" != *RC* ]]; then
+            docker tag jaimetur/ssb-retuning-automations:${TOOL_VERSION} jaimetur/ssb-retuning-automations:latest-stable
+            docker push jaimetur/ssb-retuning-automations:latest-stable
+          fi
+          
+
+      # 🐳 Build & Push Windows Docker image (disabled since this doesn't work as expected)
+      - name: 🐳 Build & Push Windows Docker image (disabled since this doesn't work as expected)
+        if: ${{ startsWith(matrix.os, 'windows') }}
+        shell: bash
+        run: |
+          # Define FINAL_RELEASE=false con fallback si está vacío (por ejemplo, en eventos push)
+          FINAL_RELEASE="${{ inputs.final_release }}"
+          FINAL_RELEASE=${FINAL_RELEASE:-false}
+      
+          echo "→ FINAL_RELEASE = $FINAL_RELEASE"
+          
+          # Construir imagen Windows
+          docker build --pull --no-cache \
+                -t jaimetur/ssb-retuning-automations:${TOOL_VERSION}-windows \
+                -f docker/dockerfile-windows .
+          
+          # Push siempre etiqueta obligatoria con la versión
+          docker push jaimetur/ssb-retuning-automations:${TOOL_VERSION}-windows
+          
+          # Push 'latest' if final_release is false OR it's alpha/beta/RC
+          if [[ "${FINAL_RELEASE}" == "false" || "${TOOL_VERSION}" == *alpha* || "${TOOL_VERSION}" == *beta* || "${TOOL_VERSION}" == *RC* ]]; then
+            docker tag jaimetur/ssb-retuning-automations:${TOOL_VERSION}-windows jaimetur/ssb-retuning-automations:latest-windows
+            docker push jaimetur/ssb-retuning-automations:latest-windows
+          fi
+      
+          # Push 'latest-stable' only if final_release is true AND not alpha/beta/RC
+          if [[ "${FINAL_RELEASE}" == "true" && "${TOOL_VERSION}" != *alpha* && "${TOOL_VERSION}" != *beta* && "${TOOL_VERSION}" != *RC* ]]; then
+            docker tag jaimetur/ssb-retuning-automations:${TOOL_VERSION}-windows jaimetur/ssb-retuning-automations:latest-stable-windows
+            docker push jaimetur/ssb-retuning-automations:latest-stable-windows
+          fi
+
+      # ================================
+      # End of Docker version Generation
+      # ================================

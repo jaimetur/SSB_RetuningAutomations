@@ -10,10 +10,11 @@
 - #### 🚨 Breaking Changes:
 
 - #### 🌟 New Features:
-
-- #### 🚀 Enhancements:
   - Added a new webapp frontend (using docker) to use the tool from a browser.
   - Web frontend now supports uploading MO files/ZIPs as inputs and downloading exports from the Latest Runs panel.
+  - New docker image with the whole application (GUI + CLI) available on DockerHub.
+
+- #### 🚀 Enhancements:
 
 - #### 🐛 Bug fixes:
   - Minor bug fixing.

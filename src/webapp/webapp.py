@@ -26,7 +26,7 @@ from src.utils.utils_io import load_cfg_values, save_cfg_values
 
 BASE_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = BASE_DIR.parents[1]
-DATA_DIR = BASE_DIR / "data"
+DATA_DIR = PROJECT_ROOT / "data"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 DB_PATH = DATA_DIR / "web_frontend.db"
 ACCESS_LOG_PATH = DATA_DIR / "access.log"

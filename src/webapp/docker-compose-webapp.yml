@@ -12,6 +12,6 @@ services:
     env_file:
       - .env
     volumes:
-      - ./data:/app/src/webapp/data
-      - ../..:/app
+      - ${DATA_DIR}:/app/data
+      - ${APP_DIR}:/app
     restart: unless-stopped

@@ -1,0 +1,13 @@
+version: "3.9"
+services:
+  ssb_webapp:
+    image: jaimetur/ssb-retuning-automations:${IMAGE_TAG}
+    container_name: ssb_webapp
+    ports:
+      - "7878:7878"
+    env_file:
+      - .env
+    volumes:
+      - ${DATA_DIR}:/app/data
+      - ${APP_DIR}:/app
+    restart: unless-stopped
