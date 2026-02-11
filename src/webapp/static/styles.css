@@ -5,6 +5,9 @@ body{font-family:Arial,sans-serif;background:#f4f7fb;margin:0;padding:0;color:#1
 .card{background:#fff;border-radius:12px;padding:1.4rem 1.6rem;margin-bottom:1rem;box-shadow:0 4px 14px rgba(15,35,66,.08)}
 .topbar{display:flex;justify-content:space-between;align-items:center;gap:1rem}
 .topbar a{margin-left:.8rem}
+.runs-header{display:flex;justify-content:space-between;align-items:center;gap:1rem;margin-bottom:.6rem}
+.runs-actions{display:flex;align-items:center;gap:.6rem;flex-wrap:wrap}
+.runs-total{color:#5a6a80;font-size:.9rem}
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:.8rem;align-items:end}
 .grid-2{grid-template-columns:repeat(2,minmax(0,1fr))}
 .grid-3{grid-template-columns:repeat(3,minmax(0,1fr))}
@@ -14,7 +17,20 @@ label{display:flex;flex-direction:column;gap:.35rem;font-size:.95rem}
 input,select,button{padding:.55rem .65rem;border:1px solid #ccd5e0;border-radius:8px}
 button{background:#165dff;color:#fff;border:none;cursor:pointer}
 button:hover{background:#0f4ccc}
-.inline{display:flex;gap:.5rem;align-items:center;flex-wrap:wrap}
+.inline{display:flex;gap:.5rem;align-items:center;flex-wrap:nowrap}
+.table-scroll{overflow-x:auto}
+table{min-width:1100px}
+.password-input{width:110px}
+.user-input{width:150px}
+.storage-cell{min-width:120px}
+.btn{padding:.5rem .9rem;border-radius:8px;border:none;color:#fff;cursor:pointer}
+.btn-primary{background:#165dff}
+.btn-primary:hover{background:#0f4ccc}
+.btn-success{background:#1b7f3a}
+.btn-success:hover{background:#16632d}
+.btn-danger{background:#c0302b}
+.btn-danger:hover{background:#9b2622}
+.action-row{display:flex;align-items:center;gap:.5rem;flex-wrap:nowrap}
 table{width:100%;border-collapse:collapse}
 th,td{border-bottom:1px solid #e3e8ee;padding:.55rem;text-align:left;font-size:.9rem;vertical-align:top}
 .error{color:#a70000;font-weight:bold}
@@ -44,6 +60,7 @@ th,td{border-bottom:1px solid #e3e8ee;padding:.55rem;text-align:left;font-size:.
 .hidden{display:none}
 .log-card{margin-bottom:2rem}
 .log-header{display:flex;justify-content:space-between;align-items:center;gap:1rem}
+.log-actions{display:flex;gap:.5rem;align-items:center;flex-wrap:wrap}
 .log-output{background:#f8fafc;border:1px solid #dbe5f1;border-radius:10px;padding:1rem;min-height:160px;max-height:360px;overflow:auto;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.85rem;line-height:1.4}
 .log-info{color:#1b7f3a}
 .log-warning{color:#c87b00}

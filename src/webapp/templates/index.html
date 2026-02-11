@@ -30,6 +30,7 @@
           <p class="module-subtitle">1️⃣ Select Module. 2️⃣ Configure Paths & Freqs. 3️⃣ Press Run to execute...</p>
         </div>
         <div class="module-actions">
+          <button type="button" class="btn btn-danger" id="change_password_button">Change Password</button>
           <button type="button" class="browse-button" id="load_config_button">Load config.cfg</button>
           <button type="button" class="browse-button" id="export_config_button">Export config.cfg</button>
         </div>
@@ -51,7 +52,7 @@
             <label>Input
               <span class="input-with-button">
                 <input type="text" name="input" id="input_path" value="{{ settings.get('input', '') }}" placeholder="/path/input" />
-                <button type="button" class="browse-button" data-target="input_path" data-picker="input_picker">Browse</button>
+                <button type="button" class="browse-button upload-button" data-target="input_path" data-file="input_zip" data-kind="input">Upload MOs</button>
               </span>
             </label>
           </div>
@@ -59,19 +60,19 @@
             <label>Input PRE
               <span class="input-with-button">
                 <input type="text" name="input_pre" id="input_pre_path" value="{{ settings.get('input_pre', '') }}" />
-                <button type="button" class="browse-button" data-target="input_pre_path" data-picker="input_pre_picker">Browse</button>
+                <button type="button" class="browse-button upload-button" data-target="input_pre_path" data-file="input_pre_zip" data-kind="input_pre">Upload MOs</button>
               </span>
             </label>
             <label>Input POST
               <span class="input-with-button">
                 <input type="text" name="input_post" id="input_post_path" value="{{ settings.get('input_post', '') }}" />
-                <button type="button" class="browse-button" data-target="input_post_path" data-picker="input_post_picker">Browse</button>
+                <button type="button" class="browse-button upload-button" data-target="input_post_path" data-file="input_post_zip" data-kind="input_post">Upload MOs</button>
               </span>
             </label>
           </div>
-          <input type="file" id="input_picker" class="hidden" webkitdirectory directory />
-          <input type="file" id="input_pre_picker" class="hidden" webkitdirectory directory />
-          <input type="file" id="input_post_picker" class="hidden" webkitdirectory directory />
+          <input type="file" id="input_zip" class="hidden" accept=".zip,.log,.txt" multiple />
+          <input type="file" id="input_pre_zip" class="hidden" accept=".zip,.log,.txt" multiple />
+          <input type="file" id="input_post_zip" class="hidden" accept=".zip,.log,.txt" multiple />
           <input type="file" id="config_picker" class="hidden" accept=".cfg" />
         </div>
 
@@ -170,26 +171,51 @@
         </div>
 
         <div class="form-actions">
-          <button type="submit">Run</button>
+          <button type="submit" class="btn btn-success">Run Module</button>
         </div>
       </form>
     </section>
 
     <section class="card">
-      <h2>Latest runs</h2>
+      <div class="runs-header">
+        <h2>Latest runs</h2>
+        <div class="runs-actions">
+          <span class="runs-total">Total size: {{ total_runs_size }}</span>
+          <button type="button" id="select_all_runs">Select all</button>
+          <button type="button" id="unselect_all_runs">Un-select all</button>
+          <button type="button" id="delete_selected_runs">Delete selected</button>
+        </div>
+      </div>
       <table>
-        <thead><tr><th>Module</th><th>Status</th><th>Start</th><th>End</th><th>Duration (s)</th></tr></thead>
+        <thead><tr><th></th><th>Module</th><th>Version</th><th>Status</th><th>Start</th><th>End</th><th>Duration (s)</th><th>Output</th><th>Log</th><th>Size</th></tr></thead>
         <tbody>
         {% for r in latest_runs %}
           <tr>
+            <td><input type="checkbox" class="run-checkbox" value="{{ r.id }}" /></td>
             <td>{{ r.module }}</td>
+            <td>{{ r.tool_version or '—' }}</td>
             <td>{{ r.status }}</td>
             <td>{{ r.started_at }}</td>
             <td>{{ r.finished_at }}</td>
             <td>{{ '%.2f'|format(r.duration_seconds or 0) }}</td>
+            <td>
+              {% if r.output_zip %}
+                <a href="/runs/{{ r.id }}/download">Download zip</a>
+              {% else %}
+                —
+              {% endif %}
+            </td>
+            <td>
+              {% if r.output_log_file %}
+                <a href="/runs/{{ r.id }}/log">Download log</a>
+              {% else %}
+                —
+              {% endif %}
+            </td>
+            <td>{{ r.size_mb }}</td>
           </tr>
         {% else %}
-          <tr><td colspan="5">No runs yet.</td></tr>
+          <tr><td colspan="10">No runs yet.</td></tr>
         {% endfor %}
         </tbody>
       </table>
@@ -198,7 +224,12 @@
     <section class="card log-card">
       <div class="log-header">
         <h2>Log output</h2>
-        <button type="button" id="refresh_log">Refresh</button>
+        <div class="log-actions">
+          <button type="button" id="refresh_log">Refresh</button>
+          <button type="button" id="clear_log">Clear</button>
+          <button type="button" id="copy_log">Copy all</button>
+          <button type="button" id="copy_selection">Copy selection</button>
+        </div>
       </div>
       <pre id="log_output" class="log-output">No logs yet.</pre>
     </section>
@@ -208,16 +239,23 @@
     const singleInputRow = document.getElementById("single-input-row");
     const prepostInputRows = document.getElementById("prepost-input-rows");
 
-    const pickers = {
-      input_picker: document.getElementById("input_picker"),
-      input_pre_picker: document.getElementById("input_pre_picker"),
-      input_post_picker: document.getElementById("input_post_picker")
+    const uploadInputs = {
+      input_zip: document.getElementById("input_zip"),
+      input_pre_zip: document.getElementById("input_pre_zip"),
+      input_post_zip: document.getElementById("input_post_zip")
     };
     const loadConfigButton = document.getElementById("load_config_button");
     const exportConfigButton = document.getElementById("export_config_button");
+    const changePasswordButton = document.getElementById("change_password_button");
     const refreshLogButton = document.getElementById("refresh_log");
+    const clearLogButton = document.getElementById("clear_log");
+    const copyLogButton = document.getElementById("copy_log");
+    const copySelectionButton = document.getElementById("copy_selection");
     const logOutput = document.getElementById("log_output");
     const configPicker = document.getElementById("config_picker");
+    const selectAllRunsButton = document.getElementById("select_all_runs");
+    const unselectAllRunsButton = document.getElementById("unselect_all_runs");
+    const deleteSelectedRunsButton = document.getElementById("delete_selected_runs");
 
     const inputFields = {
       input: document.getElementById("input_path"),
@@ -255,54 +293,56 @@
       prepostInputRows.classList.toggle("hidden", !isConsistencyCheck);
     }
 
-    function extractFolderName(fileList) {
-      if (!fileList || fileList.length === 0) {
-        return "";
-      }
-      const firstPath = fileList[0].webkitRelativePath || fileList[0].name;
-      return firstPath.split("/")[0];
+    function uploadZip(files, moduleValue, kindValue) {
+      const formData = new FormData();
+      Array.from(files).forEach((file) => {
+        formData.append("files", file);
+      });
+      formData.append("module", moduleValue);
+      formData.append("kind", kindValue);
+      return fetch("/uploads/zip", {
+        method: "POST",
+        body: formData
+      }).then((res) => res.json());
     }
 
-    async function pickDirectory(button) {
-      const targetInput = document.getElementById(button.dataset.target);
-      if (!targetInput) {
-        return;
-      }
-      if (window.showDirectoryPicker) {
-        try {
-          const handle = await window.showDirectoryPicker();
-          targetInput.value = handle.name;
-          scheduleAutoSave();
-          return;
-        } catch (error) {
-          return;
-        }
-      }
-      const picker = pickers[button.dataset.picker];
-      if (picker) {
-        picker.click();
-      }
-    }
-
-    document.querySelectorAll(".browse-button").forEach((button) => {
+    document.querySelectorAll(".upload-button").forEach((button) => {
       button.addEventListener("click", () => {
-        if (button.id === "load_config_button" || button.id === "export_config_button") {
-          return;
+        const fileInput = uploadInputs[button.dataset.file];
+        if (fileInput) {
+          fileInput.click();
         }
-        pickDirectory(button);
       });
     });
 
-    Object.entries(pickers).forEach(([pickerId, picker]) => {
-      picker.addEventListener("change", () => {
-        const folderName = extractFolderName(picker.files);
-        const targetButton = document.querySelector(`[data-picker="${pickerId}"]`);
-        const targetInput = targetButton ? document.getElementById(targetButton.dataset.target) : null;
-        if (targetInput) {
-          targetInput.value = folderName;
-          picker.value = "";
-          scheduleAutoSave();
+    Object.entries(uploadInputs).forEach(([inputId, inputElement]) => {
+      inputElement.addEventListener("change", () => {
+        const files = inputElement.files;
+        if (!files || files.length === 0) {
+          return;
         }
+        const button = document.querySelector(`[data-file="${inputId}"]`);
+        const targetInput = button ? document.getElementById(button.dataset.target) : null;
+        const kindValue = button ? button.dataset.kind : "";
+        if (!targetInput || !kindValue) {
+          return;
+        }
+        targetInput.value = "Uploading...";
+        uploadZip(files, moduleSelect.value, kindValue)
+          .then((data) => {
+            if (data.ok && data.path) {
+              targetInput.value = data.path;
+              scheduleAutoSave();
+            } else {
+              targetInput.value = "";
+            }
+          })
+          .catch(() => {
+            targetInput.value = "";
+          })
+          .finally(() => {
+            inputElement.value = "";
+          });
       });
     });
 
@@ -560,7 +600,54 @@
       window.location.href = "/config/export";
     });
 
+    changePasswordButton.addEventListener("click", () => {
+      const newPassword = prompt("Enter a new password:");
+      if (!newPassword) {
+        return;
+      }
+      fetch("/account/change_password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ new_password: newPassword })
+      }).then((res) => {
+        if (res.ok) {
+          alert("Password updated. Please sign in again.");
+          window.location.href = "/login";
+        }
+      });
+    });
+
     refreshLogButton.addEventListener("click", fetchLatestLog);
+    clearLogButton.addEventListener("click", () => {
+      logOutput.textContent = "";
+    });
+
+    function copyToClipboard(text) {
+      if (!text) {
+        return;
+      }
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).catch(() => {});
+        return;
+      }
+      const helper = document.createElement("textarea");
+      helper.value = text;
+      document.body.appendChild(helper);
+      helper.select();
+      document.execCommand("copy");
+      document.body.removeChild(helper);
+    }
+
+    copyLogButton.addEventListener("click", () => {
+      copyToClipboard(logOutput.textContent || "");
+    });
+
+    copySelectionButton.addEventListener("click", () => {
+      const selection = window.getSelection();
+      if (selection) {
+        copyToClipboard(selection.toString());
+      }
+    });
 
     caAddButton.addEventListener("click", () => addToFilters(caFiltersInput));
     caRemoveButton.addEventListener("click", () => removeFromFilters(caFiltersInput));
@@ -570,8 +657,39 @@
     ccClearButton.addEventListener("click", () => clearFilters(ccFiltersInput));
     selectAllButton.addEventListener("click", selectAllFrequencies);
 
+    function getSelectedRunIds() {
+      return Array.from(document.querySelectorAll(".run-checkbox:checked")).map((box) => Number(box.value));
+    }
+
+    selectAllRunsButton.addEventListener("click", () => {
+      document.querySelectorAll(".run-checkbox").forEach((box) => {
+        box.checked = true;
+      });
+    });
+
+    unselectAllRunsButton.addEventListener("click", () => {
+      document.querySelectorAll(".run-checkbox").forEach((box) => {
+        box.checked = false;
+      });
+    });
+
+    deleteSelectedRunsButton.addEventListener("click", () => {
+      const ids = getSelectedRunIds();
+      if (ids.length === 0) {
+        return;
+      }
+      fetch("/runs/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids })
+      }).then(() => window.location.reload());
+    });
+
     moduleSelect.addEventListener("change", toggleInputRows);
     toggleInputRows();
+    document.querySelector(".module-form").addEventListener("submit", () => {
+      logOutput.textContent = "";
+    });
     fetch("/config/load")
       .then((res) => res.json())
       .then((data) => {

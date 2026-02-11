@@ -2267,7 +2267,8 @@ def parse_cfg_bool(value: str, default: bool = True) -> bool:
 # ================================== MAIN =================================== #
 def main():
     import os
-    os.system('cls' if os.name == 'nt' else 'clear')
+    if os.environ.get("SSB_RA_NO_CLEAR") != "1" and sys.stdout.isatty():
+        os.system('cls' if os.name == 'nt' else 'clear')
 
     # --- Initialize log file inside ./Logs folder ---
     timestamp = datetime.now().strftime("%Y%m%d_%H%M")
@@ -2398,6 +2399,7 @@ def main():
         persisted_allowed_ssb_post         = ""
         persisted_allowed_arfcn_post       = ""
         persisted_profiles_audit           = True
+        persisted_frequency_audit          = False
         persisted_export_correction_cmd    = True
         persisted_fast_excel_export        = False
 

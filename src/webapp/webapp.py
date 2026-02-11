@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
+import shutil
+import zipfile
 from logging.handlers import RotatingFileHandler
 import secrets
 import sqlite3
@@ -13,7 +16,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, Form, Request
+from fastapi import FastAPI, File, Form, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -120,6 +123,104 @@ def load_tool_metadata() -> dict[str, str]:
     return {"version": version, "date": date}
 
 
+def format_timestamp(value: str | None) -> str:
+    if not value:
+        return ""
+    try:
+        parsed = datetime.fromisoformat(value)
+        if parsed.tzinfo:
+            parsed = parsed.astimezone()
+        return parsed.strftime("%Y-%m-%d-%H:%M:%S")
+    except ValueError:
+        return value
+
+
+def strip_ansi(text: str) -> str:
+    if not text:
+        return text
+    return re.sub(r"\x1b\\[[0-9;]*[A-Za-z]", "", text)
+
+
+def sanitize_component(value: str) -> str:
+    cleaned = re.sub(r"[^a-zA-Z0-9_.-]+", "_", value.strip())
+    return cleaned or "unknown"
+
+
+def safe_extract_zip(zip_path: Path, target_dir: Path) -> None:
+    with zipfile.ZipFile(zip_path) as zf:
+        for member in zf.infolist():
+            name = member.filename
+            if not name or name.endswith("/"):
+                continue
+            flat_name = Path(name).name
+            if not flat_name:
+                continue
+            member_path = target_dir / flat_name
+            resolved = member_path.resolve()
+            if not str(resolved).startswith(str(target_dir.resolve())):
+                continue
+            with zf.open(member) as source, member_path.open("wb") as dest:
+                shutil.copyfileobj(source, dest)
+
+
+def remove_output_folders(root_dir: Path) -> None:
+    output_prefixes = ("ConfigurationAudit_", "ConsistencyChecks_", "ConcistencyChecks_", "FinalCleanUp_", "Cleanup_")
+    for path in root_dir.rglob("*"):
+        if path.is_dir() and path.name.startswith(output_prefixes):
+            shutil.rmtree(path, ignore_errors=True)
+
+
+def create_zip_from_dir(source_dir: Path, dest_zip: Path) -> None:
+    if dest_zip.exists():
+        dest_zip.unlink()
+    with zipfile.ZipFile(dest_zip, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        for file_path in source_dir.rglob("*"):
+            if file_path.is_file():
+                zf.write(file_path, file_path.relative_to(source_dir))
+
+
+def is_safe_path(base_dir: Path, target: Path) -> bool:
+    try:
+        return str(target.resolve()).startswith(str(base_dir.resolve()))
+    except OSError:
+        return False
+
+
+def compute_dir_size(path: Path) -> int:
+    if not path.exists():
+        return 0
+    total = 0
+    for file_path in path.rglob("*"):
+        if file_path.is_file():
+            try:
+                total += file_path.stat().st_size
+            except OSError:
+                continue
+    return total
+
+
+def format_mb(size_bytes: int) -> str:
+    return f"{size_bytes / (1024 * 1024):.2f} MB"
+
+
+def format_seconds_hms(value: float | int | None) -> str:
+    if value is None:
+        return "00:00:00"
+    total = int(round(value))
+    hours = total // 3600
+    minutes = (total % 3600) // 60
+    seconds = total % 60
+    return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+
+
+def get_user_storage_dirs(username: str) -> dict[str, Path]:
+    safe_name = sanitize_component(username)
+    return {
+        "uploads": DATA_DIR / "uploads" / safe_name,
+        "exports": DATA_DIR / "exports" / safe_name,
+    }
+
+
 def parse_frequency_csv(raw: str) -> list[str]:
     values = [v.strip() for v in (raw or "").split(",") if v.strip()]
     return values
@@ -158,6 +259,25 @@ def load_network_frequencies() -> list[str]:
     if persisted:
         return sort_frequencies(persisted)
     return load_default_network_frequencies()
+
+
+def find_latest_output_dir(base_dir: Path, prefixes: tuple[str, ...]) -> Path | None:
+    if not base_dir.exists():
+        return None
+    candidates = [p for p in base_dir.iterdir() if p.is_dir() and p.name.startswith(prefixes)]
+    if not candidates:
+        return None
+    return max(candidates, key=lambda p: p.stat().st_mtime)
+
+
+def build_output_prefixes(module_value: str) -> tuple[str, ...]:
+    if module_value == "consistency-check":
+        return ("ConsistencyChecks_", "ConcistencyChecks_")
+    if module_value == "consistency-check-bulk":
+        return ("ConsistencyChecks_", "ConcistencyChecks_")
+    if module_value == "final-cleanup":
+        return ("FinalCleanUp_", "Cleanup_")
+    return ("ConfigurationAudit_", "ProfilesAudit_")
 
 
 def init_db() -> None:
@@ -204,16 +324,35 @@ def init_db() -> None:
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER NOT NULL,
             module TEXT NOT NULL,
+            tool_version TEXT,
             status TEXT NOT NULL,
             started_at TEXT NOT NULL,
             finished_at TEXT,
             duration_seconds REAL,
             command TEXT NOT NULL,
             output_log TEXT,
+            input_dir TEXT,
+            output_dir TEXT,
+            output_zip TEXT,
+            output_log_file TEXT,
             FOREIGN KEY(user_id) REFERENCES users(id)
         )
         """
     )
+
+    existing_columns = {
+        row["name"] for row in cur.execute("PRAGMA table_info(task_runs)").fetchall()
+    }
+    if "input_dir" not in existing_columns:
+        cur.execute("ALTER TABLE task_runs ADD COLUMN input_dir TEXT")
+    if "output_dir" not in existing_columns:
+        cur.execute("ALTER TABLE task_runs ADD COLUMN output_dir TEXT")
+    if "output_zip" not in existing_columns:
+        cur.execute("ALTER TABLE task_runs ADD COLUMN output_zip TEXT")
+    if "output_log_file" not in existing_columns:
+        cur.execute("ALTER TABLE task_runs ADD COLUMN output_log_file TEXT")
+    if "tool_version" not in existing_columns:
+        cur.execute("ALTER TABLE task_runs ADD COLUMN tool_version TEXT")
 
     admin = cur.execute(
         "SELECT id, password_hash FROM users WHERE username = ?", ("admin",)
@@ -246,7 +385,7 @@ def init_db() -> None:
 
 
 def now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now().astimezone().isoformat()
 
 
 def get_current_user(request: Request) -> sqlite3.Row | None:
@@ -436,10 +575,16 @@ def build_cli_command(payload: dict[str, Any]) -> list[str]:
 
     if parse_bool(payload.get("profiles_audit")):
         cmd.append("--profiles-audit")
+    else:
+        cmd.append("--no-profiles-audit")
     if parse_bool(payload.get("frequency_audit")):
         cmd.append("--frequency-audit")
+    else:
+        cmd.append("--no-frequency-audit")
     if parse_bool(payload.get("export_correction_cmd")):
         cmd.append("--export-correction-cmd")
+    else:
+        cmd.append("--no-export-correction-cmd")
     if parse_bool(payload.get("fast_excel_export")):
         cmd.append("--fast-excel-export")
 
@@ -490,7 +635,7 @@ def index(request: Request):
     conn = get_conn()
     latest_runs = conn.execute(
         """
-        SELECT module, status, started_at, finished_at, duration_seconds
+        SELECT id, module, tool_version, status, started_at, finished_at, duration_seconds, output_zip, output_log_file
         FROM task_runs
         WHERE user_id = ?
         ORDER BY id DESC
@@ -498,7 +643,35 @@ def index(request: Request):
         """,
         (user["id"],),
     ).fetchall()
+    latest_runs = [dict(row) for row in latest_runs]
+    for row in latest_runs:
+        row["started_at"] = format_timestamp(row["started_at"])
+        row["finished_at"] = format_timestamp(row["finished_at"])
+
+    all_runs = conn.execute(
+        "SELECT id, input_dir, output_dir FROM task_runs WHERE user_id = ?",
+        (user["id"],),
+    ).fetchall()
     conn.close()
+
+    run_sizes: dict[int, int] = {}
+    total_bytes = 0
+    for row in all_runs:
+        input_dir = Path(row["input_dir"]) if row["input_dir"] else None
+        output_dir = Path(row["output_dir"]) if row["output_dir"] else None
+        input_size = compute_dir_size(input_dir) if input_dir else 0
+        output_size = 0
+        if output_dir and not (input_dir and is_safe_path(input_dir, output_dir)):
+            output_size = compute_dir_size(output_dir)
+        size_bytes = input_size + output_size
+        run_sizes[row["id"]] = size_bytes
+        total_bytes += size_bytes
+
+    for row in latest_runs:
+        size_bytes = run_sizes.get(row["id"], 0)
+        row["size_mb"] = format_mb(size_bytes)
+
+    total_size_mb = format_mb(total_bytes)
 
     return templates.TemplateResponse(
         "index.html",
@@ -510,6 +683,7 @@ def index(request: Request):
             "latest_runs": latest_runs,
             "tool_meta": tool_meta,
             "network_frequencies": network_frequencies,
+            "total_runs_size": total_size_mb,
         },
     )
 
@@ -579,6 +753,7 @@ def run_module(
     allowed_n77_arfcn_post: str = Form(""),
     ca_freq_filters: str = Form(""),
     cc_freq_filters: str = Form(""),
+    network_frequencies: str = Form(""),
     profiles_audit: str | None = Form(None),
     frequency_audit: str | None = Form(None),
     export_correction_cmd: str | None = Form(None),
@@ -603,6 +778,7 @@ def run_module(
         "allowed_n77_arfcn_post": allowed_n77_arfcn_post.strip(),
         "ca_freq_filters": ca_freq_filters.strip(),
         "cc_freq_filters": cc_freq_filters.strip(),
+        "network_frequencies": network_frequencies.strip(),
         "profiles_audit": profiles_audit,
         "frequency_audit": frequency_audit,
         "export_correction_cmd": export_correction_cmd,
@@ -625,6 +801,7 @@ def run_module(
             capture_output=True,
             text=True,
             check=False,
+            env={**os.environ, "TERM": "xterm", "SSB_RA_NO_CLEAR": "1"},
         )
         if proc.returncode != 0:
             status = "error"
@@ -633,16 +810,76 @@ def run_module(
         status = "error"
         output_log = f"Execution error: {exc}"
 
+    output_log = strip_ansi(output_log)
     duration = time.perf_counter() - start
     finished_at = now_iso()
 
+    input_dir_value = ""
+    output_dir_value = ""
+    output_zip_value = ""
+    output_log_file_value = ""
+    base_dir = ""
+    if module == "consistency-check":
+        base_dir = payload.get("input_post", "")
+        input_dir_value = base_dir
+    else:
+        base_dir = payload.get("input", "")
+        input_dir_value = base_dir
+
+    if base_dir:
+        output_dir = find_latest_output_dir(Path(base_dir), build_output_prefixes(module))
+        if output_dir:
+            output_dir_value = str(output_dir)
+            try:
+                for existing in output_dir.glob("RetuningAutomation_*.log"):
+                    existing.unlink(missing_ok=True)
+                legacy_log = output_dir / "webapp_output.log"
+                if legacy_log.exists():
+                    legacy_log.unlink()
+                tool_meta = load_tool_metadata()
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                version = tool_meta.get("version", "unknown")
+                log_name = f"RetuningAutomation_{timestamp}_v{version}.log"
+                output_log_file = output_dir / log_name
+                output_log_file.write_text(output_log, encoding="utf-8")
+                output_log_file_value = str(output_log_file)
+            except OSError:
+                output_log_file_value = ""
+            exports_dir = DATA_DIR / "exports" / sanitize_component(user["username"])
+            exports_dir.mkdir(parents=True, exist_ok=True)
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            zip_name = f"{sanitize_component(module)}_{timestamp}.zip"
+            output_zip_path = exports_dir / zip_name
+            try:
+                create_zip_from_dir(output_dir, output_zip_path)
+                output_zip_value = str(output_zip_path)
+            except OSError:
+                output_zip_value = ""
+
     conn = get_conn()
+    tool_meta = load_tool_metadata()
+    tool_version = tool_meta.get("version", "unknown")
+
     conn.execute(
         """
-        INSERT INTO task_runs(user_id, module, status, started_at, finished_at, duration_seconds, command, output_log)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO task_runs(user_id, module, tool_version, status, started_at, finished_at, duration_seconds, command, output_log, input_dir, output_dir, output_zip, output_log_file)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
-        (user["id"], module, status, started_at, finished_at, duration, " ".join(cmd), output_log[:20000]),
+        (
+            user["id"],
+            module,
+            tool_version,
+            status,
+            started_at,
+            finished_at,
+            duration,
+            " ".join(cmd),
+            output_log[:20000],
+            input_dir_value,
+            output_dir_value,
+            output_zip_value,
+            output_log_file_value,
+        ),
     )
     conn.commit()
     conn.close()
@@ -664,6 +901,26 @@ async def update_settings(request: Request):
     return {"ok": True}
 
 
+@app.post("/account/change_password")
+async def change_password(request: Request):
+    try:
+        user = require_user(request)
+    except PermissionError:
+        return {"ok": False}
+
+    payload = await request.json()
+    new_password = (payload.get("new_password") or "").strip()
+    if not new_password:
+        return {"ok": False}
+
+    conn = get_conn()
+    conn.execute("UPDATE users SET password_hash = ? WHERE id = ?", (pwd_context.hash(new_password), user["id"]))
+    conn.execute("UPDATE sessions SET active = 0 WHERE user_id = ?", (user["id"],))
+    conn.commit()
+    conn.close()
+    return {"ok": True}
+
+
 @app.get("/config/load")
 def load_config():
     return load_persistent_config()
@@ -674,6 +931,60 @@ def export_config():
     if CONFIG_PATH.exists():
         return FileResponse(CONFIG_PATH, filename="config.cfg")
     return PlainTextResponse("", media_type="text/plain")
+
+
+@app.post("/uploads/zip")
+async def upload_zip(
+    request: Request,
+    module: str = Form(...),
+    kind: str = Form(...),
+    files: list[UploadFile] = File(...),
+):
+    try:
+        user = require_user(request)
+    except PermissionError:
+        return {"ok": False, "error": "auth"}
+
+    if not files:
+        return {"ok": False, "error": "invalid_file"}
+
+    tool_meta = load_tool_metadata()
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    version = tool_meta.get("version", "unknown")
+    user_root = DATA_DIR / "uploads" / sanitize_component(user["username"])
+    run_root = user_root / sanitize_component(module) / f"{timestamp}_v{sanitize_component(version)}"
+    target_dir = run_root / sanitize_component(kind)
+    target_dir.mkdir(parents=True, exist_ok=True)
+    for upload in files:
+        filename = upload.filename or ""
+        lower_name = filename.lower()
+        if not (lower_name.endswith(".zip") or lower_name.endswith(".log") or lower_name.endswith(".logs") or lower_name.endswith(".txt")):
+            continue
+
+        if lower_name.endswith(".zip"):
+            zip_path = run_root / sanitize_component(filename)
+            with zip_path.open("wb") as buffer:
+                while True:
+                    chunk = await upload.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    buffer.write(chunk)
+            try:
+                safe_extract_zip(zip_path, target_dir)
+                remove_output_folders(target_dir)
+            finally:
+                if zip_path.exists():
+                    zip_path.unlink()
+        else:
+            dest = target_dir / sanitize_component(filename)
+            with dest.open("wb") as buffer:
+                while True:
+                    chunk = await upload.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    buffer.write(chunk)
+
+    return {"ok": True, "path": str(target_dir)}
 
 
 @app.get("/logs/latest")
@@ -690,6 +1001,98 @@ def latest_logs(request: Request):
     ).fetchone()
     conn.close()
     return {"log": row["output_log"] if row else ""}
+
+
+@app.get("/runs/{run_id}/download")
+def download_run_output(request: Request, run_id: int):
+    try:
+        user = require_user(request)
+    except PermissionError:
+        return PlainTextResponse("", status_code=403)
+
+    conn = get_conn()
+    row = conn.execute(
+        "SELECT output_zip FROM task_runs WHERE id = ? AND user_id = ?",
+        (run_id, user["id"]),
+    ).fetchone()
+    conn.close()
+
+    if not row or not row["output_zip"]:
+        return PlainTextResponse("", status_code=404)
+
+    output_zip = Path(row["output_zip"])
+    if not output_zip.exists():
+        return PlainTextResponse("", status_code=404)
+
+    return FileResponse(output_zip, filename=output_zip.name)
+
+
+@app.get("/runs/{run_id}/log")
+def download_run_log(request: Request, run_id: int):
+    try:
+        user = require_user(request)
+    except PermissionError:
+        return PlainTextResponse("", status_code=403)
+
+    conn = get_conn()
+    row = conn.execute(
+        "SELECT output_log_file FROM task_runs WHERE id = ? AND user_id = ?",
+        (run_id, user["id"]),
+    ).fetchone()
+    conn.close()
+
+    if not row or not row["output_log_file"]:
+        return PlainTextResponse("", status_code=404)
+
+    log_path = Path(row["output_log_file"])
+    if not log_path.exists():
+        return PlainTextResponse("", status_code=404)
+
+    return FileResponse(log_path, filename=log_path.name)
+
+
+@app.post("/runs/delete")
+async def delete_runs(request: Request):
+    try:
+        user = require_user(request)
+    except PermissionError:
+        return {"ok": False}
+
+    payload = await request.json()
+    run_ids = payload.get("ids", [])
+    if not run_ids:
+        return {"ok": False}
+
+    conn = get_conn()
+    rows = conn.execute(
+        "SELECT id, input_dir, output_dir, output_zip, output_log_file FROM task_runs WHERE user_id = ? AND id IN (%s)"
+        % ",".join("?" for _ in run_ids),
+        (user["id"], *run_ids),
+    ).fetchall()
+
+    for row in rows:
+        input_dir = Path(row["input_dir"]) if row["input_dir"] else None
+        output_dir = Path(row["output_dir"]) if row["output_dir"] else None
+        output_zip = Path(row["output_zip"]) if row["output_zip"] else None
+        output_log = Path(row["output_log_file"]) if row["output_log_file"] else None
+
+        if input_dir and is_safe_path(DATA_DIR, input_dir):
+            shutil.rmtree(input_dir, ignore_errors=True)
+        if output_dir and is_safe_path(DATA_DIR, output_dir):
+            shutil.rmtree(output_dir, ignore_errors=True)
+        if output_zip and is_safe_path(DATA_DIR, output_zip):
+            output_zip.unlink(missing_ok=True)
+        if output_log and is_safe_path(DATA_DIR, output_log):
+            output_log.unlink(missing_ok=True)
+
+    conn.execute(
+        "DELETE FROM task_runs WHERE user_id = ? AND id IN (%s)" % ",".join("?" for _ in run_ids),
+        (user["id"], *run_ids),
+    )
+    conn.commit()
+    conn.close()
+
+    return {"ok": True}
 
 
 @app.get("/admin", response_class=HTMLResponse)
@@ -711,9 +1114,17 @@ def admin_panel(request: Request):
         ORDER BY u.username
         """
     ).fetchall()
+    users = [dict(row) for row in users]
+    for row in users:
+        dirs = get_user_storage_dirs(row["username"])
+        uploads_size = compute_dir_size(dirs["uploads"])
+        exports_size = compute_dir_size(dirs["exports"])
+        row["storage_size"] = format_mb(uploads_size + exports_size)
+        row["total_login_hms"] = format_seconds_hms(row.get("total_login_seconds"))
+        row["total_execution_hms"] = format_seconds_hms(row.get("total_execution_seconds"))
     recent_runs = conn.execute(
         """
-        SELECT tr.id, u.username, tr.module, tr.status, tr.started_at, tr.finished_at, tr.duration_seconds
+        SELECT tr.id, u.username, tr.module, tr.tool_version, tr.status, tr.started_at, tr.finished_at, tr.duration_seconds, tr.output_zip, tr.output_log_file, tr.input_dir, tr.output_dir
         FROM task_runs tr
         JOIN users u ON u.id = tr.user_id
         ORDER BY tr.id DESC
@@ -721,6 +1132,18 @@ def admin_panel(request: Request):
         """
     ).fetchall()
     conn.close()
+
+    recent_runs = [dict(row) for row in recent_runs]
+    for row in recent_runs:
+        row["started_at"] = format_timestamp(row["started_at"])
+        row["finished_at"] = format_timestamp(row["finished_at"])
+        input_dir = Path(row["input_dir"]) if row["input_dir"] else None
+        output_dir = Path(row["output_dir"]) if row["output_dir"] else None
+        input_size = compute_dir_size(input_dir) if input_dir else 0
+        output_size = 0
+        if output_dir and not (input_dir and is_safe_path(input_dir, output_dir)):
+            output_size = compute_dir_size(output_dir)
+        row["size_mb"] = format_mb(input_size + output_size)
 
     return templates.TemplateResponse(
         "admin.html",
@@ -773,8 +1196,8 @@ def admin_toggle_user(request: Request, user_id: int):
     return RedirectResponse("/admin", status_code=302)
 
 
-@app.post("/admin/users/{user_id}/reset_password")
-def admin_reset_password(request: Request, user_id: int, new_password: str = Form(...)):
+@app.post("/admin/users/{user_id}/set_password")
+def admin_set_password(request: Request, user_id: int, new_password: str = Form(...)):
     try:
         require_admin(request)
     except PermissionError:
@@ -785,4 +1208,135 @@ def admin_reset_password(request: Request, user_id: int, new_password: str = For
     conn.execute("UPDATE sessions SET active = 0 WHERE user_id = ?", (user_id,))
     conn.commit()
     conn.close()
+    return RedirectResponse("/admin", status_code=302)
+
+
+@app.post("/admin/users/{user_id}/update")
+def admin_update_user(
+    request: Request,
+    user_id: int,
+    username: str = Form(...),
+    role: str = Form("user"),
+    active: str = Form("1"),
+    new_password: str = Form(""),
+):
+    try:
+        require_admin(request)
+    except PermissionError:
+        return RedirectResponse("/login", status_code=302)
+
+    new_username = username.strip()
+    new_role = "admin" if role == "admin" else "user"
+    new_active = 1 if active == "1" else 0
+
+    conn = get_conn()
+    current = conn.execute("SELECT username FROM users WHERE id = ?", (user_id,)).fetchone()
+    if not current:
+        conn.close()
+        return RedirectResponse("/admin", status_code=302)
+
+    old_username = current["username"]
+    try:
+        if old_username == new_username and new_role == "admin" and new_active == 0:
+            new_active = 1
+        conn.execute(
+            "UPDATE users SET username = ?, role = ?, active = ? WHERE id = ?",
+            (new_username, new_role, new_active, user_id),
+        )
+        if new_password.strip():
+            conn.execute(
+                "UPDATE users SET password_hash = ? WHERE id = ?",
+                (pwd_context.hash(new_password), user_id),
+            )
+            conn.execute("UPDATE sessions SET active = 0 WHERE user_id = ?", (user_id,))
+        if new_active == 0:
+            conn.execute("UPDATE sessions SET active = 0 WHERE user_id = ?", (user_id,))
+        conn.commit()
+    except sqlite3.IntegrityError:
+        conn.close()
+        return RedirectResponse("/admin", status_code=302)
+    finally:
+        conn.close()
+
+    if old_username != new_username:
+        old_dirs = get_user_storage_dirs(old_username)
+        new_dirs = get_user_storage_dirs(new_username)
+        for key in ("uploads", "exports"):
+            if old_dirs[key].exists():
+                new_dirs[key].parent.mkdir(parents=True, exist_ok=True)
+                old_dirs[key].rename(new_dirs[key])
+
+    return RedirectResponse("/admin", status_code=302)
+
+
+@app.post("/admin/users/{user_id}/clear_storage")
+def admin_clear_storage(request: Request, user_id: int):
+    try:
+        require_admin(request)
+    except PermissionError:
+        return RedirectResponse("/login", status_code=302)
+
+    conn = get_conn()
+    user_row = conn.execute("SELECT username FROM users WHERE id = ?", (user_id,)).fetchone()
+    if not user_row:
+        conn.close()
+        return RedirectResponse("/admin", status_code=302)
+
+    rows = conn.execute(
+        "SELECT input_dir, output_dir, output_zip, output_log_file FROM task_runs WHERE user_id = ?",
+        (user_id,),
+    ).fetchall()
+
+    for row in rows:
+        input_dir = Path(row["input_dir"]) if row["input_dir"] else None
+        output_dir = Path(row["output_dir"]) if row["output_dir"] else None
+        output_zip = Path(row["output_zip"]) if row["output_zip"] else None
+        output_log = Path(row["output_log_file"]) if row["output_log_file"] else None
+
+        if input_dir and is_safe_path(DATA_DIR, input_dir):
+            shutil.rmtree(input_dir, ignore_errors=True)
+        if output_dir and is_safe_path(DATA_DIR, output_dir):
+            shutil.rmtree(output_dir, ignore_errors=True)
+        if output_zip and is_safe_path(DATA_DIR, output_zip):
+            output_zip.unlink(missing_ok=True)
+        if output_log and is_safe_path(DATA_DIR, output_log):
+            output_log.unlink(missing_ok=True)
+
+    conn.execute("DELETE FROM task_runs WHERE user_id = ?", (user_id,))
+    conn.commit()
+    conn.close()
+
+    dirs = get_user_storage_dirs(user_row["username"])
+    shutil.rmtree(dirs["uploads"], ignore_errors=True)
+    shutil.rmtree(dirs["exports"], ignore_errors=True)
+
+    return RedirectResponse("/admin", status_code=302)
+
+
+@app.post("/admin/users/{user_id}/delete")
+def admin_delete_user(request: Request, user_id: int):
+    try:
+        admin = require_admin(request)
+    except PermissionError:
+        return RedirectResponse("/login", status_code=302)
+
+    if admin["id"] == user_id:
+        return RedirectResponse("/admin", status_code=302)
+
+    conn = get_conn()
+    user_row = conn.execute("SELECT username FROM users WHERE id = ?", (user_id,)).fetchone()
+    if not user_row:
+        conn.close()
+        return RedirectResponse("/admin", status_code=302)
+
+    conn.execute("DELETE FROM sessions WHERE user_id = ?", (user_id,))
+    conn.execute("DELETE FROM task_runs WHERE user_id = ?", (user_id,))
+    conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
+    conn.commit()
+    conn.close()
+
+    dirs = get_user_storage_dirs(user_row["username"])
+    shutil.rmtree(dirs["uploads"], ignore_errors=True)
+    shutil.rmtree(dirs["exports"], ignore_errors=True)
+
     return RedirectResponse("/admin", status_code=302)

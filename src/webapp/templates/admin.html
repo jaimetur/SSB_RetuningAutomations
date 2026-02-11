@@ -35,47 +35,102 @@
 
     <section class="card">
       <h2>Users</h2>
+      <div class="table-scroll">
       <table>
-        <thead><tr><th>User</th><th>Role</th><th>Status</th><th>Logged time (s)</th><th>Execution time (s)</th><th>Actions</th></tr></thead>
+        <thead><tr><th>User</th><th>Password</th><th>Role</th><th>Status</th><th>Logged time (s)</th><th>Execution time (s)</th><th>Storage</th><th>Actions</th></tr></thead>
         <tbody>
           {% for u in users %}
           <tr>
-            <td>{{ u.username }}</td>
-            <td>{{ u.role }}</td>
-            <td>{{ 'active' if u.active else 'inactive' }}</td>
-            <td>{{ '%.0f'|format(u.total_login_seconds or 0) }}</td>
-            <td>{{ '%.2f'|format(u.total_execution_seconds or 0) }}</td>
             <td>
-              <form method="post" action="/admin/users/{{ u.id }}/toggle" class="inline">
-                <button type="submit">Toggle</button>
-              </form>
-              <form method="post" action="/admin/users/{{ u.id }}/reset_password" class="inline">
-                <input type="password" name="new_password" placeholder="new password" required />
-                <button type="submit">Reset password</button>
-              </form>
+                <input type="text" name="username" value="{{ u.username }}" form="update_user_{{ u.id }}" required class="user-input" />
+            </td>
+            <td>
+                <input type="password" name="new_password" placeholder="new password" form="update_user_{{ u.id }}" class="password-input" />
+            </td>
+            <td>
+                <select name="role" form="update_user_{{ u.id }}">
+                  <option value="user" {% if u.role == 'user' %}selected{% endif %}>user</option>
+                  <option value="admin" {% if u.role == 'admin' %}selected{% endif %}>admin</option>
+                </select>
+            </td>
+            <td>
+                <select name="active" form="update_user_{{ u.id }}">
+                  <option value="1" {% if u.active %}selected{% endif %}>active</option>
+                  <option value="0" {% if not u.active %}selected{% endif %}>inactive</option>
+                </select>
+            </td>
+            <td>{{ u.total_login_hms }}</td>
+            <td>{{ u.total_execution_hms }}</td>
+            <td class="storage-cell">{{ u.storage_size }}</td>
+            <td>
+              <div class="action-row">
+                <form method="post" action="/admin/users/{{ u.id }}/clear_storage" class="inline confirm-form" data-confirm="This will delete all Uploads and Exports for this user. Continue?">
+                  <button type="submit" class="btn btn-success">Clear storage</button>
+                </form>
+                <form method="post" action="/admin/users/{{ u.id }}/update" class="inline" id="update_user_{{ u.id }}">
+                  <button type="submit" class="btn btn-primary">Update user</button>
+                </form>
+                <form method="post" action="/admin/users/{{ u.id }}/delete" class="inline confirm-form" data-confirm="This will delete the user and all Uploads/Exports. Continue?">
+                  <button type="submit" class="btn btn-danger">Delete user</button>
+                </form>
+              </div>
             </td>
           </tr>
           {% endfor %}
         </tbody>
       </table>
+      </div>
     </section>
 
     <section class="card">
       <h2>Latest global runs</h2>
+      <div class="table-scroll">
       <table>
-        <thead><tr><th>ID</th><th>User</th><th>Module</th><th>Status</th><th>Start</th><th>End</th><th>Duration (s)</th></tr></thead>
+        <thead><tr><th>ID</th><th>User</th><th>Module</th><th>Version</th><th>Status</th><th>Start</th><th>End</th><th>Duration (s)</th><th>Output</th><th>Log</th><th>Size</th></tr></thead>
         <tbody>
           {% for r in recent_runs %}
           <tr>
-            <td>{{ r.id }}</td><td>{{ r.username }}</td><td>{{ r.module }}</td><td>{{ r.status }}</td>
-            <td>{{ r.started_at }}</td><td>{{ r.finished_at }}</td><td>{{ '%.2f'|format(r.duration_seconds or 0) }}</td>
+            <td>{{ r.id }}</td>
+            <td>{{ r.username }}</td>
+            <td>{{ r.module }}</td>
+            <td>{{ r.tool_version or '—' }}</td>
+            <td>{{ r.status }}</td>
+            <td>{{ r.started_at }}</td>
+            <td>{{ r.finished_at }}</td>
+            <td>{{ '%.2f'|format(r.duration_seconds or 0) }}</td>
+            <td>
+              {% if r.output_zip %}
+                <a href="/runs/{{ r.id }}/download">Download zip</a>
+              {% else %}
+                —
+              {% endif %}
+            </td>
+            <td>
+              {% if r.output_log_file %}
+                <a href="/runs/{{ r.id }}/log">Download log</a>
+              {% else %}
+                —
+              {% endif %}
+            </td>
+            <td>{{ r.size_mb }}</td>
           </tr>
           {% else %}
-            <tr><td colspan="7">No runs yet.</td></tr>
+            <tr><td colspan="11">No runs yet.</td></tr>
           {% endfor %}
         </tbody>
       </table>
+      </div>
     </section>
   </main>
+  <script>
+    document.querySelectorAll(".confirm-form").forEach((form) => {
+      form.addEventListener("submit", (event) => {
+        const message = form.dataset.confirm || "Are you sure?";
+        if (!confirm(message)) {
+          event.preventDefault();
+        }
+      });
+    });
+  </script>
 </body>
 </html>
