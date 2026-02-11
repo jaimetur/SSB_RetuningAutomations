@@ -196,7 +196,9 @@ jobs:
     needs: set-input-matrix
     with:
       final_release: ${{ inputs.final_release }}
-    secrets: inherit
+    secrets:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_PASSWORD: ${{ secrets.DOCKERHUB_PASSWORD }}
 
   # ==========================================================================================================================
   # JOB build
