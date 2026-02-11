@@ -1,11 +1,12 @@
 /* Base layout and typography for the web frontend. */
-body{font-family:Arial,sans-serif;background:radial-gradient(circle at top left,#eef3ff,transparent 55%),radial-gradient(circle at 20% 20%,#f9fbff 0%,#edf2f7 35%,#eef2f6 100%);margin:0;padding:0;color:#1b2430}
-body::before{content:"";position:fixed;inset:0;background-image:linear-gradient(135deg,rgba(17,24,39,.06) 0,rgba(17,24,39,.06) 1px,transparent 1px,transparent 8px),linear-gradient(45deg,rgba(17,24,39,.04) 0,rgba(17,24,39,.04) 1px,transparent 1px,transparent 10px);background-size:8px 8px,10px 10px;pointer-events:none;z-index:-1}
+body{font-family:Arial,sans-serif;background:#e6ebf2;margin:0;padding:0;color:#1b2430}
+body::before{content:"";position:fixed;inset:0;background-image:radial-gradient(circle at 1px 1px,rgba(17,24,39,.08) 1px,transparent 0),radial-gradient(circle at 1px 1px,rgba(17,24,39,.04) 1px,transparent 0);background-size:28px 28px,10px 10px;pointer-events:none;z-index:-1}
 .container{max-width:1200px;margin:2rem auto;padding:0 1rem}
 .container.small{max-width:500px}
 .card{background:#fff;border-radius:12px;padding:1.4rem 1.6rem;margin-bottom:1rem;box-shadow:0 4px 14px rgba(15,35,66,.08)}
 .topbar{display:flex;justify-content:space-between;align-items:flex-start;gap:1rem}
 .topbar nav{display:flex;flex-direction:column;align-items:flex-end;gap:.35rem}
+.nav-links{display:flex;gap:.8rem}
 .topbar a{margin-left:.8rem}
 .user-meta{font-size:.85rem;color:#5a6a80}
 .runs-header{display:flex;justify-content:space-between;align-items:center;gap:1rem;margin-bottom:.6rem}
@@ -49,6 +50,7 @@ th,td{border-bottom:1px solid #e3e8ee;padding:.55rem;text-align:left;font-size:.
 .module-eyebrow{margin:0;color:#5a6a80;font-size:.9rem;text-transform:uppercase;letter-spacing:.08em}
 .module-subtitle{margin:.2rem 0 0;color:#6b7c93;font-size:.95rem}
 .module-actions{margin-left:auto;display:flex;flex-direction:column;gap:.4rem;align-items:flex-end}
+.module-actions .btn-row{display:flex;gap:.6rem;align-items:center}
 .module-meta{position:absolute;top:12px;right:16px;color:#5a6a80;font-size:.85rem}
 .module-form{display:flex;flex-direction:column;gap:1rem}
 .form-row{display:flex}
@@ -56,7 +58,7 @@ th,td{border-bottom:1px solid #e3e8ee;padding:.55rem;text-align:left;font-size:.
 .label-span-2{grid-column:span 2}
 .form-section{border-top:1px solid #e6edf6;padding-top:1rem}
 .section-title{margin:0 0 .7rem;color:#4a5b70;font-weight:600;font-size:.95rem}
-.options-section .grid{align-items:center}
+.options-section .grid{grid-template-columns:repeat(4,minmax(0,1fr));align-items:center}
 .checkbox{flex-direction:row;gap:.6rem;align-items:center;font-size:.95rem}
 .checkbox input{width:16px;height:16px;margin:0}
 .form-actions{display:flex;justify-content:center;align-items:center;gap:.8rem;padding-top:.4rem}
@@ -74,8 +76,8 @@ th,td{border-bottom:1px solid #e3e8ee;padding:.55rem;text-align:left;font-size:.
 .log-warning{color:#c87b00}
 .log-error{color:#c0302b}
 .log-debug{color:#0891b2}
-.freq-selector{display:grid;grid-template-columns:minmax(240px,1fr) 160px 120px;gap:1rem;align-items:start}
-.freq-list select{width:100%;min-height:350px}
+.freq-selector{display:grid;grid-template-columns:minmax(200px,1fr) 200px 120px;gap:1rem;align-items:start}
+.freq-list select{width:100%;min-height:110px}
 .freq-buttons{display:flex;flex-direction:column;gap:.6rem}
 .freq-group{border:1px solid #e3e8ee;border-radius:10px;padding:.6rem;background:#f9fbff}
 .freq-group p{margin:0 0 .5rem;font-weight:600;color:#4a5b70}

@@ -15,8 +15,10 @@
       </div>
       <nav>
         <div class="user-meta">User: <b>{{ user.username }}</b> ({{ user.role }})</div>
-        {% if user.role == 'admin' %}<a href="/admin">Admin panel</a>{% endif %}
-        <a href="/logout">Sign out</a>
+        <div class="nav-links">
+          {% if user.role == 'admin' %}<a href="/admin">Admin panel</a>{% endif %}
+          <a href="/logout">Sign out</a>
+        </div>
       </nav>
     </header>
 
@@ -31,13 +33,16 @@
         </div>
         <div class="module-actions">
           <button type="button" class="btn btn-danger" id="change_password_button">Change Password</button>
-          <button type="button" class="browse-button" id="load_config_button">Load config.cfg</button>
-          <button type="button" class="browse-button" id="export_config_button">Export config.cfg</button>
+          <div class="btn-row">
+            <button type="button" class="browse-button" id="load_config_button">Load config.cfg</button>
+            <button type="button" class="browse-button" id="export_config_button">Export config.cfg</button>
+          </div>
         </div>
       </div>
       <form action="/run" method="post" class="module-form">
-        <div class="form-row">
-          <label class="label-wide">Module to execute
+        <div class="form-section">
+          <p class="section-title">Module to execute</p>
+          <label class="label-wide">
             <select name="module" required>
               {% for value, label in module_options %}
                 <option value="{{ value }}" {% if settings.get('module') == value %}selected{% endif %}>{{ label }}</option>
@@ -122,16 +127,15 @@
             </div>
             <div class="freq-buttons">
               <div class="freq-group">
-                <p>Configuration Audit</p>
-                <button type="button" id="ca_add" class="btn btn-primary">← Add</button>
-                <button type="button" id="ca_clear" class="btn btn-danger">Clear</button>
-                <button type="button" id="ca_remove" class="btn btn-accent">Remove →</button>
-              </div>
-              <div class="freq-group">
-                <p>Consistency Checks</p>
-                <button type="button" id="cc_add" class="btn btn-primary">← Add</button>
-                <button type="button" id="cc_clear" class="btn btn-danger">Clear</button>
-                <button type="button" id="cc_remove" class="btn btn-accent">Remove →</button>
+                <label>Apply to
+                  <select id="freq_target">
+                    <option value="ca">Configuration Audit</option>
+                    <option value="cc">Consistency Checks</option>
+                  </select>
+                </label>
+                <button type="button" id="freq_add" class="btn btn-primary">← Add</button>
+                <button type="button" id="freq_clear" class="btn btn-danger">Clear</button>
+                <button type="button" id="freq_remove" class="btn btn-accent">Remove →</button>
               </div>
               <button type="button" id="freq_select_all">Select all in list</button>
             </div>
@@ -289,12 +293,10 @@
     const networkFrequenciesField = document.getElementById("network_frequencies");
     const caFiltersInput = document.getElementById("ca_freq_filters");
     const ccFiltersInput = document.getElementById("cc_freq_filters");
-    const caAddButton = document.getElementById("ca_add");
-    const caRemoveButton = document.getElementById("ca_remove");
-    const caClearButton = document.getElementById("ca_clear");
-    const ccAddButton = document.getElementById("cc_add");
-    const ccRemoveButton = document.getElementById("cc_remove");
-    const ccClearButton = document.getElementById("cc_clear");
+    const freqTargetSelect = document.getElementById("freq_target");
+    const freqAddButton = document.getElementById("freq_add");
+    const freqRemoveButton = document.getElementById("freq_remove");
+    const freqClearButton = document.getElementById("freq_clear");
     const selectAllButton = document.getElementById("freq_select_all");
 
     function toggleInputRows() {
@@ -660,12 +662,13 @@
       }
     });
 
-    caAddButton.addEventListener("click", () => addToFilters(caFiltersInput));
-    caRemoveButton.addEventListener("click", () => removeFromFilters(caFiltersInput));
-    caClearButton.addEventListener("click", () => clearFilters(caFiltersInput));
-    ccAddButton.addEventListener("click", () => addToFilters(ccFiltersInput));
-    ccRemoveButton.addEventListener("click", () => removeFromFilters(ccFiltersInput));
-    ccClearButton.addEventListener("click", () => clearFilters(ccFiltersInput));
+    function getTargetFiltersInput() {
+      return freqTargetSelect.value === "cc" ? ccFiltersInput : caFiltersInput;
+    }
+
+    freqAddButton.addEventListener("click", () => addToFilters(getTargetFiltersInput()));
+    freqRemoveButton.addEventListener("click", () => removeFromFilters(getTargetFiltersInput()));
+    freqClearButton.addEventListener("click", () => clearFilters(getTargetFiltersInput()));
     selectAllButton.addEventListener("click", selectAllFrequencies);
 
     function getSelectedRunIds() {
@@ -683,6 +686,31 @@
         box.checked = false;
       });
     });
+
+    function selectErrorRuns() {
+      const table = document.querySelector(".latest-runs-scroll table");
+      const headerCells = table ? table.querySelectorAll("thead th") : [];
+      let statusIndex = -1;
+      headerCells.forEach((cell, index) => {
+        if (cell.textContent.trim().toLowerCase() === "status") {
+          statusIndex = index;
+        }
+      });
+
+      document.querySelectorAll(".run-checkbox").forEach((box) => {
+        const row = box.closest("tr");
+        const statusColumn = row && statusIndex >= 0 ? row.cells[statusIndex] : null;
+        const statusText = statusColumn ? statusColumn.textContent.trim().toLowerCase() : "";
+        const statusAttr = (row?.dataset.status || box.dataset.status || "").trim().toLowerCase();
+        if (statusText === "error" || statusAttr === "error" || row?.classList.contains("run-error")) {
+          box.checked = true;
+        }
+      });
+    }
+
+    if (selectErrorRunsButton) {
+      selectErrorRunsButton.addEventListener("click", selectErrorRuns);
+    }
 
     let lastChecked = null;
     document.querySelectorAll(".run-checkbox").forEach((box) => {
@@ -779,12 +807,3 @@
   </script>
 </body>
 </html>
-    selectErrorRunsButton.addEventListener("click", () => {
-      document.querySelectorAll(".run-checkbox").forEach((box) => {
-        const row = box.closest("tr");
-        const status = (row?.dataset.status || "").trim().toLowerCase();
-        if (status === "error") {
-          box.checked = true;
-        }
-      });
-    });
