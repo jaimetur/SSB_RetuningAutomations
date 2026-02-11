@@ -24,7 +24,7 @@ on:
         default: false
         type: boolean
     secrets:
-      TOKEN_GITHUB:
+      GITHUB_TOKEN:
         required: true
       DOCKERHUB_USERNAME:
         required: true
@@ -62,7 +62,7 @@ jobs:
       - name: 🧾 Checkout Repository
         uses: actions/checkout@v4
         with:
-          token: ${{ inputs.token_github || secrets.TOKEN_GITHUB }}
+          token: ${{ inputs.GITHUB_TOKEN || secrets.GITHUB_TOKEN }}
 
       # 🏷️ Extract TOOL_VERSION from SSB_RetuningAutomations.py
       - name: 🏷️ Extract TOOL_VERSION from SSB_RetuningAutomations.py
