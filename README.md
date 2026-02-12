@@ -240,13 +240,20 @@ docker compose -f src/webapp/docker-compose-webapp.yml up --build -d
 ```
 
 Frontend available at:
-- `http://localhost:7878`
+- `http://localhost:7979/login` (development compose at `src/webapp/docker-compose-webapp.yml`)
 
 Initial credentials:
 - user: `admin`
 - password: `admin123`
 
 > ⚠️ Change the admin password immediately after first login.
+
+
+### Troubleshooting (webapp compose)
+- If `run_webapp.sh` fails with `container name "/ssb_webapp" is already in use`, it means a stale container with the same name exists outside the current compose stack.
+  - The script now force-removes that stale container before `up --build`.
+- If browser shows `{"detail":"Not Found"}` on port `7979`, verify you are reaching the webapp URL (`/login`) and not another reverse-proxied path/service.
+  - Expected login URL for this compose is `http://localhost:7979/login`.
 
 ### Persistent data
 - Database and logs stored in `data/`.

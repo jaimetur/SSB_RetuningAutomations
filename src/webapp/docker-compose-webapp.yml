@@ -5,7 +5,7 @@ services:
     build:
       context: ${APP_DIR}
       dockerfile: src/webapp/Dockerfile
-    container_name: ssb_webapp
+    container_name: ${WEBAPP_CONTAINER_NAME:-ssb_webapp}
     ports:
       - "7979:7979"
     command: ["uvicorn", "src.webapp.webapp:app", "--host", "0.0.0.0", "--port", "7979", "--reload", "--reload-dir", "/app/src/webapp"]
