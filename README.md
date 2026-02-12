@@ -216,7 +216,7 @@ python SSB_RetuningAutomations.py
 
 ---
 
-## 🌐 Private Web Frontend (Docker, port 7878)
+## 🌐 Private Web Frontend (2 deployment modes)
 
 A private web frontend was added to run the same launcher modules using CLI under the hood.
 
@@ -234,13 +234,27 @@ A private web frontend was added to run the same launcher modules using CLI unde
   - view total backend task execution time.
 - HTTP access log at `data/access.log`.
 
-### Docker startup
+### Mode A: Standalone / static code image (port 7878)
+Use the main compose in `/docker` when you want a self-contained runtime image (code baked inside image).
+
 ```bash
-docker compose -f src/webapp/docker-compose-webapp.yml up --build -d
+docker compose -f docker/docker-compose.yml up --build -d
 ```
 
-Frontend available at:
-- `http://localhost:7979/login` (development compose at `src/webapp/docker-compose-webapp.yml`)
+Expected URL:
+- `http://localhost:7878/login`
+
+### Mode B: Development / repo-linked webapp (port 7979)
+Use the webapp compose when you want hot-reload and latest local source code mounted from your repository.
+
+```bash
+docker compose -f src/webapp/docker-compose-webapp.yml up --build -d
+# or
+bash src/webapp/run_webapp.sh
+```
+
+Expected URL:
+- `http://localhost:7979/login`
 
 Initial credentials:
 - user: `admin`
@@ -248,12 +262,14 @@ Initial credentials:
 
 > ⚠️ Change the admin password immediately after first login.
 
-
-### Troubleshooting (webapp compose)
-- If `run_webapp.sh` fails with `container name "/ssb_webapp" is already in use`, it means a stale container with the same name exists outside the current compose stack.
-  - The script now force-removes that stale container before `up --build`.
-- If browser shows `{"detail":"Not Found"}` on port `7979`, verify you are reaching the webapp URL (`/login`) and not another reverse-proxied path/service.
-  - Expected login URL for this compose is `http://localhost:7979/login`.
+### Troubleshooting (webapp compose / port 7979)
+- **Container name conflict** (`container name "/ssb_webapp" is already in use`):
+  - `run_webapp.sh` now removes stale container name reservations before `up --build`.
+- **Browser returns `{"detail":"Not Found"}`**:
+  - Ensure you are opening `http://<host>:7979/login` (not just a proxied root).
+  - Verify container logs: `docker logs -f ssb_webapp`.
+  - Verify that compose points to the correct repo root (`APP_DIR`) and that `src/webapp/webapp.py` exists there.
+  - In dev compose, `PYTHONPATH=/app` and `--app-dir /app` are set to force loading the mounted repository code.
 
 ### Persistent data
 - Database and logs stored in `data/`.

@@ -1005,6 +1005,55 @@ def index(request: Request):
     )
 
 
+@app.get("/login", response_class=HTMLResponse)
+def login_get(request: Request):
+    return templates.TemplateResponse("login.html", {"request": request, "error": ""})
+
+
+@app.post("/login", response_class=HTMLResponse)
+def login_post(request: Request, username: str = Form(...), password: str = Form(...)):
+    conn = get_conn()
+    user = conn.execute(
+        "SELECT * FROM users WHERE username = ? AND active = 1", (username.strip(),)
+    ).fetchone()
+    try:
+        verified = user and pwd_context.verify(password, user["password_hash"])
+    except (ValueError, TypeError):
+        verified = False
+    if not verified:
+        conn.close()
+        return templates.TemplateResponse(
+            "login.html",
+            {"request": request, "error": "Invalid credentials or disabled user."},
+            status_code=401,
+        )
+
+    token = secrets.token_urlsafe(32)
+    conn.execute(
+        "INSERT INTO sessions(token, user_id, created_at, last_seen_at, active) VALUES (?, ?, ?, ?, 1)",
+        (token, user["id"], now_iso(), now_iso()),
+    )
+    conn.commit()
+    conn.close()
+
+    response = RedirectResponse(url="/", status_code=302)
+    response.set_cookie("session_token", token, httponly=True, samesite="lax")
+    return response
+
+
+@app.get("/logout")
+def logout(request: Request):
+    token = request.cookies.get("session_token")
+    if token:
+        conn = get_conn()
+        conn.execute("UPDATE sessions SET active = 0 WHERE token = ?", (token,))
+        conn.commit()
+        conn.close()
+    response = RedirectResponse("/login", status_code=302)
+    response.delete_cookie("session_token")
+    return response
+
+
 @app.post("/run")
 def run_module(
     request: Request,
