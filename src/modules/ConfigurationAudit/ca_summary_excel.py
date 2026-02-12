@@ -448,6 +448,10 @@ def build_summary_audit(
             ("NRCellDU", "NR Frequency Audit"),
             ("NRCellDU", "NR Frequency Inconsistencies"),
 
+            # NR Frequency NRSectorCarrier
+            ("NRSectorCarrier", "NR Frequency Audit"),
+            ("NRSectorCarrier", "NR Frequency Inconsistencies"),
+
             # NR Frequency NRFrequency
             ("NRFrequency", "NR Frequency Audit"),
             ("NRFrequency", "NR Frequency Inconsistencies"),
@@ -466,10 +470,6 @@ def build_summary_audit(
 
             # NEW: TermPointToGNodeB
             ("TermPointToGNodeB", "NR Termpoint Audit"),
-
-            # NR Frequency NRSectorCarrier
-            ("NRSectorCarrier", "NR Frequency Audit"),
-            ("NRSectorCarrier", "NR Frequency Inconsistencies"),
 
             # LTE Frequency GUtranSyncSignalFrequency
             ("GUtranSyncSignalFrequency", "LTE Frequency Audit"),
