@@ -7,6 +7,8 @@ RUN pip install --no-cache-dir -r /app/requirements.txt
 
 COPY . /app
 
-EXPOSE 7878
+# Default value if PORT is not provided at runtime (via docker compose env_file / environment).
+ENV PORT=7878
 
-CMD ["uvicorn", "src.webapp.webapp:app", "--host", "0.0.0.0", "--port", "7878"]
+# IMPORTANT: use "sh -c" so ${PORT} is expanded at container runtime (JSON-form CMD does not expand variables).
+CMD ["sh", "-c", "exec uvicorn src.webapp.webapp:app --host 0.0.0.0 --port ${PORT}"]

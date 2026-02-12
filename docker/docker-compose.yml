@@ -1,10 +1,14 @@
+# ssb-retuning-automations (including Web frontend) compose file for production.
+
 version: "3.9"
 services:
   ssb-retuning-automations:
     image: jaimetur/ssb-retuning-automations:${IMAGE_TAG}
-    container_name: ssb-retuning-automations
+    container_name: ${CONTAINER_NAME:-ssb-retuning-automations}
     ports:
-      - "7878:7878"
+      - "${PORT}:${PORT}"
+    env_file:
+      - .env
     volumes:
       - ${DATA_DIR}:/app/data
     restart: unless-stopped

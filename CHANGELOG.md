@@ -16,6 +16,10 @@
 
 - #### 🚀 Enhancements:
   - Disabled the `Consistency Check (Bulk mode)` module in the Web Frontend due to incompatibility.
+  - Enhancements in the Web Frontend to improve UX.
+    - Added a new feature to select any Input folder that has already been uploaded into the Inputs Repository.
+    - Added a new Inputs Repository panel to manage uploaded inputs.
+    - Added a new feature in the Web Frontend (Administrator panel) to manage the %CPU, %RAM and Max # of Threads to process the queue of the process to run.
 
 - #### 🐛 Bug fixes:
   - Minor bug fixing.

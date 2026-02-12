@@ -242,19 +242,19 @@ docker compose -f docker/docker-compose.yml up --build -d
 ```
 
 Expected URL:
-- `http://localhost:7878/login`
+- `http://localhost:7878`
 
 ### Mode B: Development / repo-linked webapp (port 7979)
 Use the webapp compose when you want hot-reload and latest local source code mounted from your repository.
 
 ```bash
-docker compose -f src/webapp/docker-compose-webapp.yml up --build -d
+docker compose -f src/webapp/docker-compose-dev.yml up --build -d
 # or
-bash src/webapp/run_webapp.sh
+bash src/webapp/run-docker-dev.sh
 ```
 
 Expected URL:
-- `http://localhost:7979/login`
+- `http://localhost:7979`
 
 Initial credentials:
 - user: `admin`
