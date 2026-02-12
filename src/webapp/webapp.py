@@ -8,9 +8,11 @@ import shutil
 import zipfile
 from logging.handlers import RotatingFileHandler
 import secrets
+import shlex
 import sqlite3
 import subprocess
 import sys
+import threading
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -106,6 +108,17 @@ WEB_FRONTEND_BLOCKED_MODULES = {"consistency-check-bulk"}
 SESSION_IDLE_TIMEOUT_SECONDS = 600
 
 TOOL_METADATA_PATH = PROJECT_ROOT / "src" / "SSB_RetuningAutomations.py"
+
+INPUTS_REPOSITORY_DIR = DATA_DIR / "inputs"
+INPUTS_REPOSITORY_DIR.mkdir(parents=True, exist_ok=True)
+
+MAX_CPU_DEFAULT = 80
+MAX_MEMORY_DEFAULT = 80
+MAX_PARALLEL_DEFAULT = 1
+
+queue_event = threading.Event()
+worker_started = False
+worker_lock = threading.Lock()
 
 
 def get_conn() -> sqlite3.Connection:
@@ -357,14 +370,27 @@ def init_db() -> None:
             output_dir TEXT,
             output_zip TEXT,
             output_log_file TEXT,
+            input_name TEXT,
+            payload_json TEXT,
+            FOREIGN KEY(user_id) REFERENCES users(id)
+        )
+        """
+    )
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS inputs_repository (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            input_name TEXT NOT NULL UNIQUE,
+            input_path TEXT NOT NULL,
+            uploaded_at TEXT NOT NULL,
+            size_bytes INTEGER NOT NULL DEFAULT 0,
             FOREIGN KEY(user_id) REFERENCES users(id)
         )
         """
     )
 
-    existing_columns = {
-        row["name"] for row in cur.execute("PRAGMA table_info(task_runs)").fetchall()
-    }
+    existing_columns = {row["name"] for row in cur.execute("PRAGMA table_info(task_runs)").fetchall()}
     if "input_dir" not in existing_columns:
         cur.execute("ALTER TABLE task_runs ADD COLUMN input_dir TEXT")
     if "output_dir" not in existing_columns:
@@ -375,6 +401,10 @@ def init_db() -> None:
         cur.execute("ALTER TABLE task_runs ADD COLUMN output_log_file TEXT")
     if "tool_version" not in existing_columns:
         cur.execute("ALTER TABLE task_runs ADD COLUMN tool_version TEXT")
+    if "input_name" not in existing_columns:
+        cur.execute("ALTER TABLE task_runs ADD COLUMN input_name TEXT")
+    if "payload_json" not in existing_columns:
+        cur.execute("ALTER TABLE task_runs ADD COLUMN payload_json TEXT")
 
     admin = cur.execute(
         "SELECT id, password_hash FROM users WHERE username = ?", ("admin",)
@@ -512,6 +542,230 @@ def parse_bool(value: str | bool | None) -> bool:
     if value is None:
         return False
     return str(value).lower() in {"on", "true", "1", "yes"}
+
+
+def coerce_int(value: Any, default: int, minimum: int, maximum: int) -> int:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return default
+    return max(minimum, min(maximum, parsed))
+
+
+def get_admin_settings() -> dict[str, int]:
+    conn = get_conn()
+    row = conn.execute("SELECT settings_json FROM user_settings WHERE user_id = -1").fetchone()
+    conn.close()
+    if row:
+        try:
+            payload = json.loads(row["settings_json"])
+        except json.JSONDecodeError:
+            payload = {}
+    else:
+        payload = {}
+    return {
+        "max_cpu_percent": coerce_int(payload.get("max_cpu_percent"), MAX_CPU_DEFAULT, 10, 100),
+        "max_memory_percent": coerce_int(payload.get("max_memory_percent"), MAX_MEMORY_DEFAULT, 10, 100),
+        "max_parallel_tasks": coerce_int(payload.get("max_parallel_tasks"), MAX_PARALLEL_DEFAULT, 1, 8),
+    }
+
+
+def save_admin_settings(max_cpu_percent: int, max_memory_percent: int, max_parallel_tasks: int) -> None:
+    settings = {
+        "max_cpu_percent": coerce_int(max_cpu_percent, MAX_CPU_DEFAULT, 10, 100),
+        "max_memory_percent": coerce_int(max_memory_percent, MAX_MEMORY_DEFAULT, 10, 100),
+        "max_parallel_tasks": coerce_int(max_parallel_tasks, MAX_PARALLEL_DEFAULT, 1, 8),
+    }
+    conn = get_conn()
+    conn.execute(
+        """
+        INSERT INTO user_settings(user_id, settings_json, updated_at)
+        VALUES(-1, ?, ?)
+        ON CONFLICT(user_id) DO UPDATE SET settings_json = excluded.settings_json, updated_at = excluded.updated_at
+        """,
+        (json.dumps(settings), now_iso()),
+    )
+    conn.commit()
+    conn.close()
+
+
+def detect_task_name_from_input(input_path: str) -> str:
+    if not input_path:
+        return "unknown"
+    return Path(input_path).name or sanitize_component(input_path)
+
+
+def format_task_status(raw_status: str) -> str:
+    normalized = (raw_status or "").strip().lower()
+    mapping = {"queued": "Queued", "running": "Running", "ok": "Success", "error": "Error"}
+    return mapping.get(normalized, raw_status or "Unknown")
+
+
+def list_inputs_repository() -> list[dict[str, Any]]:
+    conn = get_conn()
+    rows = conn.execute(
+        """
+        SELECT ir.id, ir.input_name, ir.input_path, ir.uploaded_at, ir.size_bytes, u.username
+        FROM inputs_repository ir
+        LEFT JOIN users u ON u.id = ir.user_id
+        ORDER BY ir.uploaded_at DESC
+        """
+    ).fetchall()
+    conn.close()
+    items: list[dict[str, Any]] = []
+    for row in rows:
+        items.append(
+            {
+                "id": row["id"],
+                "input_name": row["input_name"],
+                "input_path": row["input_path"],
+                "uploaded_by": row["username"] or "unknown",
+                "uploaded_at": format_timestamp(row["uploaded_at"]),
+                "size_mb": format_mb(row["size_bytes"] or 0),
+            }
+        )
+    return items
+
+
+def run_queued_task(task_row: sqlite3.Row) -> None:
+    task_id = task_row["id"]
+    payload = json.loads(task_row["payload_json"] or "{}")
+    module = task_row["module"]
+    username = task_row["username"]
+    started_at = now_iso()
+
+    conn = get_conn()
+    conn.execute("UPDATE task_runs SET status = 'running', started_at = ? WHERE id = ?", (started_at, task_id))
+    conn.commit()
+    conn.close()
+
+    cmd = build_cli_command(payload)
+    status = "ok"
+    output_log = ""
+    start = time.perf_counter()
+
+    try:
+        proc = subprocess.run(
+            cmd,
+            cwd=str(PROJECT_ROOT),
+            capture_output=True,
+            text=True,
+            check=False,
+            env={**os.environ, "TERM": "xterm", "SSB_RA_NO_CLEAR": "1"},
+        )
+        if proc.returncode != 0:
+            status = "error"
+        output_log = (proc.stdout or "") + "\n" + (proc.stderr or "")
+    except Exception as exc:
+        status = "error"
+        output_log = f"Execution error: {exc}"
+
+    output_log = strip_ansi(output_log)
+    duration = time.perf_counter() - start
+    finished_at = now_iso()
+
+    input_dir_value = payload.get("input_post", "") if module == "consistency-check" else payload.get("input", "")
+    output_dir_value = ""
+    output_zip_value = ""
+    output_log_file_value = ""
+    tool_version = task_row["tool_version"] or "unknown"
+
+    if input_dir_value:
+        output_dir = find_latest_output_dir(Path(input_dir_value), build_output_prefixes(module))
+        if output_dir:
+            output_dir_value = str(output_dir)
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            try:
+                for existing in output_dir.glob("RetuningAutomation_*.log"):
+                    existing.unlink(missing_ok=True)
+                legacy_log = output_dir / "webapp_output.log"
+                if legacy_log.exists():
+                    legacy_log.unlink()
+                log_name = f"RetuningAutomation_{timestamp}_v{tool_version}.log"
+                output_log_file = output_dir / log_name
+                output_log_file.write_text(output_log, encoding="utf-8")
+                output_log_file_value = str(output_log_file)
+            except OSError:
+                output_log_file_value = ""
+
+            exports_dir = DATA_DIR / "users" / sanitize_component(username) / "export"
+            exports_dir.mkdir(parents=True, exist_ok=True)
+            zip_name = f"{sanitize_component(module)}_{timestamp}_v{sanitize_component(tool_version)}.zip"
+            output_zip_path = exports_dir / zip_name
+            try:
+                create_zip_from_dir(output_dir, output_zip_path)
+                output_zip_value = str(output_zip_path)
+            except OSError:
+                output_zip_value = ""
+
+            try:
+                shutil.rmtree(output_dir, ignore_errors=True)
+            except OSError:
+                pass
+
+    conn = get_conn()
+    conn.execute(
+        """
+        UPDATE task_runs
+        SET status = ?, finished_at = ?, duration_seconds = ?, command = ?, output_log = ?,
+            input_dir = ?, output_dir = ?, output_zip = ?, output_log_file = ?
+        WHERE id = ?
+        """,
+        (
+            status,
+            finished_at,
+            duration,
+            " ".join(shlex.quote(part) for part in cmd),
+            output_log[:20000],
+            input_dir_value,
+            output_dir_value,
+            output_zip_value,
+            output_log_file_value,
+            task_id,
+        ),
+    )
+    conn.commit()
+    conn.close()
+
+
+def queue_worker() -> None:
+    while True:
+        queue_event.wait(timeout=1.0)
+        conn = get_conn()
+        admin_settings = get_admin_settings()
+        max_parallel = admin_settings["max_parallel_tasks"]
+        running_count = conn.execute("SELECT COUNT(*) AS total FROM task_runs WHERE status = 'running'").fetchone()["total"]
+        if running_count >= max_parallel:
+            conn.close()
+            queue_event.clear()
+            continue
+
+        task_row = conn.execute(
+            """
+            SELECT tr.*, u.username
+            FROM task_runs tr
+            JOIN users u ON u.id = tr.user_id
+            WHERE tr.status = 'queued'
+            ORDER BY tr.id ASC
+            LIMIT 1
+            """
+        ).fetchone()
+        conn.close()
+
+        if task_row is None:
+            queue_event.clear()
+            continue
+
+        run_queued_task(task_row)
+
+
+def ensure_worker_started() -> None:
+    global worker_started
+    with worker_lock:
+        if worker_started:
+            return
+        threading.Thread(target=queue_worker, daemon=True, name="task-queue-worker").start()
+        worker_started = True
 
 
 def load_persistent_config() -> dict[str, str]:
@@ -671,6 +925,7 @@ async def access_log_middleware(request: Request, call_next):
 @app.on_event("startup")
 def startup() -> None:
     init_db()
+    ensure_worker_started()
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -690,11 +945,11 @@ def index(request: Request):
     conn = get_conn()
     latest_runs = conn.execute(
         """
-        SELECT id, module, tool_version, status, started_at, finished_at, duration_seconds, output_zip, output_log_file
+        SELECT id, module, tool_version, input_name, status, started_at, finished_at, duration_seconds, output_zip, output_log_file
         FROM task_runs
         WHERE user_id = ?
         ORDER BY id DESC
-       
+
         """,
         (user["id"],),
     ).fetchall()
@@ -705,6 +960,7 @@ def index(request: Request):
         row["duration_hms"] = format_seconds_hms(row.get("duration_seconds"))
         raw_status = (row.get("status") or "").strip().lower()
         row["status_lower"] = "success" if raw_status == "ok" else raw_status
+        row["status_display"] = format_task_status(row.get("status") or "")
         row["run_label"] = f"{row['module']}_{row['started_at']}_v{row.get('tool_version') or '—'}"
 
     all_runs = conn.execute(
@@ -731,6 +987,7 @@ def index(request: Request):
         row["size_mb"] = format_mb(size_bytes)
 
     total_size_mb = format_mb(total_bytes)
+    input_items = list_inputs_repository()
 
     return templates.TemplateResponse(
         "index.html",
@@ -743,73 +1000,9 @@ def index(request: Request):
             "tool_meta": tool_meta,
             "network_frequencies": network_frequencies,
             "total_runs_size": total_size_mb,
+            "input_items": input_items,
         },
     )
-
-
-def compute_runs_size(rows: list[sqlite3.Row]) -> tuple[dict[int, int], int]:
-    run_sizes: dict[int, int] = {}
-    total_bytes = 0
-    for row in rows:
-        input_dir = Path(row["input_dir"]) if row["input_dir"] else None
-        output_dir = Path(row["output_dir"]) if row["output_dir"] else None
-        input_size = compute_dir_size(input_dir) if input_dir else 0
-        output_size = 0
-        if output_dir and not (input_dir and is_safe_path(input_dir, output_dir)):
-            output_size = compute_dir_size(output_dir)
-        size_bytes = input_size + output_size
-        run_sizes[row["id"]] = size_bytes
-        total_bytes += size_bytes
-    return run_sizes, total_bytes
-
-
-@app.get("/login", response_class=HTMLResponse)
-def login_get(request: Request):
-    return templates.TemplateResponse("login.html", {"request": request, "error": ""})
-
-
-@app.post("/login", response_class=HTMLResponse)
-def login_post(request: Request, username: str = Form(...), password: str = Form(...)):
-    conn = get_conn()
-    user = conn.execute(
-        "SELECT * FROM users WHERE username = ? AND active = 1", (username.strip(),)
-    ).fetchone()
-    try:
-        verified = user and pwd_context.verify(password, user["password_hash"])
-    except (ValueError, TypeError):
-        verified = False
-    if not verified:
-        conn.close()
-        return templates.TemplateResponse(
-            "login.html",
-            {"request": request, "error": "Invalid credentials or disabled user."},
-            status_code=401,
-        )
-
-    token = secrets.token_urlsafe(32)
-    conn.execute(
-        "INSERT INTO sessions(token, user_id, created_at, last_seen_at, active) VALUES (?, ?, ?, ?, 1)",
-        (token, user["id"], now_iso(), now_iso()),
-    )
-    conn.commit()
-    conn.close()
-
-    response = RedirectResponse(url="/", status_code=302)
-    response.set_cookie("session_token", token, httponly=True, samesite="lax")
-    return response
-
-
-@app.get("/logout")
-def logout(request: Request):
-    token = request.cookies.get("session_token")
-    if token:
-        conn = get_conn()
-        conn.execute("UPDATE sessions SET active = 0 WHERE token = ?", (token,))
-        conn.commit()
-        conn.close()
-    response = RedirectResponse("/login", status_code=302)
-    response.delete_cookie("session_token")
-    return response
 
 
 @app.post("/run")
@@ -867,104 +1060,32 @@ def run_module(
 
     tool_meta = load_tool_metadata()
     tool_version = tool_meta.get("version", "unknown")
-    cmd = build_cli_command(payload)
-
-    start = time.perf_counter()
-    started_at = now_iso()
-    status = "ok"
-    output_log = ""
-
-    try:
-        proc = subprocess.run(
-            cmd,
-            cwd=str(PROJECT_ROOT),
-            capture_output=True,
-            text=True,
-            check=False,
-            env={**os.environ, "TERM": "xterm", "SSB_RA_NO_CLEAR": "1"},
-        )
-        if proc.returncode != 0:
-            status = "error"
-        output_log = (proc.stdout or "") + "\n" + (proc.stderr or "")
-    except Exception as exc:
-        status = "error"
-        output_log = f"Execution error: {exc}"
-
-    output_log = strip_ansi(output_log)
-    duration = time.perf_counter() - start
-    finished_at = now_iso()
-
-    input_dir_value = ""
-    output_dir_value = ""
-    output_zip_value = ""
-    output_log_file_value = ""
-    base_dir = ""
-    if module == "consistency-check":
-        base_dir = payload.get("input_post", "")
-        input_dir_value = base_dir
-    else:
-        base_dir = payload.get("input", "")
-        input_dir_value = base_dir
-
-    if base_dir:
-        output_dir = find_latest_output_dir(Path(base_dir), build_output_prefixes(module))
-        if output_dir:
-            output_dir_value = str(output_dir)
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            try:
-                for existing in output_dir.glob("RetuningAutomation_*.log"):
-                    existing.unlink(missing_ok=True)
-                legacy_log = output_dir / "webapp_output.log"
-                if legacy_log.exists():
-                    legacy_log.unlink()
-                log_name = f"RetuningAutomation_{timestamp}_v{tool_version}.log"
-                output_log_file = output_dir / log_name
-                output_log_file.write_text(output_log, encoding="utf-8")
-                output_log_file_value = str(output_log_file)
-            except OSError:
-                output_log_file_value = ""
-
-            exports_dir = DATA_DIR / "users" / sanitize_component(user["username"]) / "export"
-            exports_dir.mkdir(parents=True, exist_ok=True)
-            zip_name = f"{sanitize_component(module)}_{timestamp}_v{sanitize_component(tool_version)}.zip"
-            output_zip_path = exports_dir / zip_name
-            try:
-                create_zip_from_dir(output_dir, output_zip_path)
-                output_zip_value = str(output_zip_path)
-            except OSError:
-                output_zip_value = ""
-
-            try:
-                shutil.rmtree(output_dir, ignore_errors=True)
-            except OSError:
-                pass
+    task_input = payload.get("input_post", "") if module == "consistency-check" else payload.get("input", "")
+    task_name = detect_task_name_from_input(task_input)
 
     conn = get_conn()
     conn.execute(
         """
-        INSERT INTO task_runs(user_id, module, tool_version, status, started_at, finished_at, duration_seconds, command, output_log, input_dir, output_dir, output_zip, output_log_file)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO task_runs(user_id, module, tool_version, input_name, status, started_at, command, output_log, payload_json, input_dir)
+        VALUES (?, ?, ?, ?, 'queued', ?, '', '', ?, ?)
         """,
         (
             user["id"],
             module,
             tool_version,
-            status,
-            started_at,
-            finished_at,
-            duration,
-            " ".join(cmd),
-            output_log[:20000],
-            input_dir_value,
-            output_dir_value,
-            output_zip_value,
-            output_log_file_value,
+            task_name,
+            now_iso(),
+            json.dumps(payload),
+            task_input,
         ),
     )
     conn.commit()
     conn.close()
 
+    queue_event.set()
+    ensure_worker_started()
     return RedirectResponse("/", status_code=302)
+
 
 
 @app.post("/settings/update")
@@ -1019,6 +1140,8 @@ async def upload_zip(
     module: str = Form(...),
     kind: str = Form(...),
     session_id: str = Form(""),
+    input_name: str = Form(""),
+    overwrite: str = Form("0"),
     files: list[UploadFile] = File(...),
 ):
     try:
@@ -1029,13 +1152,21 @@ async def upload_zip(
     if not files:
         return {"ok": False, "error": "invalid_file"}
 
-    tool_meta = load_tool_metadata()
-    timestamp = session_id.strip() or datetime.now().strftime("%Y%m%d_%H%M%S")
-    version = tool_meta.get("version", "unknown")
-    user_root = DATA_DIR / "users" / sanitize_component(user["username"]) / "upload"
-    run_root = user_root / f"{sanitize_component(module)}_{sanitize_component(timestamp)}_v{sanitize_component(version)}"
-    target_dir = run_root / sanitize_component(kind)
+    requested_name = sanitize_component(input_name) if input_name.strip() else ""
+    if not requested_name:
+        first_file_name = files[0].filename or "uploaded_input"
+        requested_name = sanitize_component(Path(first_file_name).stem)
+
+    target_dir = INPUTS_REPOSITORY_DIR / requested_name
+    should_overwrite = parse_bool(overwrite)
+    if target_dir.exists() and not should_overwrite:
+        return {"ok": False, "error": "already_exists", "existing_name": requested_name}
+
+    if target_dir.exists() and should_overwrite:
+        shutil.rmtree(target_dir, ignore_errors=True)
+
     target_dir.mkdir(parents=True, exist_ok=True)
+
     for upload in files:
         filename = upload.filename or ""
         lower_name = filename.lower()
@@ -1043,7 +1174,7 @@ async def upload_zip(
             continue
 
         if lower_name.endswith(".zip"):
-            zip_path = run_root / sanitize_component(filename)
+            zip_path = target_dir / sanitize_component(filename)
             with zip_path.open("wb") as buffer:
                 while True:
                     chunk = await upload.read(1024 * 1024)
@@ -1065,7 +1196,89 @@ async def upload_zip(
                         break
                     buffer.write(chunk)
 
-    return {"ok": True, "path": str(target_dir)}
+    size_bytes = compute_dir_size(target_dir)
+    conn = get_conn()
+    conn.execute(
+        """
+        INSERT INTO inputs_repository(user_id, input_name, input_path, uploaded_at, size_bytes)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(input_name) DO UPDATE SET
+            user_id = excluded.user_id,
+            input_path = excluded.input_path,
+            uploaded_at = excluded.uploaded_at,
+            size_bytes = excluded.size_bytes
+        """,
+        (user["id"], requested_name, str(target_dir), now_iso(), size_bytes),
+    )
+    conn.commit()
+    conn.close()
+
+    return {"ok": True, "path": str(target_dir), "input_name": requested_name}
+
+
+@app.get("/inputs/list")
+def inputs_list(request: Request):
+    try:
+        require_user(request)
+    except PermissionError:
+        return {"ok": False, "items": []}
+    return {"ok": True, "items": list_inputs_repository()}
+
+
+@app.post("/inputs/delete")
+async def delete_inputs(request: Request):
+    try:
+        user = require_user(request)
+    except PermissionError:
+        return {"ok": False}
+
+    payload = await request.json()
+    input_ids = payload.get("ids", [])
+    if not input_ids:
+        return {"ok": False}
+
+    conn = get_conn()
+    rows = conn.execute(
+        "SELECT id, user_id, input_path FROM inputs_repository WHERE id IN (%s)" % ",".join("?" for _ in input_ids),
+        tuple(input_ids),
+    ).fetchall()
+    for row in rows:
+        if row["user_id"] != user["id"]:
+            continue
+        input_path = Path(row["input_path"])
+        if is_safe_path(INPUTS_REPOSITORY_DIR, input_path):
+            shutil.rmtree(input_path, ignore_errors=True)
+        conn.execute("DELETE FROM inputs_repository WHERE id = ?", (row["id"],))
+    conn.commit()
+    conn.close()
+    return {"ok": True}
+
+
+@app.post("/admin/inputs/delete")
+async def admin_delete_inputs(request: Request):
+    try:
+        require_admin(request)
+    except PermissionError:
+        return {"ok": False}
+
+    payload = await request.json()
+    input_ids = payload.get("ids", [])
+    if not input_ids:
+        return {"ok": False}
+
+    conn = get_conn()
+    rows = conn.execute(
+        "SELECT id, input_path FROM inputs_repository WHERE id IN (%s)" % ",".join("?" for _ in input_ids),
+        tuple(input_ids),
+    ).fetchall()
+    for row in rows:
+        input_path = Path(row["input_path"])
+        if is_safe_path(INPUTS_REPOSITORY_DIR, input_path):
+            shutil.rmtree(input_path, ignore_errors=True)
+    conn.execute("DELETE FROM inputs_repository WHERE id IN (%s)" % ",".join("?" for _ in input_ids), tuple(input_ids))
+    conn.commit()
+    conn.close()
+    return {"ok": True}
 
 
 @app.get("/logs/latest")
@@ -1293,7 +1506,7 @@ def admin_panel(request: Request):
         row["total_execution_hms"] = format_seconds_hms(row.get("total_execution_seconds"))
     recent_runs = conn.execute(
         """
-        SELECT tr.id, u.username, tr.module, tr.tool_version, tr.status, tr.started_at, tr.finished_at, tr.duration_seconds, tr.output_zip, tr.output_log_file, tr.input_dir, tr.output_dir
+        SELECT tr.id, u.username, tr.module, tr.tool_version, tr.input_name, tr.status, tr.started_at, tr.finished_at, tr.duration_seconds, tr.output_zip, tr.output_log_file, tr.input_dir, tr.output_dir
         FROM task_runs tr
         JOIN users u ON u.id = tr.user_id
         ORDER BY tr.id DESC
@@ -1309,6 +1522,7 @@ def admin_panel(request: Request):
         row["duration_hms"] = format_seconds_hms(row.get("duration_seconds"))
         raw_status = (row.get("status") or "").strip().lower()
         row["status_lower"] = "success" if raw_status == "ok" else raw_status
+        row["status_display"] = format_task_status(row.get("status") or "")
         row["size_mb"] = format_mb(run_sizes.get(row["id"], 0))
 
     return templates.TemplateResponse(
@@ -1319,8 +1533,26 @@ def admin_panel(request: Request):
             "users": users,
             "recent_runs": recent_runs,
             "global_runs_size": format_mb(total_bytes),
+            "input_items": list_inputs_repository(),
+            "admin_settings": get_admin_settings(),
         },
     )
+
+
+@app.post("/admin/settings")
+def admin_settings_update(
+    request: Request,
+    max_cpu_percent: int = Form(MAX_CPU_DEFAULT),
+    max_memory_percent: int = Form(MAX_MEMORY_DEFAULT),
+    max_parallel_tasks: int = Form(MAX_PARALLEL_DEFAULT),
+):
+    try:
+        require_admin(request)
+    except PermissionError:
+        return RedirectResponse("/login", status_code=302)
+    save_admin_settings(max_cpu_percent, max_memory_percent, max_parallel_tasks)
+    queue_event.set()
+    return RedirectResponse("/admin", status_code=302)
 
 
 @app.post("/admin/users/create")
