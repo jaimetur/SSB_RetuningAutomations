@@ -836,8 +836,14 @@ def run_queued_task(task_row: sqlite3.Row) -> None:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             outputs_dir = OUTPUTS_DIR / sanitize_component(username)
             outputs_dir.mkdir(parents=True, exist_ok=True)
-            dest_name = f"{output_dir.name}_{timestamp}_run{task_id}"
+            task_name_component = sanitize_component(detect_task_name_from_input(input_dir_value))
+            module_prefix = sanitize_component(module)
+            dest_name = f"{module_prefix}_{task_name_component}_{timestamp}"
             persisted_output_dir = outputs_dir / sanitize_component(dest_name)
+            suffix = 1
+            while persisted_output_dir.exists():
+                persisted_output_dir = outputs_dir / sanitize_component(f"{dest_name}_{suffix:02d}")
+                suffix += 1
             try:
                 shutil.move(str(output_dir), str(persisted_output_dir))
                 output_dir = persisted_output_dir
@@ -862,6 +868,15 @@ def run_queued_task(task_row: sqlite3.Row) -> None:
             try:
                 create_zip_from_dir(output_dir, output_zip_path)
                 output_zip_value = str(output_zip_path)
+                for item in list(output_dir.iterdir()):
+                    if item == output_zip_path:
+                        continue
+                    if output_log_file_value and item == Path(output_log_file_value):
+                        continue
+                    if item.is_dir():
+                        shutil.rmtree(item, ignore_errors=True)
+                    else:
+                        item.unlink(missing_ok=True)
             except OSError:
                 output_zip_value = ""
 
@@ -1327,11 +1342,12 @@ def run_module(
                 payload_copy["input_post"] = post_value
                 queue_payloads.append(payload_copy)
 
-    base_output_root = Path(payload.get("output") or (OUTPUTS_DIR / sanitize_component(user["username"])))
+    module_prefix = sanitize_component(module)
+    staging_root = DATA_DIR / "task_work" / sanitize_component(user["username"]) / module_prefix
     for idx, queue_payload in enumerate(queue_payloads, start=1):
         task_input = queue_payload.get("input_post", "") if module == "consistency-check" else queue_payload.get("input", "")
-        task_name = detect_task_name_from_input(task_input)
-        task_output_root = base_output_root / f"{sanitize_component(task_name)}_task{idx:03d}"
+        task_name = sanitize_component(detect_task_name_from_input(task_input))
+        task_output_root = staging_root / f"{module_prefix}_{task_name}_{idx:03d}"
         queue_payload["output"] = str(task_output_root)
 
     conn = get_conn()
