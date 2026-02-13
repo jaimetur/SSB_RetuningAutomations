@@ -1040,17 +1040,12 @@ def build_settings_defaults(module_value: str, config_values: dict[str, str]) ->
     }
 
     if module_value == "consistency-check":
-        settings["input_pre"] = config_values.get("last_input_cc_pre", "")
-        settings["input_post"] = config_values.get("last_input_cc_post", "")
+        settings["input_pre"] = ""
+        settings["input_post"] = ""
         settings["input"] = ""
         return settings
 
-    if module_value == "consistency-check-bulk":
-        settings["input"] = config_values.get("last_input_cc_bulk", "") or config_values.get("last_input", "")
-    elif module_value == "final-cleanup":
-        settings["input"] = config_values.get("last_input_final_cleanup", "") or config_values.get("last_input", "")
-    else:
-        settings["input"] = config_values.get("last_input_audit", "") or config_values.get("last_input", "")
+    settings["input"] = ""
 
     settings["input_pre"] = ""
     settings["input_post"] = ""
@@ -1075,20 +1070,13 @@ def persist_settings_to_config(module_value: str, payload: dict[str, Any]) -> No
         "network_frequencies": payload.get("network_frequencies", ""),
     }
 
-    if module_value == "consistency-check":
-        persist_kwargs["last_input_cc_pre"] = payload.get("input_pre", "")
-        persist_kwargs["last_input_cc_post"] = payload.get("input_post", "")
-    else:
-        input_dir = payload.get("input", "")
-        if module_value == "consistency-check-bulk":
-            persist_kwargs["last_input_cc_bulk"] = input_dir
-            persist_kwargs["last_input"] = input_dir
-        elif module_value == "final-cleanup":
-            persist_kwargs["last_input_final_cleanup"] = input_dir
-            persist_kwargs["last_input"] = input_dir
-        else:
-            persist_kwargs["last_input_audit"] = input_dir
-            persist_kwargs["last_input"] = input_dir
+    # Input paths are intentionally not persisted so every execution starts with empty input fields.
+    persist_kwargs["last_input"] = ""
+    persist_kwargs["last_input_audit"] = ""
+    persist_kwargs["last_input_cc_pre"] = ""
+    persist_kwargs["last_input_cc_post"] = ""
+    persist_kwargs["last_input_cc_bulk"] = ""
+    persist_kwargs["last_input_final_cleanup"] = ""
 
     save_cfg_values(
         config_dir=CONFIG_DIR,
@@ -1231,6 +1219,9 @@ def index(request: Request):
     network_frequencies = load_network_frequencies()
     settings.update(user_settings)
     settings["module"] = module_value
+    settings["input"] = ""
+    settings["input_pre"] = ""
+    settings["input_post"] = ""
     cleanup_stale_runs_for_user(user["id"])
 
     conn = get_conn()
@@ -1442,6 +1433,13 @@ def run_module(
         )
     conn.commit()
     conn.close()
+
+    reset_payload = dict(payload)
+    reset_payload["input"] = ""
+    reset_payload["input_pre"] = ""
+    reset_payload["input_post"] = ""
+    save_user_settings(user["id"], reset_payload)
+    persist_settings_to_config(module, reset_payload)
 
     queue_event.set()
     ensure_worker_started()
