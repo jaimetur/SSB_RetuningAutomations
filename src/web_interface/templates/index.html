@@ -1004,26 +1004,27 @@
           }).join("");
 
           if (logRunSelector) {
-            const previousValue = logRunSelector.value;
-            const previousOptionExists = previousValue && data.items.some((item) => String(item.id) === String(previousValue));
-            const runningItem = data.items.find((item) => item.status_lower === "running");
-            const queuedItem = data.items.find((item) => item.status_lower === "queued");
-            const activeItem = runningItem || queuedItem || data.items[0];
+            const runningItems = data.items.filter((item) => item.status_lower === "running");
+            const queuedItems = data.items.filter((item) => item.status_lower === "queued");
+            const firstRunningItem = runningItems.slice().sort((a, b) => Number(a.id) - Number(b.id))[0];
+            const firstQueuedItem = queuedItems.slice().sort((a, b) => Number(a.id) - Number(b.id))[0];
+            const activeItem = firstRunningItem || firstQueuedItem || data.items[0];
             logRunSelector.innerHTML = data.items.map((item) => `<option value="${item.id}">${escapeHtml(item.run_label)}</option>`).join("");
-            if (previousOptionExists && previousValue) {
-              logRunSelector.value = previousValue;
-            } else if (activeItem) {
+            if (activeItem) {
               logRunSelector.value = String(activeItem.id);
             }
             fetchLogByRun();
           }
 
-          const latestStatus = (data.items[0]?.status_lower || "").toLowerCase();
+          const hasRunning = data.items.some((item) => item.status_lower === "running");
+          const hasQueued = data.items.some((item) => item.status_lower === "queued");
+          const hasError = data.items.some((item) => item.status_lower === "error");
+          const latestStatus = hasRunning ? "running" : (hasQueued ? "queued" : ((data.items[0]?.status_lower || "").toLowerCase()));
           runStatusLabel.dataset.latestStatus = latestStatus;
           if (latestStatus === "ok" || latestStatus === "success") {
             runStatusLabel.textContent = "SUCCESS!!!";
             runStatusLabel.className = "run-status status-done";
-          } else if (latestStatus === "error") {
+          } else if (latestStatus === "error" || (!latestStatus && hasError)) {
             runStatusLabel.textContent = "ERROR!!!";
             runStatusLabel.className = "run-status status-error";
           } else if (latestStatus === "running" || latestStatus === "queued") {
