@@ -262,6 +262,16 @@ Initial credentials:
 
 > ⚠️ Change the admin password immediately after first login.
 
+### Inspecting Web Frontend APIs
+The Web Frontend backend is a FastAPI app. You can inspect supported endpoints from:
+- Swagger UI: `/docs`
+- ReDoc: `/redoc`
+- OpenAPI JSON: `/openapi.json`
+
+Examples:
+- Standalone mode: `http://localhost:7878/docs`
+- Dev mode: `http://localhost:7979/docs`
+
 ### Troubleshooting (webapp compose / port 7979)
 - **Container name conflict** (`container name "/ssb_webapp" is already in use`):
   - `run_webapp.sh` now removes stale container name reservations before `up --build`.
@@ -296,6 +306,7 @@ SSB_RetuningAutomations.exe/bin --module <module-name> [options]
 --inputs                  Input folders to process module in batch mode. Example: "--module configuration-audit --inputs dir1 dir2 dir3"
 --input-pre               PRE input folder (only for consistency-check)
 --input-post              POST input folder (only for consistency-check)
+--output                  Output root folder override (all modules). The tool still creates the same module/version subfolder logic under this root.
    
 --n77-ssb-pre             N77 SSB frequency before refarming (Pre), e.g. 647328
 --n77-ssb-post            N77 SSB frequency after refarming (Post), e.g. 653952
@@ -526,4 +537,3 @@ Check the `LICENSE` file at the root of the repo.
 > - OS/arch and Python version (or binary flavor)  
 > - A redacted screenshot or snippet of the input folder structure  
 > - The generated timestamp/version suffix
-
