@@ -1274,7 +1274,7 @@ def serialize_run_row(row: dict[str, Any], run_sizes: dict[int, int]) -> dict[st
     raw_status = (data.get("status") or "").strip().lower()
     data["status_lower"] = "success" if raw_status == "ok" else raw_status
     data["status_display"] = format_task_status(data.get("status") or "")
-    data["run_label"] = f"{data.get('module')}_{data.get('started_at')}_v{data.get('tool_version') or '—'}"
+    data["run_label"] = f"#{data.get('id')} - {data.get('module') or '—'} - {data.get('started_at') or '—'}"
     data["size_mb"] = format_mb(run_sizes.get(int(data.get("id") or 0), 0))
     return data
 
