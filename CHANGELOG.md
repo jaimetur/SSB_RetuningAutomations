@@ -46,7 +46,7 @@
   - Fixed parallel run isolation and add stop action for executions.
   - Fixed queued run output finalization and live log selection.
   - Ensure queue_task folders are always promoted to final output.
-  - Fixed active run tracking in execution logs panel.
+  - Fixed active run tracking in executions logs panel.
     
 - #### 📚 Documentation: 
   - Added FastAPI API discovery documentation for the Web Interface backend.
