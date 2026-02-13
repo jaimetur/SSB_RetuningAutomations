@@ -450,9 +450,13 @@
       scheduleAutoSave();
     }
 
-    function getCheckedInputNames() {
+    function getCheckedInputNames(targetMode = null) {
       return Array.from(document.querySelectorAll(".input-checkbox:checked")).map((box) => {
         const row = box.closest("tr");
+        const rowTarget = row?.querySelector(".send-target")?.value || "single";
+        if (targetMode && rowTarget !== targetMode) {
+          return "";
+        }
         return row?.cells?.[1]?.textContent?.trim() || "";
       }).filter((name) => name);
     }
@@ -1107,9 +1111,14 @@
     });
 
     function assignSelectedRepositoryInputs(targetMode) {
-      const selectedNames = getCheckedInputNames();
+      const selectedFilter = targetMode === "single" ? null : targetMode;
+      const selectedNames = getCheckedInputNames(selectedFilter);
       if (selectedNames.length === 0) {
-        alert("Select at least one input in Inputs Repository panel.");
+        if (targetMode === "pre" || targetMode === "post") {
+          alert(`Select at least one input marked as As Input ${targetMode.toUpperCase()} in Inputs Repository panel.`);
+        } else {
+          alert("Select at least one input in Inputs Repository panel.");
+        }
         return;
       }
       const values = selectedNames.map((name) => buildRepositoryPath(name));
