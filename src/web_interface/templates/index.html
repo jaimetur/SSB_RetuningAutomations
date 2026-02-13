@@ -367,6 +367,7 @@
     const toggleInputsPanelButton = document.getElementById("toggle_inputs_panel");
     const inputsPanelTable = document.getElementById("inputs_panel_table");
     let runsRefreshInFlight = false;
+    let runsRefreshPromise = null;
     const inputsTotalSizeLabel = document.getElementById("inputs_total_size");
 
     const inputFields = {
@@ -969,49 +970,54 @@
         });
     }
 
-    function sortByNewestExecution(a, b) {
-      const aStart = String(a.started_at_raw || a.started_at || "");
-      const bStart = String(b.started_at_raw || b.started_at || "");
-      if (aStart !== bStart) {
-        return bStart.localeCompare(aStart);
-      }
-      return Number(b.id) - Number(a.id);
+    function sortByExecutionOrder(a, b) {
+      return Number(a.id) - Number(b.id);
     }
 
-    function pickExecutionLogRunId(items) {
+    function pickExecutionLogRunId(items, currentRunId) {
+      const currentItem = items.find((item) => String(item.id) === String(currentRunId || ""));
       const runningItems = items
         .filter((item) => item.status_lower === "running")
         .slice()
-        .sort(sortByNewestExecution);
-      if (runningItems.length > 0) {
-        return String(runningItems[0].id);
-      }
-
+        .sort(sortByExecutionOrder);
       const cancelingItems = items
         .filter((item) => item.status_lower === "canceling")
         .slice()
-        .sort(sortByNewestExecution);
-      if (cancelingItems.length > 0) {
-        return String(cancelingItems[0].id);
-      }
-
+        .sort(sortByExecutionOrder);
       const queuedItems = items
         .filter((item) => item.status_lower === "queued")
         .slice()
-        .sort(sortByNewestExecution);
+        .sort(sortByExecutionOrder);
+
+      if (currentItem) {
+        const currentStatus = String(currentItem.status_lower || "").toLowerCase();
+        if (["running", "canceling", "queued"].includes(currentStatus)) {
+          return String(currentItem.id);
+        }
+      }
+
+      if (runningItems.length > 0) {
+        return String(runningItems[0].id);
+      }
+      if (cancelingItems.length > 0) {
+        return String(cancelingItems[0].id);
+      }
       if (queuedItems.length > 0) {
         return String(queuedItems[0].id);
       }
 
+      if (currentItem) {
+        return String(currentItem.id);
+      }
       return items[0] ? String(items[0].id) : "";
     }
 
     function refreshRunsTable() {
       if (runsRefreshInFlight) {
-        return Promise.resolve();
+        return runsRefreshPromise || Promise.resolve();
       }
       runsRefreshInFlight = true;
-      return fetch(buildNoCacheUrl("/runs/list"), { cache: "no-store" })
+      runsRefreshPromise = fetch(buildNoCacheUrl("/runs/list"), { cache: "no-store" })
         .then((res) => res.json())
         .then((data) => {
           if (!data.ok) {
@@ -1051,7 +1057,7 @@
           }).join("");
 
           if (logRunSelector) {
-            const nextRunId = pickExecutionLogRunId(data.items);
+            const nextRunId = pickExecutionLogRunId(data.items, logRunSelector.value);
             logRunSelector.innerHTML = data.items.map((item) => `<option value="${item.id}">${escapeHtml(item.run_label)}</option>`).join("");
             if (nextRunId) {
               logRunSelector.value = nextRunId;
@@ -1080,7 +1086,9 @@
         .catch(() => {})
         .finally(() => {
           runsRefreshInFlight = false;
+          runsRefreshPromise = null;
         });
+      return runsRefreshPromise;
     }
 
     function fetchLogByRun() {
@@ -1413,7 +1421,7 @@
       })
         .then(() => {
           let attempts = 0;
-          const maxAttempts = 8;
+          const maxAttempts = 30;
           const pollStopStatus = () => {
             attempts += 1;
             return refreshRunsTable().then(() => {
@@ -1667,7 +1675,7 @@
       });
     };
     refreshExecutionPanels();
-    executionPanelsRefreshTimer = setInterval(refreshExecutionPanels, 2000);
+    executionPanelsRefreshTimer = setInterval(refreshExecutionPanels, 1000);
 
     let executionLogTimer = null;
     if (executionLogAuto) {
@@ -1679,12 +1687,12 @@
         }
         if (executionLogAuto.checked && !executionLogTimer) {
           fetchLogByRun();
-          executionLogTimer = setInterval(fetchLogByRun, 2000);
+          executionLogTimer = setInterval(fetchLogByRun, 1000);
         }
       });
       if (executionLogAuto.checked) {
         fetchLogByRun();
-        executionLogTimer = setInterval(fetchLogByRun, 2000);
+        executionLogTimer = setInterval(fetchLogByRun, 1000);
       }
     }
 
