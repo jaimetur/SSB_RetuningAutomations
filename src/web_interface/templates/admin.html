@@ -193,7 +193,7 @@
         <div class="log-actions">
           <select id="admin_log_run_selector">
             {% for r in recent_runs %}
-              <option value="{{ r.id }}" {% if loop.first %}selected{% endif %}>#{{ r.id }} - {{ r.module }}</option>
+              <option value="{{ r.id }}" {% if loop.first %}selected{% endif %}>#{{ r.id }} - {{ r.module }} - {{ r.started_at or '—' }}</option>
             {% endfor %}
           </select>
           <button type="button" id="admin_refresh_log">Refresh</button>
