@@ -947,7 +947,20 @@ def run_queued_task(task_row: sqlite3.Row) -> None:
         if changed_dirs:
             output_dir = max(changed_dirs, key=lambda p: p.stat().st_mtime)
         if output_dir is None:
-            output_dir = find_task_output_dir(output_candidates, output_prefixes, started_at)
+            output_snapshot_after = snapshot_output_dirs(output_candidates, output_prefixes)
+            changed_dirs: list[Path] = []
+            for raw_path, after_mtime in output_snapshot_after.items():
+                before_mtime = output_snapshot_before.get(raw_path)
+                if before_mtime is None or after_mtime > before_mtime:
+                    changed_dirs.append(Path(raw_path))
+
+            if changed_dirs:
+                output_dir = max(changed_dirs, key=lambda p: p.stat().st_mtime)
+            if output_dir is None:
+                output_dir = find_task_output_dir(output_candidates, output_prefixes, started_at)
+
+            if output_dir is None and temp_output_root and temp_output_root.exists() and temp_output_root.is_dir() and any(temp_output_root.iterdir()):
+                output_dir = temp_output_root
 
         if output_dir is None and temp_output_root and temp_output_root.exists() and temp_output_root.is_dir() and any(temp_output_root.iterdir()):
             output_dir = temp_output_root

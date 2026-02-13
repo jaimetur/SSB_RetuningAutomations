@@ -19,6 +19,7 @@
   - Adjust output folder naming and keep only zipped artifacts.
   - Added log delete and panel toggles for user/admin dashboards.
   - Reset input paths to empty by default and after each run.
+  - Split API and web access logs with admin-only access audit view.
 
 - #### 🚀 Enhancements:
   - Reworked Web Interface UX with improved collapsible panels and modal dialogs (including explicit accept actions) for clearer user flows.
@@ -31,6 +32,7 @@
   - Clean temp queue folders and refactor inputs repository send flow.
   - Validate input target mapping by module before send.
   - Style invalid target modal as error.
+  - Highlight canceled runs with a dedicated background color.
 
 - #### 🐛 Bug fixes:
   - Fixed missing login routes in the Web Interface.
@@ -41,6 +43,8 @@
   - Fixed output artifact capture and separate batch output roots.
   - Fixed output-root usage and robustly detect per-run output.
   - Fixed parallel run isolation and add stop action for executions.
+  - Fixed queued run output finalization and live log selection.
+  - Ensure queue_task folders are always promoted to final output.
     
 - #### 📚 Documentation: 
   - Added FastAPI API discovery documentation for the Web Interface backend.
