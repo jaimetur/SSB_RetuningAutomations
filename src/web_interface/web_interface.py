@@ -199,6 +199,30 @@ def sanitize_component(value: str) -> str:
     return cleaned or "unknown"
 
 
+def infer_parent_folder_name(files: list[UploadFile]) -> str:
+    for upload in files:
+        filename = (upload.filename or "").strip().replace("\\", "/")
+        parts = [part for part in filename.split("/") if part and part not in {".", ".."}]
+        if len(parts) > 1:
+            return sanitize_component(parts[0])
+    first_name = (files[0].filename or "uploaded_input").strip().replace("\\", "/") if files else "uploaded_input"
+    return sanitize_component(Path(first_name).stem)
+
+
+def execution_output_has_error(output_log: str) -> bool:
+    if not output_log:
+        return False
+    lowered = output_log.lower()
+    if "[error]" in lowered:
+        return True
+    error_markers = (
+        "input folder does not exist or is not a directory",
+        "traceback (most recent call last)",
+        "execution error:",
+    )
+    return any(marker in lowered for marker in error_markers)
+
+
 def safe_extract_zip(zip_path: Path, target_dir: Path) -> None:
     with zipfile.ZipFile(zip_path) as zf:
         for member in zf.infolist():
@@ -750,9 +774,9 @@ def run_queued_task(task_row: sqlite3.Row) -> None:
             check=False,
             env={**os.environ, "TERM": "xterm", "SSB_RA_NO_CLEAR": "1"},
         )
-        if proc.returncode != 0:
-            status = "error"
         output_log = (proc.stdout or "") + "\n" + (proc.stderr or "")
+        if proc.returncode != 0 or execution_output_has_error(output_log):
+            status = "error"
     except Exception as exc:
         status = "error"
         output_log = f"Execution error: {exc}"
@@ -1342,6 +1366,7 @@ async def upload_zip(
     kind: str = Form(...),
     session_id: str = Form(""),
     input_name: str = Form(""),
+    parent_folder_name: str = Form(""),
     overwrite: str = Form("0"),
     files: list[UploadFile] = File(...),
 ):
@@ -1353,21 +1378,19 @@ async def upload_zip(
     if not files:
         return {"ok": False, "error": "invalid_file"}
 
-    requested_name = sanitize_component(input_name) if input_name.strip() else ""
+    inferred_parent = sanitize_component(parent_folder_name) if parent_folder_name.strip() else infer_parent_folder_name(files)
+    requested_name = sanitize_component(input_name) if input_name.strip() else inferred_parent
     if not requested_name:
-        first_file_name = files[0].filename or "uploaded_input"
-        requested_name = sanitize_component(Path(first_file_name).stem)
+        requested_name = inferred_parent or "uploaded_input"
 
     target_dir = INPUTS_REPOSITORY_DIR / requested_name
-    zip_target = INPUTS_REPOSITORY_DIR / f"{requested_name}.zip"
+    zip_target = target_dir / f"{requested_name}.zip"
     should_overwrite = parse_bool(overwrite)
-    if (target_dir.exists() or zip_target.exists()) and not should_overwrite:
+    if target_dir.exists() and not should_overwrite:
         return {"ok": False, "error": "already_exists", "existing_name": requested_name}
 
     if target_dir.exists() and should_overwrite:
         shutil.rmtree(target_dir, ignore_errors=True)
-    if zip_target.exists() and should_overwrite:
-        zip_target.unlink(missing_ok=True)
 
     accepted_files: list[UploadFile] = []
     for upload in files:
@@ -1379,32 +1402,38 @@ async def upload_zip(
     if not accepted_files:
         return {"ok": False, "error": "invalid_file"}
 
-    # Keep already compressed uploads as-is to avoid unnecessary recompression.
+    target_dir.mkdir(parents=True, exist_ok=True)
+
+    # Keep already compressed uploads as-is to avoid unnecessary recompression,
+    # but normalize the zip filename to <input_name>.zip.
     if len(accepted_files) == 1 and (accepted_files[0].filename or "").lower().endswith(".zip"):
         source_upload = accepted_files[0]
-        zip_target.parent.mkdir(parents=True, exist_ok=True)
         with zip_target.open("wb") as buffer:
             while True:
                 chunk = await source_upload.read(1024 * 1024)
                 if not chunk:
                     break
                 buffer.write(chunk)
-        stored_input_path = zip_target
     else:
-        zip_target.parent.mkdir(parents=True, exist_ok=True)
         with zipfile.ZipFile(zip_target, "w", compression=zipfile.ZIP_DEFLATED) as zf:
             for upload in accepted_files:
-                filename = sanitize_component(upload.filename or "uploaded_input")
+                raw_name = (upload.filename or "uploaded_input").replace("\\", "/").strip("/")
+                path_parts = [sanitize_component(part) for part in raw_name.split("/") if part and part not in {".", ".."}]
+                if len(path_parts) > 1 and path_parts[0] == requested_name:
+                    zip_member = "/".join(path_parts[1:])
+                elif len(path_parts) > 1:
+                    zip_member = "/".join(path_parts)
+                else:
+                    zip_member = path_parts[0] if path_parts else "uploaded_input.log"
                 raw_bytes = bytearray()
                 while True:
                     chunk = await upload.read(1024 * 1024)
                     if not chunk:
                         break
                     raw_bytes.extend(chunk)
-                zf.writestr(filename, bytes(raw_bytes))
-        stored_input_path = zip_target
+                zf.writestr(zip_member, bytes(raw_bytes))
 
-    size_bytes = compute_path_size(stored_input_path)
+    size_bytes = compute_path_size(target_dir)
     conn = get_conn()
     conn.execute(
         """
@@ -1416,12 +1445,12 @@ async def upload_zip(
             uploaded_at = excluded.uploaded_at,
             size_bytes = excluded.size_bytes
         """,
-        (user["id"], requested_name, str(stored_input_path), now_iso(), size_bytes),
+        (user["id"], requested_name, str(target_dir), now_iso(), size_bytes),
     )
     conn.commit()
     conn.close()
 
-    return {"ok": True, "path": str(stored_input_path), "input_name": requested_name}
+    return {"ok": True, "path": str(target_dir), "input_name": requested_name}
 
 
 @app.get("/inputs/list", tags=["Inputs"])

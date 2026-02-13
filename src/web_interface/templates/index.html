@@ -403,11 +403,25 @@
     }
 
     function buildRepositoryPath(inputName) {
-      return `/workspace/SSB_RetuningAutomations/data/inputs/${inputName}.zip`;
+      return `/workspace/SSB_RetuningAutomations/data/inputs/${inputName}`;
     }
 
     function parseCsvList(raw) {
       return (raw || "").split(",").map((item) => item.trim()).filter((item) => item);
+    }
+
+    function inferParentFolderName(files) {
+      if (!files || !files.length) {
+        return "uploaded_input";
+      }
+      const first = files[0];
+      const relativePath = first.webkitRelativePath || "";
+      if (relativePath.includes("/")) {
+        return relativePath.split("/")[0] || "uploaded_input";
+      }
+      const firstName = first.name || "uploaded_input";
+      const dot = firstName.lastIndexOf(".");
+      return (dot > 0 ? firstName.slice(0, dot) : firstName) || "uploaded_input";
     }
 
     function buildBatchListHtml(items) {
@@ -561,15 +575,17 @@
       });
     }
 
-    function uploadZip(files, moduleValue, kindValue, inputName, overwrite) {
+    function uploadZip(files, moduleValue, kindValue, inputName, overwrite, parentFolderName = "") {
       const formData = new FormData();
       Array.from(files).forEach((file) => {
-        formData.append("files", file);
+        const uploadName = file.webkitRelativePath || file.name;
+        formData.append("files", file, uploadName);
       });
       formData.append("module", moduleValue);
       formData.append("kind", kindValue);
       formData.append("session_id", uploadSessionId);
       formData.append("input_name", inputName || "");
+      formData.append("parent_folder_name", parentFolderName || "");
       formData.append("overwrite", overwrite ? "1" : "0");
       return fetch("/uploads/zip", {
         method: "POST",
@@ -598,7 +614,8 @@
         if (!targetInput || !kindValue) {
           return;
         }
-        const defaultInputName = files[0] ? (files[0].name.split(".")[0] || "uploaded_input") : "uploaded_input";
+        const inferredParentFolderName = inferParentFolderName(Array.from(files));
+        const defaultInputName = inferredParentFolderName || "uploaded_input";
         const modalInput = await showModal({
           title: "Input name",
           message: "Input name for repository",
@@ -617,7 +634,7 @@
           selectedInputName = defaultInputName;
         }
         targetInput.value = "Uploading...";
-        uploadZip(files, moduleSelect.value, kindValue, selectedInputName, false)
+        uploadZip(files, moduleSelect.value, kindValue, selectedInputName, false, inferredParentFolderName)
           .then(async (data) => {
             if (data.ok && data.path) {
               targetInput.value = data.path;
@@ -628,7 +645,7 @@
             if (data.error === "already_exists") {
               const overwriteResponse = await showModal({ title: "Input already exists", message: `Input ${data.existing_name} already exists. Overwrite?`, confirmText: "Accept", cancelText: "Cancel" });
               if (overwriteResponse.ok) {
-                uploadZip(files, moduleSelect.value, kindValue, selectedInputName, true).then((retry) => {
+                uploadZip(files, moduleSelect.value, kindValue, selectedInputName, true, inferredParentFolderName).then((retry) => {
                   if (retry.ok && retry.path) {
                     targetInput.value = retry.path;
                     scheduleAutoSave();
@@ -1264,9 +1281,10 @@
     });
     toggleInputRows();
     updateModuleAvailability();
-    document.querySelector(".module-form").addEventListener("submit", async (event) => {
+    const moduleForm = document.querySelector(".module-form");
+    moduleForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
       if (isModuleBlocked()) {
-        event.preventDefault();
         updateModuleAvailability();
         return;
       }
@@ -1313,12 +1331,12 @@
       const confirmText = confirmationMessage || `Queue task: ${taskName}?`;
       const queueAnswer = await showModal({ title: "Queue task", message: confirmText, messageHtml: confirmationHtml, confirmText: "Accept", cancelText: "Cancel" });
       if (!queueAnswer.ok) {
-        event.preventDefault();
         return;
       }
       runStatusLabel.textContent = "Task queued...";
       runStatusLabel.className = "run-status status-running";
       runModuleButton.disabled = true;
+      moduleForm.submit();
     });
     if (runStatusLabel) {
       const latestStatus = (runStatusLabel.dataset.latestStatus || "").trim().toLowerCase();
