@@ -111,6 +111,8 @@ TOOL_METADATA_PATH = PROJECT_ROOT / "src" / "SSB_RetuningAutomations.py"
 
 INPUTS_REPOSITORY_DIR = DATA_DIR / "inputs"
 INPUTS_REPOSITORY_DIR.mkdir(parents=True, exist_ok=True)
+OUTPUTS_DIR = DATA_DIR / "outputs"
+OUTPUTS_DIR.mkdir(parents=True, exist_ok=True)
 
 MAX_CPU_DEFAULT = 80
 MAX_MEMORY_DEFAULT = 80
@@ -210,6 +212,8 @@ def create_zip_from_dir(source_dir: Path, dest_zip: Path) -> None:
     with zipfile.ZipFile(dest_zip, "w", compression=zipfile.ZIP_DEFLATED) as zf:
         for file_path in source_dir.rglob("*"):
             if file_path.is_file():
+                if file_path.resolve() == dest_zip.resolve():
+                    continue
                 zf.write(file_path, file_path.relative_to(source_dir))
 
 
@@ -238,13 +242,8 @@ def compute_runs_size(run_rows: list[sqlite3.Row] | list[dict[str, Any]]) -> tup
     total_bytes = 0
     for row in run_rows:
         row_id = int(row["id"])
-        input_dir = Path(row["input_dir"]) if row.get("input_dir") else None
         output_dir = Path(row["output_dir"]) if row.get("output_dir") else None
-        input_size = compute_dir_size(input_dir) if input_dir else 0
-        output_size = 0
-        if output_dir and not (input_dir and is_safe_path(input_dir, output_dir)):
-            output_size = compute_dir_size(output_dir)
-        size_bytes = input_size + output_size
+        size_bytes = compute_dir_size(output_dir) if output_dir else 0
         run_sizes[row_id] = size_bytes
         total_bytes += size_bytes
     return run_sizes, total_bytes
@@ -267,9 +266,11 @@ def format_seconds_hms(value: float | int | None) -> str:
 def get_user_storage_dirs(username: str) -> dict[str, Path]:
     safe_name = sanitize_component(username)
     user_root = DATA_DIR / "users" / safe_name
+    outputs_root = OUTPUTS_DIR / safe_name
     return {
         "uploads": user_root / "upload",
-        "exports": user_root / "export",
+        "outputs": outputs_root,
+        "exports": outputs_root,
     }
 
 
@@ -697,8 +698,17 @@ def run_queued_task(task_row: sqlite3.Row) -> None:
     if input_dir_value:
         output_dir = find_latest_output_dir(Path(input_dir_value), build_output_prefixes(module))
         if output_dir:
-            output_dir_value = str(output_dir)
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            outputs_dir = OUTPUTS_DIR / sanitize_component(username)
+            outputs_dir.mkdir(parents=True, exist_ok=True)
+            dest_name = f"{output_dir.name}_{timestamp}_run{task_id}"
+            persisted_output_dir = outputs_dir / sanitize_component(dest_name)
+            try:
+                shutil.move(str(output_dir), str(persisted_output_dir))
+                output_dir = persisted_output_dir
+            except OSError:
+                pass
+            output_dir_value = str(output_dir)
             try:
                 for existing in output_dir.glob("RetuningAutomation_*.log"):
                     existing.unlink(missing_ok=True)
@@ -712,20 +722,13 @@ def run_queued_task(task_row: sqlite3.Row) -> None:
             except OSError:
                 output_log_file_value = ""
 
-            exports_dir = DATA_DIR / "users" / sanitize_component(username) / "export"
-            exports_dir.mkdir(parents=True, exist_ok=True)
             zip_name = f"{sanitize_component(module)}_{timestamp}_v{sanitize_component(tool_version)}.zip"
-            output_zip_path = exports_dir / zip_name
+            output_zip_path = output_dir / zip_name
             try:
                 create_zip_from_dir(output_dir, output_zip_path)
                 output_zip_value = str(output_zip_path)
             except OSError:
                 output_zip_value = ""
-
-            try:
-                shutil.rmtree(output_dir, ignore_errors=True)
-            except OSError:
-                pass
 
     conn = get_conn()
     conn.execute(
@@ -993,18 +996,7 @@ def index(request: Request):
     ).fetchall()
     conn.close()
 
-    run_sizes: dict[int, int] = {}
-    total_bytes = 0
-    for row in all_runs:
-        input_dir = Path(row["input_dir"]) if row["input_dir"] else None
-        output_dir = Path(row["output_dir"]) if row["output_dir"] else None
-        input_size = compute_dir_size(input_dir) if input_dir else 0
-        output_size = 0
-        if output_dir and not (input_dir and is_safe_path(input_dir, output_dir)):
-            output_size = compute_dir_size(output_dir)
-        size_bytes = input_size + output_size
-        run_sizes[row["id"]] = size_bytes
-        total_bytes += size_bytes
+    run_sizes, total_bytes = compute_runs_size(all_runs)
 
     for row in latest_runs:
         size_bytes = run_sizes.get(row["id"], 0)
@@ -1516,13 +1508,11 @@ async def delete_runs(request: Request):
         output_zip = Path(row["output_zip"]) if row["output_zip"] else None
         output_log = Path(row["output_log_file"]) if row["output_log_file"] else None
 
-        if input_dir and is_safe_path(DATA_DIR / "users", input_dir):
-            shutil.rmtree(input_dir, ignore_errors=True)
-        if output_dir and is_safe_path(DATA_DIR / "users", output_dir):
+        if output_dir and is_safe_path(OUTPUTS_DIR, output_dir):
             shutil.rmtree(output_dir, ignore_errors=True)
-        if output_zip and output_zip.is_file() and is_safe_path(DATA_DIR / "users", output_zip):
+        if output_zip and output_zip.is_file() and is_safe_path(OUTPUTS_DIR, output_zip):
             output_zip.unlink(missing_ok=True)
-        if output_log and output_log.is_file() and is_safe_path(DATA_DIR / "users", output_log):
+        if output_log and output_log.is_file() and is_safe_path(OUTPUTS_DIR, output_log):
             output_log.unlink(missing_ok=True)
 
     conn.execute(
@@ -1560,13 +1550,11 @@ async def admin_delete_runs(request: Request):
         output_zip = Path(row["output_zip"]) if row["output_zip"] else None
         output_log = Path(row["output_log_file"]) if row["output_log_file"] else None
 
-        if input_dir and is_safe_path(DATA_DIR / "users", input_dir):
-            shutil.rmtree(input_dir, ignore_errors=True)
-        if output_dir and is_safe_path(DATA_DIR / "users", output_dir):
+        if output_dir and is_safe_path(OUTPUTS_DIR, output_dir):
             shutil.rmtree(output_dir, ignore_errors=True)
-        if output_zip and output_zip.is_file() and is_safe_path(DATA_DIR / "users", output_zip):
+        if output_zip and output_zip.is_file() and is_safe_path(OUTPUTS_DIR, output_zip):
             output_zip.unlink(missing_ok=True)
-        if output_log and output_log.is_file() and is_safe_path(DATA_DIR / "users", output_log):
+        if output_log and output_log.is_file() and is_safe_path(OUTPUTS_DIR, output_log):
             output_log.unlink(missing_ok=True)
 
     conn.execute(
@@ -1614,8 +1602,8 @@ def admin_panel(request: Request):
     for row in users:
         dirs = get_user_storage_dirs(row["username"])
         uploads_size = compute_dir_size(dirs["uploads"])
-        exports_size = compute_dir_size(dirs["exports"])
-        row["storage_size"] = format_mb(uploads_size + exports_size)
+        outputs_size = compute_dir_size(dirs["outputs"])
+        row["storage_size"] = format_mb(uploads_size + outputs_size)
         row["total_login_hms"] = format_seconds_hms(row.get("total_login_seconds"))
         row["total_execution_hms"] = format_seconds_hms(row.get("total_execution_seconds"))
     recent_runs = conn.execute(
@@ -1807,13 +1795,11 @@ def admin_clear_storage(request: Request, user_id: int):
         output_zip = Path(row["output_zip"]) if row["output_zip"] else None
         output_log = Path(row["output_log_file"]) if row["output_log_file"] else None
 
-        if input_dir and is_safe_path(DATA_DIR / "users", input_dir):
-            shutil.rmtree(input_dir, ignore_errors=True)
-        if output_dir and is_safe_path(DATA_DIR / "users", output_dir):
+        if output_dir and is_safe_path(OUTPUTS_DIR, output_dir):
             shutil.rmtree(output_dir, ignore_errors=True)
-        if output_zip and is_safe_path(DATA_DIR / "users", output_zip):
+        if output_zip and is_safe_path(OUTPUTS_DIR, output_zip):
             output_zip.unlink(missing_ok=True)
-        if output_log and is_safe_path(DATA_DIR / "users", output_log):
+        if output_log and is_safe_path(OUTPUTS_DIR, output_log):
             output_log.unlink(missing_ok=True)
 
     conn.execute("DELETE FROM task_runs WHERE user_id = ?", (user_id,))
@@ -1822,7 +1808,7 @@ def admin_clear_storage(request: Request, user_id: int):
 
     dirs = get_user_storage_dirs(user_row["username"])
     shutil.rmtree(dirs["uploads"], ignore_errors=True)
-    shutil.rmtree(dirs["exports"], ignore_errors=True)
+    shutil.rmtree(dirs["outputs"], ignore_errors=True)
 
     return RedirectResponse("/admin", status_code=302)
 
@@ -1851,6 +1837,6 @@ def admin_delete_user(request: Request, user_id: int):
 
     dirs = get_user_storage_dirs(user_row["username"])
     shutil.rmtree(dirs["uploads"], ignore_errors=True)
-    shutil.rmtree(dirs["exports"], ignore_errors=True)
+    shutil.rmtree(dirs["outputs"], ignore_errors=True)
 
     return RedirectResponse("/admin", status_code=302)
