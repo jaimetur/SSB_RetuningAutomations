@@ -443,20 +443,20 @@ Examples:
 - Standalone mode: `http://localhost:7878/docs`
 - Dev mode: `http://localhost:7979/docs`
 
-### Troubleshooting (webapp compose / port 7979)
+### Troubleshooting (web_interface compose / port 7979)
 - **Container name conflict** (`container name "/ssb-retuning-automations-dev" is already in use`):
   - `run-docker-dev.sh` now removes stale container name reservations before `up --build`.
 - **Browser returns `{"detail":"Not Found"}`**:
   - Ensure you are opening `http://<host>:7979/login` (not just a proxied root).
   - Verify container logs: `docker logs -f ssb-retuning-automations-dev`.
-  - Verify that compose points to the correct repo root (`APP_DIR`) and that `src/wep_interface/wep_interface.py` exists there.
+  - Verify that compose points to the correct repo root (`APP_DIR`) and that `src/web_interface/web_interface.py` exists there.
   - In dev compose, `PYTHONPATH=/app` and `--app-dir /app` are set to force loading the mounted repository code.
 
 ### Persistent data
 - Database and logs stored in `data/`.
   - `web_interface.db`
   - `web-access.log`
-  - `app.log`
+  - `web-interface.log`
 - User inputs/outputs stored under `data/`:
   - `inputs/` for uploaded inputs
   - `outputs/<user>` for downloadable outputs

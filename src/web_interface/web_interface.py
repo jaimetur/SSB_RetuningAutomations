@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, File, Form, Request, UploadFile
+from fastapi.openapi.utils import get_openapi
 from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -32,14 +33,23 @@ DATA_DIR = PROJECT_ROOT / "data"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 DB_PATH = DATA_DIR / "web_interface.db"
 LEGACY_DB_PATH = DATA_DIR / "web_frontend.db"  # legacy filename from previous Web Interface naming
-ACCESS_LOG_PATH = DATA_DIR / "access.log"
-APP_LOG_PATH = DATA_DIR / "app.log"
+ACCESS_LOG_PATH = DATA_DIR / "web-access.log"
+APP_LOG_PATH = DATA_DIR / "web-interface.log"
+LEGACY_ACCESS_LOG_PATH = DATA_DIR / "access.log"
+LEGACY_APP_LOG_PATH = DATA_DIR / "app.log"
 
 if not DB_PATH.exists() and LEGACY_DB_PATH.exists():
     try:
         LEGACY_DB_PATH.rename(DB_PATH)
     except OSError:
         pass
+
+for legacy_log_path, active_log_path in ((LEGACY_ACCESS_LOG_PATH, ACCESS_LOG_PATH), (LEGACY_APP_LOG_PATH, APP_LOG_PATH)):
+    if not active_log_path.exists() and legacy_log_path.exists():
+        try:
+            legacy_log_path.rename(active_log_path)
+        except OSError:
+            pass
 
 CONFIG_DIR = Path.home() / ".retuning_automations"
 CONFIG_PATH = CONFIG_DIR / "config.cfg"
@@ -943,7 +953,32 @@ def build_cli_command(payload: dict[str, Any]) -> list[str]:
     return cmd
 
 
-app = FastAPI(title="SSB Retuning Automations Web Interface")
+OPENAPI_TAGS = [
+    {"name": "Authentication", "description": "Session and account operations."},
+    {"name": "Execution", "description": "Start runs and update user execution settings."},
+    {"name": "Inputs", "description": "Upload and manage reusable input datasets."},
+    {"name": "Runs & Logs", "description": "Download run outputs and inspect logs."},
+    {"name": "Configuration", "description": "Read and export persisted tool configuration."},
+    {"name": "Administration", "description": "Administrative endpoints (grouped at the end)."},
+]
+
+
+app = FastAPI(title="SSB Retuning Automations Web Interface", openapi_tags=OPENAPI_TAGS)
+
+
+def custom_openapi():
+    if app.openapi_schema:
+        return app.openapi_schema
+
+    schema = get_openapi(title=app.title, version="1.0.0", routes=app.routes, tags=OPENAPI_TAGS)
+    if "paths" in schema:
+        sorted_paths = sorted(schema["paths"].items(), key=lambda item: (item[0].startswith("/admin"), item[0]))
+        schema["paths"] = dict(sorted_paths)
+    app.openapi_schema = schema
+    return app.openapi_schema
+
+
+app.openapi = custom_openapi
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
@@ -971,7 +1006,7 @@ def startup() -> None:
     ensure_worker_started()
 
 
-@app.get("/", response_class=HTMLResponse)
+@app.get("/", response_class=HTMLResponse, tags=["Execution"])
 def index(request: Request):
     user = get_current_user(request)
     if user is None:
@@ -1039,12 +1074,12 @@ def index(request: Request):
     )
 
 
-@app.get("/login", response_class=HTMLResponse)
+@app.get("/login", response_class=HTMLResponse, tags=["Authentication"])
 def login_get(request: Request):
     return templates.TemplateResponse("login.html", {"request": request, "error": ""})
 
 
-@app.post("/login", response_class=HTMLResponse)
+@app.post("/login", response_class=HTMLResponse, tags=["Authentication"])
 def login_post(request: Request, username: str = Form(...), password: str = Form(...)):
     conn = get_conn()
     user = conn.execute(
@@ -1075,7 +1110,7 @@ def login_post(request: Request, username: str = Form(...), password: str = Form
     return response
 
 
-@app.get("/logout")
+@app.get("/logout", tags=["Authentication"])
 def logout(request: Request):
     token = request.cookies.get("session_token")
     if token:
@@ -1088,7 +1123,7 @@ def logout(request: Request):
     return response
 
 
-@app.post("/run")
+@app.post("/run", tags=["Execution"])
 def run_module(
     request: Request,
     module: str = Form(...),
@@ -1104,6 +1139,7 @@ def run_module(
     allowed_n77_arfcn_post: str = Form(""),
     ca_freq_filters: str = Form(""),
     cc_freq_filters: str = Form(""),
+    output: str = Form(""),
     network_frequencies: str = Form(""),
     profiles_audit: str | None = Form(None),
     frequency_audit: str | None = Form(None),
@@ -1137,7 +1173,7 @@ def run_module(
         "frequency_audit": frequency_audit,
         "export_correction_cmd": export_correction_cmd,
         "fast_excel_export": fast_excel_export,
-        "output": str((OUTPUTS_DIR / sanitize_component(user["username"])).resolve()),
+        "output": (output or str((OUTPUTS_DIR / sanitize_component(user["username"])).resolve())).strip(),
     }
     save_user_settings(user["id"], payload)
     persist_settings_to_config(module, payload)
@@ -1203,7 +1239,7 @@ def run_module(
 
 
 
-@app.post("/settings/update")
+@app.post("/settings/update", tags=["Execution"])
 async def update_settings(request: Request):
     try:
         user = require_user(request)
@@ -1217,7 +1253,7 @@ async def update_settings(request: Request):
     return {"ok": True}
 
 
-@app.post("/account/change_password")
+@app.post("/account/change_password", tags=["Authentication"])
 async def change_password(request: Request):
     try:
         user = require_user(request)
@@ -1237,19 +1273,19 @@ async def change_password(request: Request):
     return {"ok": True}
 
 
-@app.get("/config/load")
+@app.get("/config/load", tags=["Configuration"])
 def load_config():
     return load_persistent_config()
 
 
-@app.get("/config/export")
+@app.get("/config/export", tags=["Configuration"])
 def export_config():
     if CONFIG_PATH.exists():
         return FileResponse(CONFIG_PATH, filename="config.cfg")
     return PlainTextResponse("", media_type="text/plain")
 
 
-@app.post("/uploads/zip")
+@app.post("/uploads/zip", tags=["Inputs"])
 async def upload_zip(
     request: Request,
     module: str = Form(...),
@@ -1331,7 +1367,7 @@ async def upload_zip(
     return {"ok": True, "path": str(target_dir), "input_name": requested_name}
 
 
-@app.get("/inputs/list")
+@app.get("/inputs/list", tags=["Inputs"])
 def inputs_list(request: Request):
     try:
         require_user(request)
@@ -1340,7 +1376,7 @@ def inputs_list(request: Request):
     return {"ok": True, "items": list_inputs_repository(), "total_size": get_inputs_repository_total_size()}
 
 
-@app.post("/inputs/delete")
+@app.post("/inputs/delete", tags=["Inputs"])
 async def delete_inputs(request: Request):
     try:
         user = require_user(request)
@@ -1377,7 +1413,7 @@ async def delete_inputs(request: Request):
     return {"ok": True}
 
 
-@app.post("/admin/inputs/delete")
+@app.post("/admin/inputs/delete", tags=["Administration"])
 async def admin_delete_inputs(request: Request):
     try:
         require_admin(request)
@@ -1404,7 +1440,7 @@ async def admin_delete_inputs(request: Request):
     return {"ok": True}
 
 
-@app.get("/logs/latest")
+@app.get("/logs/latest", tags=["Runs & Logs"])
 def latest_logs(request: Request):
     try:
         user = require_user(request)
@@ -1420,7 +1456,7 @@ def latest_logs(request: Request):
     return {"log": row["output_log"] if row else ""}
 
 
-@app.get("/logs/by_run/{run_id}")
+@app.get("/logs/by_run/{run_id}", tags=["Runs & Logs"])
 def logs_by_run(request: Request, run_id: int):
     try:
         user = require_user(request)
@@ -1436,7 +1472,7 @@ def logs_by_run(request: Request, run_id: int):
     return {"log": row["output_log"] if row else ""}
 
 
-@app.get("/logs/system")
+@app.get("/logs/system", tags=["Runs & Logs"])
 def logs_system(request: Request, source: str = "app"):
     try:
         require_user(request)
@@ -1452,7 +1488,7 @@ def logs_system(request: Request, source: str = "app"):
     return {"log": read_tail(path)}
 
 
-@app.get("/runs/{run_id}/download")
+@app.get("/runs/{run_id}/download", tags=["Runs & Logs"])
 def download_run_output(request: Request, run_id: int):
     try:
         user = require_user(request)
@@ -1476,7 +1512,7 @@ def download_run_output(request: Request, run_id: int):
     return FileResponse(output_zip, filename=output_zip.name)
 
 
-@app.get("/runs/{run_id}/log")
+@app.get("/runs/{run_id}/log", tags=["Runs & Logs"])
 def download_run_log(request: Request, run_id: int):
     try:
         user = require_user(request)
@@ -1500,7 +1536,7 @@ def download_run_log(request: Request, run_id: int):
     return FileResponse(log_path, filename=log_path.name)
 
 
-@app.post("/runs/delete")
+@app.post("/runs/delete", tags=["Runs & Logs"])
 async def delete_runs(request: Request):
     try:
         user = require_user(request)
@@ -1542,7 +1578,7 @@ async def delete_runs(request: Request):
     return {"ok": True}
 
 
-@app.post("/admin/runs/delete")
+@app.post("/admin/runs/delete", tags=["Administration"])
 async def admin_delete_runs(request: Request):
     try:
         require_admin(request)
@@ -1584,7 +1620,7 @@ async def admin_delete_runs(request: Request):
     return {"ok": True}
 
 
-@app.get("/admin", response_class=HTMLResponse)
+@app.get("/admin", response_class=HTMLResponse, tags=["Administration"])
 def admin_panel(request: Request):
     try:
         admin = require_admin(request)
@@ -1659,7 +1695,7 @@ def admin_panel(request: Request):
     )
 
 
-@app.post("/admin/settings")
+@app.post("/admin/settings", tags=["Administration"])
 def admin_settings_update(
     request: Request,
     max_cpu_percent: int = Form(MAX_CPU_DEFAULT),
@@ -1675,7 +1711,7 @@ def admin_settings_update(
     return RedirectResponse("/admin", status_code=302)
 
 
-@app.post("/admin/users/create")
+@app.post("/admin/users/create", tags=["Administration"])
 def admin_create_user(request: Request, username: str = Form(...), password: str = Form(...), role: str = Form("user")):
     try:
         require_admin(request)
@@ -1696,7 +1732,7 @@ def admin_create_user(request: Request, username: str = Form(...), password: str
     return RedirectResponse("/admin", status_code=302)
 
 
-@app.post("/admin/users/{user_id}/toggle")
+@app.post("/admin/users/{user_id}/toggle", tags=["Administration"])
 def admin_toggle_user(request: Request, user_id: int):
     try:
         admin = require_admin(request)
@@ -1715,7 +1751,7 @@ def admin_toggle_user(request: Request, user_id: int):
     return RedirectResponse("/admin", status_code=302)
 
 
-@app.post("/admin/users/{user_id}/set_password")
+@app.post("/admin/users/{user_id}/set_password", tags=["Administration"])
 def admin_set_password(request: Request, user_id: int, new_password: str = Form(...)):
     try:
         require_admin(request)
@@ -1730,7 +1766,7 @@ def admin_set_password(request: Request, user_id: int, new_password: str = Form(
     return RedirectResponse("/admin", status_code=302)
 
 
-@app.post("/admin/users/{user_id}/update")
+@app.post("/admin/users/{user_id}/update", tags=["Administration"])
 def admin_update_user(
     request: Request,
     user_id: int,
@@ -1788,7 +1824,7 @@ def admin_update_user(
     return RedirectResponse("/admin", status_code=302)
 
 
-@app.post("/admin/users/{user_id}/clear_storage")
+@app.post("/admin/users/{user_id}/clear_storage", tags=["Administration"])
 def admin_clear_storage(request: Request, user_id: int):
     try:
         require_admin(request)
@@ -1830,7 +1866,7 @@ def admin_clear_storage(request: Request, user_id: int):
     return RedirectResponse("/admin", status_code=302)
 
 
-@app.post("/admin/users/{user_id}/delete")
+@app.post("/admin/users/{user_id}/delete", tags=["Administration"])
 def admin_delete_user(request: Request, user_id: int):
     try:
         admin = require_admin(request)
