@@ -122,38 +122,6 @@ jobs:
             docker tag jaimetur/ssb-retuning-automations:${TOOL_VERSION} jaimetur/ssb-retuning-automations:latest-stable
             docker push jaimetur/ssb-retuning-automations:latest-stable
           fi
-          
-
-      # 🐳 Build & Push Windows Docker image (disabled since this doesn't work as expected)
-      - name: 🐳 Build & Push Windows Docker image (disabled since this doesn't work as expected)
-        if: ${{ startsWith(matrix.os, 'windows') }}
-        shell: bash
-        run: |
-          # Define FINAL_RELEASE=false con fallback si está vacío (por ejemplo, en eventos push)
-          FINAL_RELEASE="${{ inputs.final_release }}"
-          FINAL_RELEASE=${FINAL_RELEASE:-false}
-      
-          echo "→ FINAL_RELEASE = $FINAL_RELEASE"
-          
-          # Construir imagen Windows
-          docker build --pull --no-cache \
-                -t jaimetur/ssb-retuning-automations:${TOOL_VERSION}-windows \
-                -f docker/dockerfile-windows .
-          
-          # Push siempre etiqueta obligatoria con la versión
-          docker push jaimetur/ssb-retuning-automations:${TOOL_VERSION}-windows
-          
-          # Push 'latest' if final_release is false OR it's alpha/beta/RC
-          if [[ "${FINAL_RELEASE}" == "false" || "${TOOL_VERSION}" == *alpha* || "${TOOL_VERSION}" == *beta* || "${TOOL_VERSION}" == *RC* ]]; then
-            docker tag jaimetur/ssb-retuning-automations:${TOOL_VERSION}-windows jaimetur/ssb-retuning-automations:latest-windows
-            docker push jaimetur/ssb-retuning-automations:latest-windows
-          fi
-      
-          # Push 'latest-stable' only if final_release is true AND not alpha/beta/RC
-          if [[ "${FINAL_RELEASE}" == "true" && "${TOOL_VERSION}" != *alpha* && "${TOOL_VERSION}" != *beta* && "${TOOL_VERSION}" != *RC* ]]; then
-            docker tag jaimetur/ssb-retuning-automations:${TOOL_VERSION}-windows jaimetur/ssb-retuning-automations:latest-stable-windows
-            docker push jaimetur/ssb-retuning-automations:latest-stable-windows
-          fi
 
       # ================================
       # End of Docker version Generation
