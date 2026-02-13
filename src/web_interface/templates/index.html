@@ -952,8 +952,13 @@
       }
     }
 
+    function buildNoCacheUrl(baseUrl) {
+      const separator = baseUrl.includes("?") ? "&" : "?";
+      return `${baseUrl}${separator}_=${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    }
+
     function fetchLatestLog() {
-      fetch(`/logs/latest?_=${Date.now()}`, { cache: "no-store" })
+      fetch(buildNoCacheUrl("/logs/latest"), { cache: "no-store" })
         .then((res) => res.json())
         .then((data) => {
           renderLog(data.log || "");
@@ -968,10 +973,10 @@
         .filter((item) => item.status_lower === "running" || item.status_lower === "canceling")
         .slice()
         .sort((a, b) => {
-          const aEpoch = Number(itemOrDefault(a.started_at_epoch, 0));
-          const bEpoch = Number(itemOrDefault(b.started_at_epoch, 0));
-          if (aEpoch !== bEpoch) {
-            return aEpoch - bEpoch;
+          const aStart = String(a.started_at_raw || a.started_at || "");
+          const bStart = String(b.started_at_raw || b.started_at || "");
+          if (aStart !== bStart) {
+            return aStart.localeCompare(bStart);
           }
           return Number(a.id) - Number(b.id);
         });
@@ -995,15 +1000,8 @@
       return items[0] ? String(items[0].id) : "";
     }
 
-    function itemOrDefault(value, fallback) {
-      if (value === null || value === undefined || Number.isNaN(Number(value))) {
-        return fallback;
-      }
-      return value;
-    }
-
     function refreshRunsTable() {
-      return fetch(`/runs/list?_=${Date.now()}`, { cache: "no-store" })
+      return fetch(buildNoCacheUrl("/runs/list"), { cache: "no-store" })
         .then((res) => res.json())
         .then((data) => {
           if (!data.ok) {
@@ -1079,7 +1077,7 @@
         fetchLatestLog();
         return;
       }
-      fetch(`/logs/by_run/${runId}?_=${Date.now()}`, { cache: "no-store" })
+      fetch(buildNoCacheUrl(`/logs/by_run/${runId}`), { cache: "no-store" })
         .then((res) => res.json())
         .then((data) => {
           renderLog(data.log || "");
@@ -1110,7 +1108,7 @@
 
     function fetchSystemLog() {
       const source = systemLogSource?.value || "app";
-      fetch(`/logs/system?source=${encodeURIComponent(source)}&_=${Date.now()}`, { cache: "no-store" })
+      fetch(buildNoCacheUrl(`/logs/system?source=${encodeURIComponent(source)}`), { cache: "no-store" })
         .then((res) => res.json())
         .then((data) => {
           renderSystemLog(data.log || "");
@@ -1381,14 +1379,24 @@
       if (!stopRunsAnswer.ok) {
         return;
       }
-      fetch(`/runs/stop?_=${Date.now()}`, {
+      ids.forEach((id) => {
+        const row = document.querySelector(`#runs_panel_table tr[data-run-id="${id}"]`);
+        const statusCell = row?.querySelector(".run-status-cell");
+        if (statusCell) {
+          statusCell.textContent = "Canceling";
+        }
+      });
+
+      fetch(buildNoCacheUrl("/runs/stop"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ids }),
         cache: "no-store"
       })
         .then(() => refreshRunsTable())
-        .then(() => new Promise((resolve) => setTimeout(resolve, 1200)))
+        .then(() => new Promise((resolve) => setTimeout(resolve, 1000)))
+        .then(() => refreshRunsTable())
+        .then(() => new Promise((resolve) => setTimeout(resolve, 2000)))
         .then(() => refreshRunsTable())
         .catch(() => {});
     });
