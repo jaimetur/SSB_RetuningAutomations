@@ -138,6 +138,10 @@ MAX_PARALLEL_DEFAULT = 1
 queue_event = threading.Event()
 worker_started = False
 worker_lock = threading.Lock()
+running_processes: dict[int, subprocess.Popen[str]] = {}
+running_processes_lock = threading.Lock()
+canceled_task_ids: set[int] = set()
+canceled_task_ids_lock = threading.Lock()
 
 
 def get_conn() -> sqlite3.Connection:
@@ -765,7 +769,7 @@ def detect_task_name_from_input(input_path: str) -> str:
 
 def format_task_status(raw_status: str) -> str:
     normalized = (raw_status or "").strip().lower()
-    mapping = {"queued": "Queued", "running": "Running", "ok": "Success", "error": "Error"}
+    mapping = {"queued": "Queued", "running": "Running", "ok": "Success", "error": "Error", "canceled": "Canceled"}
     return mapping.get(normalized, raw_status or "Unknown")
 
 
@@ -807,12 +811,7 @@ def run_queued_task(task_row: sqlite3.Row) -> None:
     payload = json.loads(task_row["payload_json"] or "{}")
     module = task_row["module"]
     username = task_row["username"]
-    started_at = now_iso()
-
-    conn = get_conn()
-    conn.execute("UPDATE task_runs SET status = 'running', started_at = ? WHERE id = ?", (started_at, task_id))
-    conn.commit()
-    conn.close()
+    started_at = task_row["started_at"] or now_iso()
 
     cmd = build_cli_command(payload)
     status = "ok"
@@ -825,20 +824,33 @@ def run_queued_task(task_row: sqlite3.Row) -> None:
     output_snapshot_before = snapshot_output_dirs(output_candidates, output_prefixes)
 
     try:
-        proc = subprocess.run(
+        proc = subprocess.Popen(
             cmd,
             cwd=str(PROJECT_ROOT),
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True,
-            check=False,
             env={**os.environ, "TERM": "xterm", "SSB_RA_NO_CLEAR": "1"},
         )
-        output_log = (proc.stdout or "") + "\n" + (proc.stderr or "")
+        with running_processes_lock:
+            running_processes[task_id] = proc
+        stdout, stderr = proc.communicate()
+        output_log = (stdout or "") + "\n" + (stderr or "")
+        canceled = False
+        with canceled_task_ids_lock:
+            if task_id in canceled_task_ids:
+                canceled_task_ids.remove(task_id)
+                canceled = True
+        if canceled:
+            status = "canceled"
         if proc.returncode != 0 or execution_output_has_error(output_log):
-            status = "error"
+            status = "error" if status != "canceled" else status
     except Exception as exc:
         status = "error"
         output_log = f"Execution error: {exc}"
+    finally:
+        with running_processes_lock:
+            running_processes.pop(task_id, None)
 
     output_log = strip_ansi(output_log)
     duration = time.perf_counter() - start
@@ -939,32 +951,51 @@ def run_queued_task(task_row: sqlite3.Row) -> None:
 def queue_worker() -> None:
     while True:
         queue_event.wait(timeout=1.0)
-        conn = get_conn()
-        admin_settings = get_admin_settings()
-        max_parallel = admin_settings["max_parallel_tasks"]
-        running_count = conn.execute("SELECT COUNT(*) AS total FROM task_runs WHERE status = 'running'").fetchone()["total"]
-        if running_count >= max_parallel:
+        scheduled = False
+        while True:
+            conn = get_conn()
+            admin_settings = get_admin_settings()
+            max_parallel = admin_settings["max_parallel_tasks"]
+            running_count = conn.execute("SELECT COUNT(*) AS total FROM task_runs WHERE status = 'running'").fetchone()["total"]
+            if running_count >= max_parallel:
+                conn.close()
+                break
+
+            queued_row = conn.execute(
+                "SELECT id FROM task_runs WHERE status = 'queued' ORDER BY id ASC LIMIT 1"
+            ).fetchone()
+            if queued_row is None:
+                conn.close()
+                break
+
+            started_at = now_iso()
+            updated = conn.execute(
+                "UPDATE task_runs SET status = 'running', started_at = ? WHERE id = ? AND status = 'queued'",
+                (started_at, queued_row["id"]),
+            )
+            conn.commit()
+            if updated.rowcount == 0:
+                conn.close()
+                continue
+
+            task_row = conn.execute(
+                """
+                SELECT tr.*, u.username
+                FROM task_runs tr
+                JOIN users u ON u.id = tr.user_id
+                WHERE tr.id = ?
+                """,
+                (queued_row["id"],),
+            ).fetchone()
             conn.close()
+            if task_row is None:
+                continue
+
+            threading.Thread(target=run_queued_task, args=(task_row,), daemon=True).start()
+            scheduled = True
+
+        if not scheduled:
             queue_event.clear()
-            continue
-
-        task_row = conn.execute(
-            """
-            SELECT tr.*, u.username
-            FROM task_runs tr
-            JOIN users u ON u.id = tr.user_id
-            WHERE tr.status = 'queued'
-            ORDER BY tr.id ASC
-            LIMIT 1
-            """
-        ).fetchone()
-        conn.close()
-
-        if task_row is None:
-            queue_event.clear()
-            continue
-
-        run_queued_task(task_row)
 
 
 def ensure_worker_started() -> None:
@@ -1374,8 +1405,11 @@ def run_module(
                 queue_payloads.append(payload_copy)
 
     base_output_root = Path(payload.get("output") or (OUTPUTS_DIR / sanitize_component(user["username"])))
-    for queue_payload in queue_payloads:
-        queue_payload["output"] = str(base_output_root)
+    queue_batch_stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    for index, queue_payload in enumerate(queue_payloads, start=1):
+        queue_output_dir = base_output_root / f"queue_task_{queue_batch_stamp}_{index:02d}"
+        queue_output_dir.mkdir(parents=True, exist_ok=True)
+        queue_payload["output"] = str(queue_output_dir)
 
     conn = get_conn()
     for queue_payload in queue_payloads:
@@ -1417,6 +1451,59 @@ async def update_settings(request: Request):
     module_value = payload.get("module") or "configuration-audit"
     persist_settings_to_config(module_value, payload)
     return {"ok": True}
+
+
+@app.post("/runs/stop", tags=["Runs & Logs"])
+async def stop_runs(request: Request):
+    try:
+        user = require_user(request)
+    except PermissionError:
+        return {"ok": False}
+
+    payload = await request.json()
+    raw_run_ids = payload.get("ids", [])
+    run_ids = [int(run_id) for run_id in raw_run_ids if str(run_id).isdigit()]
+    if not run_ids:
+        return {"ok": False}
+
+    conn = get_conn()
+    rows = conn.execute(
+        "SELECT id, status FROM task_runs WHERE user_id = ? AND id IN (%s)" % ",".join("?" for _ in run_ids),
+        (user["id"], *run_ids),
+    ).fetchall()
+
+    now_value = now_iso()
+    queued_ids: list[int] = []
+    running_ids: list[int] = []
+    for row in rows:
+        status = (row["status"] or "").lower()
+        if status == "queued":
+            queued_ids.append(row["id"])
+        elif status == "running":
+            running_ids.append(row["id"])
+
+    if queued_ids:
+        conn.execute(
+            "UPDATE task_runs SET status = 'canceled', finished_at = ?, output_log = TRIM(output_log || '\\nCanceled by user before execution.') WHERE user_id = ? AND id IN (%s)"
+            % ",".join("?" for _ in queued_ids),
+            (now_value, user["id"], *queued_ids),
+        )
+    conn.commit()
+    conn.close()
+
+    with canceled_task_ids_lock:
+        canceled_task_ids.update(running_ids)
+    with running_processes_lock:
+        for task_id in running_ids:
+            proc = running_processes.get(task_id)
+            if proc and proc.poll() is None:
+                try:
+                    proc.terminate()
+                except OSError:
+                    pass
+
+    queue_event.set()
+    return {"ok": True, "stopped": len(queued_ids) + len(running_ids)}
 
 
 @app.post("/account/change_password", tags=["Authentication"])
