@@ -33,6 +33,7 @@
   - Validate input target mapping by module before send.
   - Style invalid target modal as error.
   - Highlight canceled runs with a dedicated background color.
+  - Show execution start time in admin execution log selector.
 
 - #### 🐛 Bug fixes:
   - Fixed missing login routes in the Web Interface.
@@ -45,6 +46,7 @@
   - Fixed parallel run isolation and add stop action for executions.
   - Fixed queued run output finalization and live log selection.
   - Ensure queue_task folders are always promoted to final output.
+  - Fixed active run tracking in execution logs panel.
     
 - #### 📚 Documentation: 
   - Added FastAPI API discovery documentation for the Web Interface backend.
