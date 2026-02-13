@@ -216,83 +216,7 @@ python SSB_RetuningAutomations.py
 
 ---
 
-## 🌐 Web Interface Deployment (2 deployment modes)
-
-A private web interface was added to run the same launcher modules using CLI under the hood.
-
-### Included features
-- Private login with session management.
-- Main dashboard to run modules (`configuration-audit`, `consistency-check`, `consistency-check-bulk`, `final-cleanup`).
-- Per-user parameter persistence (stores the last values used by each user).
-- Upload MO inputs via **Upload MOs** (accepts `.zip`, `.log`, `.txt`) instead of local input folders.
-- Export results are downloadable as ZIPs from the **Latest Runs** panel (output logs are also downloadable).
-- Admin panel to:
-  - create users,
-  - enable/disable access,
-  - reset passwords,
-  - view total logged-in time,
-  - view total backend task execution time.
-- HTTP access log at `data/access.log`.
-
-### Mode A: Standalone / static code image (port 7878)
-Use the main compose in `/docker` when you want a self-contained runtime image (code baked inside image).
-
-```bash
-docker compose -f docker/docker-compose.yml up --build -d
-```
-
-Expected URL:
-- `http://localhost:7878`
-
-### Mode B: Development / repo-linked webapp (port 7979)
-Use the webapp compose when you want hot-reload and latest local source code mounted from your repository.
-
-```bash
-docker compose -f src/webapp/docker-compose-dev.yml up --build -d
-# or
-bash src/webapp/run-docker-dev.sh
-```
-
-Expected URL:
-- `http://localhost:7979`
-
-Initial credentials:
-- user: `admin`
-- password: `admin123`
-
-> ⚠️ Change the admin password immediately after first login.
-
-### Inspecting Web Interface APIs
-The Web Interface backend is a FastAPI app. You can inspect supported endpoints from:
-- Swagger UI: `/docs`
-- ReDoc: `/redoc`
-- OpenAPI JSON: `/openapi.json`
-
-Examples:
-- Standalone mode: `http://localhost:7878/docs`
-- Dev mode: `http://localhost:7979/docs`
-
-### Troubleshooting (webapp compose / port 7979)
-- **Container name conflict** (`container name "/ssb_webapp" is already in use`):
-  - `run_webapp.sh` now removes stale container name reservations before `up --build`.
-- **Browser returns `{"detail":"Not Found"}`**:
-  - Ensure you are opening `http://<host>:7979/login` (not just a proxied root).
-  - Verify container logs: `docker logs -f ssb_webapp`.
-  - Verify that compose points to the correct repo root (`APP_DIR`) and that `src/webapp/webapp.py` exists there.
-  - In dev compose, `PYTHONPATH=/app` and `--app-dir /app` are set to force loading the mounted repository code.
-
-### Persistent data
-- Database and logs stored in `data/`.
-  - `web_interface.db`
-  - `access.log`
-  - `app.log`
-- User uploads/exports stored under `data/users/<user>/`:
-  - `upload/` for uploaded inputs
-  - `export/` for downloadable outputs
-
----
-
-## ⌨️ Command-Line Usage
+## ⌨️ Command-Line (with arguments)
 
 This tool can be executed either with **GUI mode** (default when no arguments are provided) or entirely through **CLI mode** using the options described below.
 
@@ -458,6 +382,82 @@ python SSB_RetuningAutomations.py \
   --allowed-n77-ssb-pre 648672,649200 \
   --allowed-n77-arfcn-pre 648648,648984
 ```
+
+---
+
+## 🌐 Web Interface Deployment (2 deployment modes)
+
+A private web interface was added to run the same launcher modules using CLI under the hood.
+
+### Included features
+- Private login with session management.
+- Main dashboard to run modules (`configuration-audit`, `consistency-check`, `consistency-check-bulk`, `final-cleanup`).
+- Per-user parameter persistence (stores the last values used by each user).
+- Upload MO inputs via **Upload MOs** (accepts `.zip`, `.log`, `.txt`) instead of local input folders.
+- Export results are downloadable as ZIPs from the **Latest Runs** panel (output logs are also downloadable).
+- Admin panel to:
+  - create users,
+  - enable/disable access,
+  - reset passwords,
+  - view total logged-in time,
+  - view total backend task execution time.
+- HTTP access log at `data/access.log`.
+
+### Mode A: Standalone / static code image (port 7878)
+Use the main compose in `/docker` when you want a self-contained runtime image (code baked inside image).
+
+```bash
+docker compose -f docker/docker-compose.yml up --build -d
+```
+
+Expected URL:
+- `http://localhost:7878`
+
+### Mode B: Development / repo-linked webapp (port 7979)
+Use the webapp compose when you want hot-reload and latest local source code mounted from your repository.
+
+```bash
+docker compose -f src/webapp/docker-compose-dev.yml up --build -d
+# or
+bash src/webapp/run-docker-dev.sh
+```
+
+Expected URL:
+- `http://localhost:7979`
+
+Initial credentials:
+- user: `admin`
+- password: `admin123`
+
+> ⚠️ Change the admin password immediately after first login.
+
+### Inspecting Web Interface APIs
+The Web Interface backend is a FastAPI app. You can inspect supported endpoints from:
+- Swagger UI: `/docs`
+- ReDoc: `/redoc`
+- OpenAPI JSON: `/openapi.json`
+
+Examples:
+- Standalone mode: `http://localhost:7878/docs`
+- Dev mode: `http://localhost:7979/docs`
+
+### Troubleshooting (webapp compose / port 7979)
+- **Container name conflict** (`container name "/ssb_webapp" is already in use`):
+  - `run_webapp.sh` now removes stale container name reservations before `up --build`.
+- **Browser returns `{"detail":"Not Found"}`**:
+  - Ensure you are opening `http://<host>:7979/login` (not just a proxied root).
+  - Verify container logs: `docker logs -f ssb_webapp`.
+  - Verify that compose points to the correct repo root (`APP_DIR`) and that `src/webapp/webapp.py` exists there.
+  - In dev compose, `PYTHONPATH=/app` and `--app-dir /app` are set to force loading the mounted repository code.
+
+### Persistent data
+- Database and logs stored in `data/`.
+  - `web_interface.db`
+  - `access.log`
+  - `app.log`
+- User uploads/exports stored under `data/users/<user>/`:
+  - `upload/` for uploaded inputs
+  - `export/` for downloadable outputs
 
 ---
 
