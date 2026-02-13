@@ -6,6 +6,7 @@ services:
     build:
       context: ${APP_DIR}
       dockerfile: docker/Dockerfile
+    image: ${CONTAINER_NAME}:dev
     container_name: ${CONTAINER_NAME:-ssb-retuning-automations-dev}
     ports:
       - "${PORT}:${PORT}"
