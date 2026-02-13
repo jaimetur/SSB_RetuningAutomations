@@ -281,14 +281,14 @@
               <option value="{{ r.id }}" {% if loop.first %}selected{% endif %}>{{ r.run_label }}</option>
             {% endfor %}
           </select>
-          <button type="button" id="refresh_log">Refresh</button>
-          <button type="button" id="clear_log">Clear</button>
-          <button type="button" id="copy_log">Copy all</button>
-          <button type="button" id="copy_selection">Copy selection</button>
           <label class="checkbox">
             <input type="checkbox" id="execution_log_auto" />
             Auto refresh
           </label>
+          <button type="button" id="refresh_log">Refresh</button>
+          <button type="button" id="clear_log">Clear</button>
+          <button type="button" id="copy_log">Copy all</button>
+          <button type="button" id="copy_selection">Copy selection</button>
           <button type="button" id="toggle_execution_log_panel" class="panel-toggle" aria-label="Collapse execution log panel" title="Collapse/Expand">▾</button>
         </div>
       </div>
