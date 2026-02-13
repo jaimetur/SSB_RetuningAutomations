@@ -22,12 +22,19 @@
   - Centralized execution artifacts under `data/outputs` and aligned run-size calculations to that outputs-only model.
   - Hardened Docker startup scripts/deploy flow to better handle stale container conflicts and dual deployment modes.
   - Improved Administrator panel controls for queue execution resources (%CPU, %RAM and max threads).
+  - Improved batch confirmations, modal UX, and zip input storage.
+  - Added sortable columns for executions and inputs panels.
+  - Set default table sorting and auto-refresh run statuses.
+  - Adjust output folder naming and keep only zipped artifacts.
 
 - #### 🐛 Bug fixes:
   - Fixed missing login routes in the Web Interface.
   - Fixed Administrator panel loading issues.
   - Fixed `sqlite3.Row` handling in `compute_runs_size` for frontend pages.
   - Fixed input repository workflow edge cases detected during frontend administration flows.
+  - Fixed input folder zip layout and reliable run confirmation/status.
+  - Fixed output artifact capture and separate batch output roots.
+  - Fixed output-root usage and robustly detect per-run output.
     
 - #### 📚 Documentation: 
   - Added FastAPI API discovery documentation for the Web Interface backend.

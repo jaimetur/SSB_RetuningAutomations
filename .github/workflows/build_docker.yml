@@ -111,11 +111,9 @@ jobs:
           # Push siempre etiqueta obligatoria con la versión
           docker push jaimetur/ssb-retuning-automations:${TOOL_VERSION}
           
-          # Push 'latest' if final_release is false OR it's alpha/beta/RC
-          if [[ "${FINAL_RELEASE}" == "false" || "${TOOL_VERSION}" == *alpha* || "${TOOL_VERSION}" == *beta* || "${TOOL_VERSION}" == *RC* ]]; then
-            docker tag jaimetur/ssb-retuning-automations:${TOOL_VERSION} jaimetur/ssb-retuning-automations:latest
-            docker push jaimetur/ssb-retuning-automations:latest
-          fi
+          # Push 'latest' always
+          docker tag jaimetur/ssb-retuning-automations:${TOOL_VERSION} jaimetur/ssb-retuning-automations:latest
+          docker push jaimetur/ssb-retuning-automations:latest
       
           # Push 'latest-stable' only if final_release is true AND not alpha/beta/RC
           if [[ "${FINAL_RELEASE}" == "true" && "${TOOL_VERSION}" != *alpha* && "${TOOL_VERSION}" != *beta* && "${TOOL_VERSION}" != *RC* ]]; then
