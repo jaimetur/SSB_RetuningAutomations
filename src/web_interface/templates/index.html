@@ -210,7 +210,7 @@
           <tr>
             <td><input type="checkbox" class="input-checkbox" value="{{ item.id }}" data-uploaded-at="{{ item.uploaded_at }}" /></td>
             <td>{{ item.input_name }}</td><td>{{ item.uploaded_by }}</td><td>{{ item.uploaded_at }}</td><td>{{ item.size_mb }}</td>
-            <td><button type="button" class="btn btn-primary send-to-input" data-input-name="{{ item.input_name }}">Send to Input</button></td>
+            <td><button type="button" class="btn btn-primary send-to-input" data-input-name="{{ item.input_name }}" data-input-path="{{ item.input_path }}">Send to Input</button></td>
             <td><select class="send-target"><option value="single">Single Input</option><option value="pre">As Input PRE</option><option value="post">As Input POST</option></select></td>
           </tr>
         {% else %}
@@ -403,11 +403,16 @@
     }
 
     function buildRepositoryPath(inputName) {
-      return `/workspace/SSB_RetuningAutomations/data/inputs/${inputName}`;
+      return `/workspace/SSB_RetuningAutomations/data/inputs/${inputName}.zip`;
     }
 
     function parseCsvList(raw) {
       return (raw || "").split(",").map((item) => item.trim()).filter((item) => item);
+    }
+
+    function buildBatchListHtml(items) {
+      const listItems = items.map((item) => `<li>${escapeHtml(item)}</li>`).join("");
+      return `<div class="modal-list-wrapper"><strong>Queued folders:</strong><ul class="modal-list">${listItems}</ul></div>`;
     }
 
     function refreshInputsRepository() {
@@ -435,7 +440,7 @@
               <td>${escapeHtml(item.uploaded_by)}</td>
               <td>${escapeHtml(item.uploaded_at)}</td>
               <td>${escapeHtml(item.size_mb)}</td>
-              <td><button type="button" class="btn btn-primary send-to-input" data-input-name="${escapeHtml(item.input_name)}">Send to Input</button></td>
+              <td><button type="button" class="btn btn-primary send-to-input" data-input-name="${escapeHtml(item.input_name)}" data-input-path="${escapeHtml(item.input_path || "")}">Send to Input</button></td>
               <td><select class="send-target"><option value="single">Single Input</option><option value="pre">As Input PRE</option><option value="post">As Input POST</option></select></td>
             </tr>
           `).join("");
@@ -443,14 +448,14 @@
         .catch(() => {});
     }
 
-    function assignInputToTarget(inputName, targetMode) {
-      const inputPath = buildRepositoryPath(inputName);
+    function assignInputToTarget(inputName, targetMode, inputPath = "") {
+      const resolvedInputPath = inputPath || buildRepositoryPath(inputName);
       if (targetMode === "pre") {
-        inputFields.input_pre.value = inputPath;
+        inputFields.input_pre.value = resolvedInputPath;
       } else if (targetMode === "post") {
-        inputFields.input_post.value = inputPath;
+        inputFields.input_post.value = resolvedInputPath;
       } else {
-        inputFields.input.value = inputPath;
+        inputFields.input.value = resolvedInputPath;
       }
       scheduleAutoSave();
     }
@@ -464,6 +469,19 @@
         }
         return row?.cells?.[1]?.textContent?.trim() || "";
       }).filter((name) => name);
+    }
+
+
+    function getCheckedInputPaths(targetMode = null) {
+      return Array.from(document.querySelectorAll(".input-checkbox:checked")).map((box) => {
+        const row = box.closest("tr");
+        const rowTarget = row?.querySelector(".send-target")?.value || "single";
+        if (targetMode && rowTarget !== targetMode) {
+          return "";
+        }
+        const button = row?.querySelector(".send-to-input");
+        return button?.dataset?.inputPath || "";
+      }).filter((path) => path);
     }
 
     function isModuleBlocked() {
@@ -480,7 +498,7 @@
     }
 
 
-    function showModal({ title = "Notice", message = "", confirmText = "Accept", cancelText = "", showInput = false, inputValue = "", inputPlaceholder = "" }) {
+    function showModal({ title = "Notice", message = "", messageHtml = "", confirmText = "Accept", cancelText = "", showInput = false, inputValue = "", inputPlaceholder = "" }) {
       return new Promise((resolve) => {
         const backdrop = document.createElement("div");
         backdrop.className = "modal-backdrop";
@@ -491,7 +509,11 @@
         titleEl.textContent = title;
         const messageEl = document.createElement("p");
         messageEl.className = "modal-message";
-        messageEl.textContent = message;
+        if (messageHtml) {
+          messageEl.innerHTML = messageHtml;
+        } else {
+          messageEl.textContent = message;
+        }
         box.appendChild(titleEl);
         box.appendChild(messageEl);
 
@@ -1200,10 +1222,11 @@
       const row = button.closest("tr");
       const targetMode = row?.querySelector(".send-target")?.value || "single";
       const inputName = button.dataset.inputName || "";
+      const inputPath = button.dataset.inputPath || "";
       if (!inputName) {
         return;
       }
-      assignInputToTarget(inputName, targetMode);
+      assignInputToTarget(inputName, targetMode, inputPath);
     });
 
     function assignSelectedRepositoryInputs(targetMode) {
@@ -1217,7 +1240,8 @@
         }
         return;
       }
-      const values = selectedNames.map((name) => buildRepositoryPath(name));
+      const selectedPaths = getCheckedInputPaths(selectedFilter);
+      const values = selectedPaths.length ? selectedPaths : selectedNames.map((name) => buildRepositoryPath(name));
       if (targetMode === "pre") {
         inputFields.input_pre.value = values.join(",");
       } else if (targetMode === "post") {
@@ -1257,10 +1281,12 @@
       selectedInputsPostField.value = "";
 
       let confirmationMessage = "";
+      let confirmationHtml = "";
       if (!isConsistencyCheck && singleInputs.length > 1) {
         selectedInputsSingleField.value = singleInputs.join("|");
         inputFields.input.value = singleInputs[0];
         confirmationMessage = `You selected ${singleInputs.length} inputs. Queue one task per input?`;
+        confirmationHtml = `${escapeHtml(confirmationMessage)}${buildBatchListHtml(singleInputs)}`;
       } else if (isConsistencyCheck && (preInputs.length > 1 || postInputs.length > 1)) {
         const isPairable = preInputs.length === postInputs.length || preInputs.length === 1 || postInputs.length === 1;
         if (!isPairable) {
@@ -1273,13 +1299,19 @@
         inputFields.input_pre.value = preInputs[0] || "";
         inputFields.input_post.value = postInputs[0] || "";
         const queuedCount = Math.max(preInputs.length, postInputs.length);
+        const pairingList = Array.from({ length: queuedCount }).map((_, idx) => {
+          const preValue = preInputs.length > 1 ? preInputs[idx] : (preInputs[0] || "");
+          const postValue = postInputs.length > 1 ? postInputs[idx] : (postInputs[0] || "");
+          return `PRE: ${preValue} | POST: ${postValue}`;
+        });
         confirmationMessage = `You selected multiple PRE/POST inputs. Queue ${queuedCount} task(s) using those pairings?`;
+        confirmationHtml = `${escapeHtml(confirmationMessage)}${buildBatchListHtml(pairingList)}`;
       }
 
       const currentInput = isConsistencyCheck ? (document.getElementById("input_post_path")?.value || "") : (document.getElementById("input_path")?.value || "");
       const taskName = currentInput.split("/").filter(Boolean).pop() || "unknown";
       const confirmText = confirmationMessage || `Queue task: ${taskName}?`;
-      const queueAnswer = await showModal({ title: "Queue task", message: confirmText, confirmText: "Accept", cancelText: "Cancel" });
+      const queueAnswer = await showModal({ title: "Queue task", message: confirmText, messageHtml: confirmationHtml, confirmText: "Accept", cancelText: "Cancel" });
       if (!queueAnswer.ok) {
         event.preventDefault();
         return;

@@ -254,6 +254,54 @@ def compute_dir_size(path: Path) -> int:
     return total
 
 
+def compute_path_size(path: Path) -> int:
+    if not path.exists():
+        return 0
+    if path.is_file():
+        try:
+            return path.stat().st_size
+        except OSError:
+            return 0
+    return compute_dir_size(path)
+
+
+def cleanup_stale_runs_for_user(user_id: int) -> None:
+    conn = get_conn()
+    rows = conn.execute(
+        """
+        SELECT id, status, output_dir, output_zip, output_log_file
+        FROM task_runs
+        WHERE user_id = ?
+        """,
+        (user_id,),
+    ).fetchall()
+
+    stale_ids: list[int] = []
+    for row in rows:
+        status = (row["status"] or "").strip().lower()
+        if status not in {"ok", "error"}:
+            continue
+        tracked_paths = [row["output_dir"], row["output_zip"], row["output_log_file"]]
+        existing = False
+        has_reference = any(tracked_paths)
+        for raw_path in tracked_paths:
+            if not raw_path:
+                continue
+            if Path(raw_path).exists():
+                existing = True
+                break
+        if has_reference and not existing:
+            stale_ids.append(int(row["id"]))
+
+    if stale_ids:
+        conn.execute(
+            "DELETE FROM task_runs WHERE user_id = ? AND id IN (%s)" % ",".join("?" for _ in stale_ids),
+            (user_id, *stale_ids),
+        )
+        conn.commit()
+    conn.close()
+
+
 def compute_runs_size(run_rows: list[sqlite3.Row] | list[dict[str, Any]]) -> tuple[dict[int, int], int]:
     run_sizes: dict[int, int] = {}
     total_bytes = 0
@@ -1020,6 +1068,8 @@ def index(request: Request):
     network_frequencies = load_network_frequencies()
     settings.update(user_settings)
     settings["module"] = module_value
+    cleanup_stale_runs_for_user(user["id"])
+
     conn = get_conn()
     latest_runs = conn.execute(
         """
@@ -1309,45 +1359,52 @@ async def upload_zip(
         requested_name = sanitize_component(Path(first_file_name).stem)
 
     target_dir = INPUTS_REPOSITORY_DIR / requested_name
+    zip_target = INPUTS_REPOSITORY_DIR / f"{requested_name}.zip"
     should_overwrite = parse_bool(overwrite)
-    if target_dir.exists() and not should_overwrite:
+    if (target_dir.exists() or zip_target.exists()) and not should_overwrite:
         return {"ok": False, "error": "already_exists", "existing_name": requested_name}
 
     if target_dir.exists() and should_overwrite:
         shutil.rmtree(target_dir, ignore_errors=True)
+    if zip_target.exists() and should_overwrite:
+        zip_target.unlink(missing_ok=True)
 
-    target_dir.mkdir(parents=True, exist_ok=True)
-
+    accepted_files: list[UploadFile] = []
     for upload in files:
         filename = upload.filename or ""
         lower_name = filename.lower()
-        if not (lower_name.endswith(".zip") or lower_name.endswith(".log") or lower_name.endswith(".logs") or lower_name.endswith(".txt")):
-            continue
+        if lower_name.endswith((".zip", ".log", ".logs", ".txt")):
+            accepted_files.append(upload)
 
-        if lower_name.endswith(".zip"):
-            zip_path = target_dir / sanitize_component(filename)
-            with zip_path.open("wb") as buffer:
+    if not accepted_files:
+        return {"ok": False, "error": "invalid_file"}
+
+    # Keep already compressed uploads as-is to avoid unnecessary recompression.
+    if len(accepted_files) == 1 and (accepted_files[0].filename or "").lower().endswith(".zip"):
+        source_upload = accepted_files[0]
+        zip_target.parent.mkdir(parents=True, exist_ok=True)
+        with zip_target.open("wb") as buffer:
+            while True:
+                chunk = await source_upload.read(1024 * 1024)
+                if not chunk:
+                    break
+                buffer.write(chunk)
+        stored_input_path = zip_target
+    else:
+        zip_target.parent.mkdir(parents=True, exist_ok=True)
+        with zipfile.ZipFile(zip_target, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+            for upload in accepted_files:
+                filename = sanitize_component(upload.filename or "uploaded_input")
+                raw_bytes = bytearray()
                 while True:
                     chunk = await upload.read(1024 * 1024)
                     if not chunk:
                         break
-                    buffer.write(chunk)
-            try:
-                safe_extract_zip(zip_path, target_dir)
-                remove_output_folders(target_dir)
-            finally:
-                if zip_path.exists():
-                    zip_path.unlink()
-        else:
-            dest = target_dir / sanitize_component(filename)
-            with dest.open("wb") as buffer:
-                while True:
-                    chunk = await upload.read(1024 * 1024)
-                    if not chunk:
-                        break
-                    buffer.write(chunk)
+                    raw_bytes.extend(chunk)
+                zf.writestr(filename, bytes(raw_bytes))
+        stored_input_path = zip_target
 
-    size_bytes = compute_dir_size(target_dir)
+    size_bytes = compute_path_size(stored_input_path)
     conn = get_conn()
     conn.execute(
         """
@@ -1359,12 +1416,12 @@ async def upload_zip(
             uploaded_at = excluded.uploaded_at,
             size_bytes = excluded.size_bytes
         """,
-        (user["id"], requested_name, str(target_dir), now_iso(), size_bytes),
+        (user["id"], requested_name, str(stored_input_path), now_iso(), size_bytes),
     )
     conn.commit()
     conn.close()
 
-    return {"ok": True, "path": str(target_dir), "input_name": requested_name}
+    return {"ok": True, "path": str(stored_input_path), "input_name": requested_name}
 
 
 @app.get("/inputs/list", tags=["Inputs"])
@@ -1400,7 +1457,10 @@ async def delete_inputs(request: Request):
             continue
         input_path = Path(row["input_path"])
         if is_safe_path(INPUTS_REPOSITORY_DIR, input_path):
-            shutil.rmtree(input_path, ignore_errors=True)
+            if input_path.is_dir():
+                shutil.rmtree(input_path, ignore_errors=True)
+            elif input_path.exists():
+                input_path.unlink(missing_ok=True)
         conn.execute("DELETE FROM inputs_repository WHERE id = ?", (row["id"],))
     conn.commit()
     conn.close()
@@ -1433,7 +1493,10 @@ async def admin_delete_inputs(request: Request):
     for row in rows:
         input_path = Path(row["input_path"])
         if is_safe_path(INPUTS_REPOSITORY_DIR, input_path):
-            shutil.rmtree(input_path, ignore_errors=True)
+            if input_path.is_dir():
+                shutil.rmtree(input_path, ignore_errors=True)
+            elif input_path.exists():
+                input_path.unlink(missing_ok=True)
     conn.execute("DELETE FROM inputs_repository WHERE id IN (%s)" % ",".join("?" for _ in input_ids), tuple(input_ids))
     conn.commit()
     conn.close()
@@ -1544,7 +1607,8 @@ async def delete_runs(request: Request):
         return {"ok": False}
 
     payload = await request.json()
-    run_ids = payload.get("ids", [])
+    raw_run_ids = payload.get("ids", [])
+    run_ids = [int(run_id) for run_id in raw_run_ids if str(run_id).isdigit()]
     if not run_ids:
         return {"ok": False}
 
@@ -1586,7 +1650,8 @@ async def admin_delete_runs(request: Request):
         return {"ok": False}
 
     payload = await request.json()
-    run_ids = payload.get("ids", [])
+    raw_run_ids = payload.get("ids", [])
+    run_ids = [int(run_id) for run_id in raw_run_ids if str(run_id).isdigit()]
     if not run_ids:
         return {"ok": False}
 
