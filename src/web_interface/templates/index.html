@@ -595,7 +595,7 @@
     }
 
 
-    function showModal({ title = "Notice", message = "", messageHtml = "", confirmText = "Accept", cancelText = "", showInput = false, inputValue = "", inputPlaceholder = "" }) {
+    function showModal({ title = "Notice", message = "", messageHtml = "", confirmText = "Accept", cancelText = "", showInput = false, inputValue = "", inputPlaceholder = "", tone = "info" }) {
       return new Promise((resolve) => {
         const backdrop = document.createElement("div");
         backdrop.className = "modal-backdrop";
@@ -606,6 +606,9 @@
         titleEl.textContent = title;
         const messageEl = document.createElement("p");
         messageEl.className = "modal-message";
+        if (tone === "error") {
+          messageEl.classList.add("modal-message-error");
+        }
         if (messageHtml) {
           messageEl.innerHTML = messageHtml;
         } else {
@@ -1399,17 +1402,19 @@
       if (isConsistencyCheck) {
         if (selectedByTarget.single.length > 0 || (selectedByTarget.pre.length === 0 && selectedByTarget.post.length === 0)) {
           await showModal({
-            title: "Invalid target selection",
+            title: "❌ Invalid target selection",
             message: "Module 2 expects Input PRE and/or Input POST targets only. Please set target column values to Input PRE or Input POST and try again.",
-            confirmText: "Accept"
+            confirmText: "Accept",
+            tone: "error"
           });
           return;
         }
       } else if (selectedByTarget.pre.length > 0 || selectedByTarget.post.length > 0) {
         await showModal({
-          title: "Invalid target selection",
+          title: "❌ Invalid target selection",
           message: "This module expects Single Input targets only. Please set all selected target values to Single Input and try again.",
-          confirmText: "Accept"
+          confirmText: "Accept",
+          tone: "error"
         });
         return;
       }
