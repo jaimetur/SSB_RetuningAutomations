@@ -366,6 +366,7 @@
     const olderInputDatePicker = document.getElementById("older_input_date_picker");
     const toggleInputsPanelButton = document.getElementById("toggle_inputs_panel");
     const inputsPanelTable = document.getElementById("inputs_panel_table");
+    let runsRefreshInFlight = false;
     const inputsTotalSizeLabel = document.getElementById("inputs_total_size");
 
     const inputFields = {
@@ -1001,6 +1002,10 @@
     }
 
     function refreshRunsTable() {
+      if (runsRefreshInFlight) {
+        return Promise.resolve();
+      }
+      runsRefreshInFlight = true;
       return fetch(buildNoCacheUrl("/runs/list"), { cache: "no-store" })
         .then((res) => res.json())
         .then((data) => {
@@ -1068,7 +1073,10 @@
 
           applyCurrentOrDefaultSort("#runs_panel_table table");
         })
-        .catch(() => {});
+        .catch(() => {})
+        .finally(() => {
+          runsRefreshInFlight = false;
+        });
     }
 
     function fetchLogByRun() {
@@ -1090,6 +1098,9 @@
     function renderSystemLog(text) {
       if (!text) {
         systemLogOutput.textContent = "No logs yet.";
+        if (systemLogAuto?.checked) {
+          systemLogOutput.scrollTop = systemLogOutput.scrollHeight;
+        }
         return;
       }
       const lines = text.split(/\r?\n/);
@@ -1104,6 +1115,9 @@
         }
         return `<span class="${cls}">${escapeHtml(line)}</span>`;
       }).join("\n");
+      if (systemLogAuto?.checked) {
+        systemLogOutput.scrollTop = systemLogOutput.scrollHeight;
+      }
     }
 
     function fetchSystemLog() {
@@ -1393,11 +1407,28 @@
         body: JSON.stringify({ ids }),
         cache: "no-store"
       })
-        .then(() => refreshRunsTable())
-        .then(() => new Promise((resolve) => setTimeout(resolve, 1000)))
-        .then(() => refreshRunsTable())
-        .then(() => new Promise((resolve) => setTimeout(resolve, 2000)))
-        .then(() => refreshRunsTable())
+        .then(() => {
+          let attempts = 0;
+          const maxAttempts = 8;
+          const pollStopStatus = () => {
+            attempts += 1;
+            return refreshRunsTable().then(() => {
+              const stillCanceling = ids.some((id) => {
+                const row = document.querySelector(`#runs_panel_table tr[data-run-id="${id}"]`);
+                if (!row) {
+                  return false;
+                }
+                const status = String(row.getAttribute("data-status") || "").toLowerCase();
+                return status === "running" || status === "canceling";
+              });
+              if (!stillCanceling || attempts >= maxAttempts) {
+                return;
+              }
+              return new Promise((resolve) => setTimeout(resolve, 1000)).then(pollStopStatus);
+            });
+          };
+          return pollStopStatus();
+        })
         .catch(() => {});
     });
 
@@ -1643,6 +1674,10 @@
           executionLogTimer = null;
         }
       });
+      if (executionLogAuto.checked) {
+        fetchLogByRun();
+        executionLogTimer = setInterval(fetchLogByRun, 3000);
+      }
     }
 
     let systemLogTimer = null;
@@ -1656,6 +1691,10 @@
           systemLogTimer = null;
         }
       });
+      if (systemLogAuto.checked) {
+        fetchSystemLog();
+        systemLogTimer = setInterval(fetchSystemLog, 3000);
+      }
     }
   </script>
 </body>

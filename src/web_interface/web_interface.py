@@ -20,7 +20,7 @@ from typing import Any
 
 from fastapi import FastAPI, File, Form, Request, UploadFile
 from fastapi.openapi.utils import get_openapi
-from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from passlib.context import CryptContext
@@ -38,6 +38,12 @@ WEB_ACCESS_LOG_PATH = DATA_DIR / "web-access.log"
 APP_LOG_PATH = DATA_DIR / "web-interface.log"
 LEGACY_ACCESS_LOG_PATH = DATA_DIR / "access.log"
 LEGACY_APP_LOG_PATH = DATA_DIR / "app.log"
+
+NO_CACHE_HEADERS = {
+    "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+    "Pragma": "no-cache",
+    "Expires": "0",
+}
 
 if not DB_PATH.exists() and LEGACY_DB_PATH.exists():
     try:
@@ -1853,7 +1859,7 @@ def latest_logs(request: Request):
     try:
         user = require_user(request)
     except PermissionError:
-        return {"log": ""}
+        return JSONResponse({"log": ""}, headers=NO_CACHE_HEADERS)
 
     conn = get_conn()
     row = conn.execute(
@@ -1861,7 +1867,7 @@ def latest_logs(request: Request):
         (user["id"],),
     ).fetchone()
     conn.close()
-    return {"log": row["output_log"] if row else ""}
+    return JSONResponse({"log": row["output_log"] if row else ""}, headers=NO_CACHE_HEADERS)
 
 
 @app.get("/logs/by_run/{run_id}", tags=["Runs & Logs"])
@@ -1869,7 +1875,7 @@ def logs_by_run(request: Request, run_id: int):
     try:
         user = require_user(request)
     except PermissionError:
-        return {"log": ""}
+        return JSONResponse({"log": ""}, headers=NO_CACHE_HEADERS)
 
     conn = get_conn()
     row = conn.execute(
@@ -1877,7 +1883,7 @@ def logs_by_run(request: Request, run_id: int):
         (run_id, user["id"]),
     ).fetchone()
     conn.close()
-    return {"log": row["output_log"] if row else ""}
+    return JSONResponse({"log": row["output_log"] if row else ""}, headers=NO_CACHE_HEADERS)
 
 
 @app.get("/logs/system", tags=["Runs & Logs"])
@@ -1885,19 +1891,19 @@ def logs_system(request: Request, source: str = "app"):
     try:
         user = require_user(request)
     except PermissionError:
-        return {"log": ""}
+        return JSONResponse({"log": ""}, headers=NO_CACHE_HEADERS)
 
     source_key = (source or "app").lower().strip()
     if source_key in {"api", "access"}:
         path = API_LOG_PATH
     elif source_key in {"web-access", "web_access"}:
         if user["role"] != "admin":
-            return {"log": ""}
+            return JSONResponse({"log": ""}, headers=NO_CACHE_HEADERS)
         path = WEB_ACCESS_LOG_PATH
     else:
         path = APP_LOG_PATH
 
-    return {"log": read_tail(path)}
+    return JSONResponse({"log": read_tail(path)}, headers=NO_CACHE_HEADERS)
 
 
 
@@ -1932,19 +1938,19 @@ def admin_logs_by_run(request: Request, run_id: int):
     try:
         require_admin(request)
     except PermissionError:
-        return {"log": ""}
+        return JSONResponse({"log": ""}, headers=NO_CACHE_HEADERS)
 
     conn = get_conn()
     row = conn.execute("SELECT output_log FROM task_runs WHERE id = ?", (run_id,)).fetchone()
     conn.close()
-    return {"log": row["output_log"] if row else ""}
+    return JSONResponse({"log": row["output_log"] if row else ""}, headers=NO_CACHE_HEADERS)
 
 @app.get("/runs/list", tags=["Runs & Logs"])
 def runs_list(request: Request):
     try:
         user = require_user(request)
     except PermissionError:
-        return {"ok": False, "items": []}
+        return JSONResponse({"ok": False, "items": []}, headers=NO_CACHE_HEADERS)
 
     conn = get_conn()
     latest_runs = conn.execute(
@@ -1962,7 +1968,7 @@ def runs_list(request: Request):
 
     run_sizes, _ = compute_runs_size(all_runs)
     items = [serialize_run_row(row, run_sizes) for row in latest_runs]
-    return {"ok": True, "items": items}
+    return JSONResponse({"ok": True, "items": items}, headers=NO_CACHE_HEADERS)
 
 
 @app.get("/runs/{run_id}/download", tags=["Runs & Logs"])
