@@ -14,6 +14,11 @@
   - Added queued execution flow in the Web Interface to process jobs asynchronously.
   - Added a shared Inputs Repository in the Web Interface to upload once and reuse inputs in subsequent executions.
   - Added `--output` override in CLI and integrated the same output-root behavior in the Web Interface.
+  - Improved Administrator panel controls for queue execution resources (%CPU, %RAM and max threads).
+  - Added sortable columns for executions and inputs panels.
+  - Adjust output folder naming and keep only zipped artifacts.
+  - Added log delete and panel toggles for user/admin dashboards.
+  - Reset input paths to empty by default and after each run.
 
 - #### 🚀 Enhancements:
   - Reworked Web Interface UX with improved collapsible panels and modal dialogs (including explicit accept actions) for clearer user flows.
@@ -21,11 +26,11 @@
   - Added PRE/POST-aware filtering for Module 2 repository selection to reduce invalid input picks.
   - Centralized execution artifacts under `data/outputs` and aligned run-size calculations to that outputs-only model.
   - Hardened Docker startup scripts/deploy flow to better handle stale container conflicts and dual deployment modes.
-  - Improved Administrator panel controls for queue execution resources (%CPU, %RAM and max threads).
   - Improved batch confirmations, modal UX, and zip input storage.
-  - Added sortable columns for executions and inputs panels.
   - Set default table sorting and auto-refresh run statuses.
-  - Adjust output folder naming and keep only zipped artifacts.
+  - Clean temp queue folders and refactor inputs repository send flow.
+  - Validate input target mapping by module before send.
+  - Style invalid target modal as error.
 
 - #### 🐛 Bug fixes:
   - Fixed missing login routes in the Web Interface.
@@ -35,6 +40,7 @@
   - Fixed input folder zip layout and reliable run confirmation/status.
   - Fixed output artifact capture and separate batch output roots.
   - Fixed output-root usage and robustly detect per-run output.
+  - Fixed parallel run isolation and add stop action for executions.
     
 - #### 📚 Documentation: 
   - Added FastAPI API discovery documentation for the Web Interface backend.
