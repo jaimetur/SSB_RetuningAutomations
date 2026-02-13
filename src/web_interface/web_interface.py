@@ -423,6 +423,22 @@ def parse_output_candidates(payload: dict[str, Any], input_dir_value: str) -> li
     return candidates
 
 
+def snapshot_output_dirs(candidates: list[Path], prefixes: tuple[str, ...]) -> dict[str, float]:
+    snapshot: dict[str, float] = {}
+    for base in candidates:
+        try:
+            for child in base.iterdir():
+                if not child.is_dir() or not child.name.startswith(prefixes):
+                    continue
+                try:
+                    snapshot[str(child.resolve())] = child.stat().st_mtime
+                except OSError:
+                    continue
+        except OSError:
+            continue
+    return snapshot
+
+
 def find_task_output_dir(candidates: list[Path], prefixes: tuple[str, ...], started_at_raw: str | None) -> Path | None:
     started_at_dt = parse_iso_datetime(started_at_raw)
     all_dirs: list[Path] = []
@@ -803,6 +819,11 @@ def run_queued_task(task_row: sqlite3.Row) -> None:
     output_log = ""
     start = time.perf_counter()
 
+    input_dir_value = payload.get("input_post", "") if module == "consistency-check" else payload.get("input", "")
+    output_candidates = parse_output_candidates(payload, input_dir_value)
+    output_prefixes = build_output_prefixes(module)
+    output_snapshot_before = snapshot_output_dirs(output_candidates, output_prefixes)
+
     try:
         proc = subprocess.run(
             cmd,
@@ -823,15 +844,25 @@ def run_queued_task(task_row: sqlite3.Row) -> None:
     duration = time.perf_counter() - start
     finished_at = now_iso()
 
-    input_dir_value = payload.get("input_post", "") if module == "consistency-check" else payload.get("input", "")
     output_dir_value = ""
     output_zip_value = ""
     output_log_file_value = ""
     tool_version = task_row["tool_version"] or "unknown"
 
     if input_dir_value:
-        output_candidates = parse_output_candidates(payload, input_dir_value)
-        output_dir = find_task_output_dir(output_candidates, build_output_prefixes(module), started_at)
+        output_dir = None
+        output_snapshot_after = snapshot_output_dirs(output_candidates, output_prefixes)
+        changed_dirs: list[Path] = []
+        for raw_path, after_mtime in output_snapshot_after.items():
+            before_mtime = output_snapshot_before.get(raw_path)
+            if before_mtime is None or after_mtime > before_mtime:
+                changed_dirs.append(Path(raw_path))
+
+        if changed_dirs:
+            output_dir = max(changed_dirs, key=lambda p: p.stat().st_mtime)
+        if output_dir is None:
+            output_dir = find_task_output_dir(output_candidates, output_prefixes, started_at)
+
         if output_dir:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             outputs_dir = OUTPUTS_DIR / sanitize_component(username)
@@ -1342,13 +1373,9 @@ def run_module(
                 payload_copy["input_post"] = post_value
                 queue_payloads.append(payload_copy)
 
-    module_prefix = sanitize_component(module)
-    staging_root = DATA_DIR / "task_work" / sanitize_component(user["username"]) / module_prefix
-    for idx, queue_payload in enumerate(queue_payloads, start=1):
-        task_input = queue_payload.get("input_post", "") if module == "consistency-check" else queue_payload.get("input", "")
-        task_name = sanitize_component(detect_task_name_from_input(task_input))
-        task_output_root = staging_root / f"{module_prefix}_{task_name}_{idx:03d}"
-        queue_payload["output"] = str(task_output_root)
+    base_output_root = Path(payload.get("output") or (OUTPUTS_DIR / sanitize_component(user["username"])))
+    for queue_payload in queue_payloads:
+        queue_payload["output"] = str(base_output_root)
 
     conn = get_conn()
     for queue_payload in queue_payloads:
