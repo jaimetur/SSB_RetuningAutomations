@@ -201,7 +201,7 @@ The feature to auto-detect Pre/Post folders given only one Input folder with a p
 
 # 🔀 Run Modes
 
-## 🖥️ GUI (no arguments)
+## 🖥️ Graphical User Interface (GUI with no arguments)
 Running the launcher **without CLI arguments** opens a compact Tkinter dialog where you can:
 - Pick the **module** from a combo box.  
 - Choose the **input folder** (Browse…).  
@@ -216,7 +216,7 @@ python SSB_RetuningAutomations.py
 
 ---
 
-## ⌨️ Command-Line (with arguments)
+## ⌨️ Command-Line Interface (with arguments)
 
 This tool can be executed either with **GUI mode** (default when no arguments are provided) or entirely through **CLI mode** using the options described below.
 
@@ -350,7 +350,7 @@ Forces CLI-only mode even if arguments are missing.
 
 ---
 
-## 🧪 Usage Examples
+## 🧪 Command-Line Interface (Usage Examples)
 
 ### 1. Configuration Audit
 
@@ -385,9 +385,9 @@ python SSB_RetuningAutomations.py \
 
 ---
 
-## 🌐 Web Interface Deployment (2 deployment modes)
+## 🌐 Web Interface 
 
-A private web interface was added to run the same launcher modules using CLI under the hood.
+A new web interface was added to run the same launcher modules using CLI under the hood.
 
 ### Included features
 - Private login with session management.
@@ -401,9 +401,11 @@ A private web interface was added to run the same launcher modules using CLI und
   - reset passwords,
   - view total logged-in time,
   - view total backend task execution time.
-- HTTP access log at `data/access.log`.
+- HTTP access log at `data/web-access.log`.
 
-### Mode A: Standalone / static code image (port 7878)
+### Two deployment modes are available:
+
+#### Mode A: Standalone / static code image (port 7878)
 Use the main compose in `/docker` when you want a self-contained runtime image (code baked inside image).
 
 ```bash
@@ -413,13 +415,13 @@ docker compose -f docker/docker-compose.yml up --build -d
 Expected URL:
 - `http://localhost:7878`
 
-### Mode B: Development / repo-linked webapp (port 7979)
-Use the webapp compose when you want hot-reload and latest local source code mounted from your repository.
+#### Mode B: Development / repo-linked web interface (port 7979)
+Use the development compose (docker-compose-dev) when you want hot-reload and latest local source code mounted from your repository.
 
 ```bash
-docker compose -f src/webapp/docker-compose-dev.yml up --build -d
+docker compose -f src/web_interface/docker-compose-dev.yml up --build -d
 # or
-bash src/webapp/run-docker-dev.sh
+bash src/web_interface/run-docker-dev.sh
 ```
 
 Expected URL:
@@ -442,22 +444,22 @@ Examples:
 - Dev mode: `http://localhost:7979/docs`
 
 ### Troubleshooting (webapp compose / port 7979)
-- **Container name conflict** (`container name "/ssb_webapp" is already in use`):
-  - `run_webapp.sh` now removes stale container name reservations before `up --build`.
+- **Container name conflict** (`container name "/ssb-retuning-automations-dev" is already in use`):
+  - `run-docker-dev.sh` now removes stale container name reservations before `up --build`.
 - **Browser returns `{"detail":"Not Found"}`**:
   - Ensure you are opening `http://<host>:7979/login` (not just a proxied root).
-  - Verify container logs: `docker logs -f ssb_webapp`.
-  - Verify that compose points to the correct repo root (`APP_DIR`) and that `src/webapp/webapp.py` exists there.
+  - Verify container logs: `docker logs -f ssb-retuning-automations-dev`.
+  - Verify that compose points to the correct repo root (`APP_DIR`) and that `src/wep_interface/wep_interface.py` exists there.
   - In dev compose, `PYTHONPATH=/app` and `--app-dir /app` are set to force loading the mounted repository code.
 
 ### Persistent data
 - Database and logs stored in `data/`.
   - `web_interface.db`
-  - `access.log`
+  - `web-access.log`
   - `app.log`
-- User uploads/exports stored under `data/users/<user>/`:
-  - `upload/` for uploaded inputs
-  - `export/` for downloadable outputs
+- User inputs/outputs stored under `data/`:
+  - `inputs/` for uploaded inputs
+  - `outputs/<user>` for downloadable outputs
 
 ---
 
