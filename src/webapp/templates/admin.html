@@ -109,7 +109,7 @@
         </div>
       </div>
       <input type="date" id="older_date_picker" class="hidden" />
-      <div class="table-scroll">
+      <div class="table-scroll" id="runs_panel_table">
       <table>
         <thead><tr><th></th><th>ID</th><th>User</th><th>Module</th><th>Version</th><th>Input</th><th>Status</th><th>Start</th><th>End</th><th>Duration</th><th>Output</th><th>Log</th><th>Size</th></tr></thead>
         <tbody>
@@ -194,7 +194,7 @@
     const selectErrorRunsButton = document.getElementById("select_error_runs");
     const deleteSelectedRunsButton = document.getElementById("delete_selected_runs");
     const toggleRunsPanelButton = document.getElementById("toggle_runs_panel");
-    const runsTable = document.querySelector(".card .table-scroll");
+    const runsTable = document.getElementById("runs_panel_table");
     const selectAllInputsButton = document.getElementById("select_all_inputs");
     const unselectAllInputsButton = document.getElementById("unselect_all_inputs");
     const selectOlderInputsButton = document.getElementById("select_older_inputs");

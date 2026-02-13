@@ -1075,6 +1075,9 @@ def run_module(
     frequency_audit: str | None = Form(None),
     export_correction_cmd: str | None = Form(None),
     fast_excel_export: str | None = Form(None),
+    selected_inputs_single: str = Form(""),
+    selected_inputs_pre: str = Form(""),
+    selected_inputs_post: str = Form(""),
 ):
     try:
         user = require_user(request)
@@ -1109,25 +1112,53 @@ def run_module(
 
     tool_meta = load_tool_metadata()
     tool_version = tool_meta.get("version", "unknown")
-    task_input = payload.get("input_post", "") if module == "consistency-check" else payload.get("input", "")
-    task_name = detect_task_name_from_input(task_input)
+
+    def parse_selected(raw: str) -> list[str]:
+        return [item.strip() for item in (raw or "").split("|") if item.strip()]
+
+    queue_payloads = [payload]
+    selected_single = parse_selected(selected_inputs_single)
+    selected_pre = parse_selected(selected_inputs_pre)
+    selected_post = parse_selected(selected_inputs_post)
+
+    if module != "consistency-check" and len(selected_single) > 1:
+        queue_payloads = []
+        for selected_input in selected_single:
+            payload_copy = dict(payload)
+            payload_copy["input"] = selected_input
+            queue_payloads.append(payload_copy)
+    elif module == "consistency-check" and (len(selected_pre) > 1 or len(selected_post) > 1):
+        pairable = len(selected_pre) == len(selected_post) or len(selected_pre) == 1 or len(selected_post) == 1
+        if pairable:
+            queue_payloads = []
+            queued_len = max(len(selected_pre), len(selected_post))
+            for idx in range(queued_len):
+                pre_value = selected_pre[idx] if len(selected_pre) > 1 else (selected_pre[0] if selected_pre else payload.get("input_pre", ""))
+                post_value = selected_post[idx] if len(selected_post) > 1 else (selected_post[0] if selected_post else payload.get("input_post", ""))
+                payload_copy = dict(payload)
+                payload_copy["input_pre"] = pre_value
+                payload_copy["input_post"] = post_value
+                queue_payloads.append(payload_copy)
 
     conn = get_conn()
-    conn.execute(
-        """
-        INSERT INTO task_runs(user_id, module, tool_version, input_name, status, started_at, command, output_log, payload_json, input_dir)
-        VALUES (?, ?, ?, ?, 'queued', ?, '', '', ?, ?)
-        """,
-        (
-            user["id"],
-            module,
-            tool_version,
-            task_name,
-            now_iso(),
-            json.dumps(payload),
-            task_input,
-        ),
-    )
+    for queue_payload in queue_payloads:
+        task_input = queue_payload.get("input_post", "") if module == "consistency-check" else queue_payload.get("input", "")
+        task_name = detect_task_name_from_input(task_input)
+        conn.execute(
+            """
+            INSERT INTO task_runs(user_id, module, tool_version, input_name, status, started_at, command, output_log, payload_json, input_dir)
+            VALUES (?, ?, ?, ?, 'queued', ?, '', '', ?, ?)
+            """,
+            (
+                user["id"],
+                module,
+                tool_version,
+                task_name,
+                now_iso(),
+                json.dumps(queue_payload),
+                task_input,
+            ),
+        )
     conn.commit()
     conn.close()
 
