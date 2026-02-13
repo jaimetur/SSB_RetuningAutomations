@@ -887,6 +887,8 @@ def build_cli_command(payload: dict[str, Any]) -> list[str]:
         cmd.extend(["--input-pre", payload["input_pre"]])
     if payload.get("input_post"):
         cmd.extend(["--input-post", payload["input_post"]])
+    if payload.get("output"):
+        cmd.extend(["--output", payload["output"]])
 
     if payload.get("n77_ssb_pre"):
         cmd.extend(["--n77-ssb-pre", payload["n77_ssb_pre"]])
@@ -1121,6 +1123,7 @@ def run_module(
         "frequency_audit": frequency_audit,
         "export_correction_cmd": export_correction_cmd,
         "fast_excel_export": fast_excel_export,
+        "output": str((OUTPUTS_DIR / sanitize_component(user["username"])).resolve()),
     }
     save_user_settings(user["id"], payload)
     persist_settings_to_config(module, payload)
