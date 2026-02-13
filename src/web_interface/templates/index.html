@@ -994,11 +994,18 @@
           }).join("");
 
           if (logRunSelector) {
-            const currentValue = logRunSelector.value;
+            const previousValue = logRunSelector.value;
+            const previousOptionExists = previousValue && data.items.some((item) => String(item.id) === String(previousValue));
+            const runningItem = data.items.find((item) => item.status_lower === "running");
+            const queuedItem = data.items.find((item) => item.status_lower === "queued");
+            const activeItem = runningItem || queuedItem || data.items[0];
             logRunSelector.innerHTML = data.items.map((item) => `<option value="${item.id}">${escapeHtml(item.run_label)}</option>`).join("");
-            if (currentValue && data.items.some((item) => String(item.id) === String(currentValue))) {
-              logRunSelector.value = currentValue;
+            if (previousOptionExists && previousValue) {
+              logRunSelector.value = previousValue;
+            } else if (activeItem) {
+              logRunSelector.value = String(activeItem.id);
             }
+            fetchLogByRun();
           }
 
           const latestStatus = (data.items[0]?.status_lower || "").toLowerCase();

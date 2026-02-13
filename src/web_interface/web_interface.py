@@ -823,19 +823,42 @@ def run_queued_task(task_row: sqlite3.Row) -> None:
     output_prefixes = build_output_prefixes(module)
     output_snapshot_before = snapshot_output_dirs(output_candidates, output_prefixes)
 
+    def persist_partial_output_log(log_text: str) -> None:
+        conn_partial = get_conn()
+        conn_partial.execute(
+            "UPDATE task_runs SET output_log = ? WHERE id = ?",
+            (strip_ansi(log_text)[:20000], task_id),
+        )
+        conn_partial.commit()
+        conn_partial.close()
+
     try:
         proc = subprocess.Popen(
             cmd,
             cwd=str(PROJECT_ROOT),
             stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
             text=True,
+            bufsize=1,
             env={**os.environ, "TERM": "xterm", "SSB_RA_NO_CLEAR": "1"},
         )
         with running_processes_lock:
             running_processes[task_id] = proc
-        stdout, stderr = proc.communicate()
-        output_log = (stdout or "") + "\n" + (stderr or "")
+        output_chunks: list[str] = []
+        last_partial_update = time.perf_counter()
+        stream = proc.stdout
+        if stream is not None:
+            for line in iter(stream.readline, ""):
+                output_chunks.append(line)
+                now_perf = time.perf_counter()
+                if now_perf - last_partial_update >= 1.0:
+                    persist_partial_output_log("".join(output_chunks))
+                    last_partial_update = now_perf
+            stream.close()
+
+        proc.wait()
+        output_log = "".join(output_chunks)
+        persist_partial_output_log(output_log)
         canceled = False
         with canceled_task_ids_lock:
             if task_id in canceled_task_ids:
@@ -874,6 +897,12 @@ def run_queued_task(task_row: sqlite3.Row) -> None:
             output_dir = max(changed_dirs, key=lambda p: p.stat().st_mtime)
         if output_dir is None:
             output_dir = find_task_output_dir(output_candidates, output_prefixes, started_at)
+
+        temp_output_root_value = payload.get("output", "")
+        if output_dir is None and temp_output_root_value:
+            temp_output_root = Path(temp_output_root_value)
+            if temp_output_root.exists() and temp_output_root.is_dir() and any(temp_output_root.iterdir()):
+                output_dir = temp_output_root
 
         if output_dir:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
