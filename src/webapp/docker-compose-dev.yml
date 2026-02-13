@@ -1,4 +1,4 @@
-# ssb-retuning-automations-dev (including Web frontend) compose file for development.
+# ssb-retuning-automations-dev (including Web Interface) compose file for development.
 
 version: '3.9'
 services:

@@ -1,1 +1,1 @@
-"""Web frontend package."""
+"""Web interface package."""

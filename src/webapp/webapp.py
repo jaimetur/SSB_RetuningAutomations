@@ -30,9 +30,16 @@ BASE_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = BASE_DIR.parents[1]
 DATA_DIR = PROJECT_ROOT / "data"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
-DB_PATH = DATA_DIR / "web_frontend.db"
+DB_PATH = DATA_DIR / "web_interface.db"
+LEGACY_DB_PATH = DATA_DIR / "web_frontend.db"  # legacy filename from previous Web Interface naming
 ACCESS_LOG_PATH = DATA_DIR / "access.log"
 APP_LOG_PATH = DATA_DIR / "app.log"
+
+if not DB_PATH.exists() and LEGACY_DB_PATH.exists():
+    try:
+        LEGACY_DB_PATH.rename(DB_PATH)
+    except OSError:
+        pass
 
 CONFIG_DIR = Path.home() / ".retuning_automations"
 CONFIG_PATH = CONFIG_DIR / "config.cfg"
@@ -67,7 +74,7 @@ pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 
 
 def setup_logging() -> logging.Logger:
-    logger = logging.getLogger("web_frontend")
+    logger = logging.getLogger("web_interface")
     logger.setLevel(logging.INFO)
     if not logger.handlers:
         # Persist application logs across restarts.
@@ -104,7 +111,7 @@ MODULE_OPTIONS = [
     ("consistency-check-bulk", "3. Consistency Check (Bulk mode Pre/Post auto-detection)"),
     ("final-cleanup", "4. Final Clean-Up"),
 ]
-WEB_FRONTEND_BLOCKED_MODULES = {"consistency-check-bulk"}
+WEB_INTERFACE_BLOCKED_MODULES = {"consistency-check-bulk"}
 SESSION_IDLE_TIMEOUT_SECONDS = 600
 
 TOOL_METADATA_PATH = PROJECT_ROOT / "src" / "SSB_RetuningAutomations.py"
@@ -936,7 +943,7 @@ def build_cli_command(payload: dict[str, Any]) -> list[str]:
     return cmd
 
 
-app = FastAPI(title="SSB Retuning Automations Web Frontend")
+app = FastAPI(title="SSB Retuning Automations Web Interface")
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
@@ -1134,8 +1141,8 @@ def run_module(
     }
     save_user_settings(user["id"], payload)
     persist_settings_to_config(module, payload)
-    if module in WEB_FRONTEND_BLOCKED_MODULES:
-        logger.info("Blocked module run from web frontend: %s", module)
+    if module in WEB_INTERFACE_BLOCKED_MODULES:
+        logger.info("Blocked module run from web interface: %s", module)
         return RedirectResponse("/", status_code=302)
 
     tool_meta = load_tool_metadata()

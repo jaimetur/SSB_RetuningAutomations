@@ -216,9 +216,9 @@ python SSB_RetuningAutomations.py
 
 ---
 
-## 🌐 Private Web Frontend (2 deployment modes)
+## 🌐 Web Interface Deployment (2 deployment modes)
 
-A private web frontend was added to run the same launcher modules using CLI under the hood.
+A private web interface was added to run the same launcher modules using CLI under the hood.
 
 ### Included features
 - Private login with session management.
@@ -262,8 +262,8 @@ Initial credentials:
 
 > ⚠️ Change the admin password immediately after first login.
 
-### Inspecting Web Frontend APIs
-The Web Frontend backend is a FastAPI app. You can inspect supported endpoints from:
+### Inspecting Web Interface APIs
+The Web Interface backend is a FastAPI app. You can inspect supported endpoints from:
 - Swagger UI: `/docs`
 - ReDoc: `/redoc`
 - OpenAPI JSON: `/openapi.json`
@@ -283,7 +283,7 @@ Examples:
 
 ### Persistent data
 - Database and logs stored in `data/`.
-  - `web_frontend.db`
+  - `web_interface.db`
   - `access.log`
   - `app.log`
 - User uploads/exports stored under `data/users/<user>/`:

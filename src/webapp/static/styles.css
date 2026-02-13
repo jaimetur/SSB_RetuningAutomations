@@ -1,4 +1,4 @@
-/* Base layout and typography for the web frontend. */
+/* Base layout and typography for the web interface. */
 body{font-family:Arial,sans-serif;background:#e6ebf2;margin:0;padding:0;color:#1b2430}
 body::before{content:"";position:fixed;inset:0;background-image:radial-gradient(circle at 1px 1px,rgba(17,24,39,.08) 1px,transparent 0),radial-gradient(circle at 1px 1px,rgba(17,24,39,.04) 1px,transparent 0);background-size:28px 28px,10px 10px;pointer-events:none;z-index:-1}
 .container{max-width:1200px;margin:2rem auto;padding:0 1rem}
