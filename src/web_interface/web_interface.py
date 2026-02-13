@@ -292,12 +292,16 @@ def compute_dir_size(path: Path) -> int:
     if not path.exists():
         return 0
     total = 0
-    for file_path in path.rglob("*"):
-        if file_path.is_file():
-            try:
+    try:
+        iterator = path.rglob("*")
+    except OSError:
+        return 0
+    for file_path in iterator:
+        try:
+            if file_path.is_file():
                 total += file_path.stat().st_size
-            except OSError:
-                continue
+        except OSError:
+            continue
     return total
 
 
@@ -360,9 +364,20 @@ def compute_runs_size(run_rows: list[sqlite3.Row] | list[dict[str, Any]]) -> tup
 
     for row in run_rows:
         row_id = int(read_value(row, "id") or 0)
-        output_dir_value = read_value(row, "output_dir")
-        output_dir = Path(output_dir_value) if output_dir_value else None
-        size_bytes = compute_dir_size(output_dir) if output_dir else 0
+        output_zip_value = read_value(row, "output_zip")
+        output_zip = Path(output_zip_value) if output_zip_value else None
+        size_bytes = compute_path_size(output_zip) if output_zip else 0
+
+        if size_bytes == 0:
+            output_dir_value = read_value(row, "output_dir")
+            output_dir = Path(output_dir_value) if output_dir_value else None
+            if output_dir and output_dir.exists():
+                try:
+                    latest_zip = max(output_dir.glob("*.zip"), key=lambda p: p.stat().st_mtime, default=None)
+                    if latest_zip is not None:
+                        size_bytes = compute_path_size(latest_zip)
+                except OSError:
+                    size_bytes = 0
         run_sizes[row_id] = size_bytes
         total_bytes += size_bytes
     return run_sizes, total_bytes
@@ -1357,7 +1372,7 @@ def index(request: Request):
     latest_runs = [dict(row) for row in latest_runs]
 
     all_runs = conn.execute(
-        "SELECT id, input_dir, output_dir FROM task_runs WHERE user_id = ?",
+        "SELECT id, input_dir, output_dir, output_zip FROM task_runs WHERE user_id = ?",
         (user["id"],),
     ).fetchall()
     conn.close()
@@ -1963,7 +1978,7 @@ def runs_list(request: Request):
         (user["id"],),
     ).fetchall()
     latest_runs = [dict(row) for row in latest_runs]
-    all_runs = conn.execute("SELECT id, input_dir, output_dir FROM task_runs WHERE user_id = ?", (user["id"],)).fetchall()
+    all_runs = conn.execute("SELECT id, input_dir, output_dir, output_zip FROM task_runs WHERE user_id = ?", (user["id"],)).fetchall()
     conn.close()
 
     run_sizes, _ = compute_runs_size(all_runs)
