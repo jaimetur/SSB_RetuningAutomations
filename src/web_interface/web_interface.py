@@ -33,7 +33,8 @@ DATA_DIR = PROJECT_ROOT / "data"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 DB_PATH = DATA_DIR / "web_interface.db"
 LEGACY_DB_PATH = DATA_DIR / "web_frontend.db"  # legacy filename from previous Web Interface naming
-ACCESS_LOG_PATH = DATA_DIR / "web-access.log"
+API_LOG_PATH = DATA_DIR / "web-api.log"
+WEB_ACCESS_LOG_PATH = DATA_DIR / "web-access.log"
 APP_LOG_PATH = DATA_DIR / "web-interface.log"
 LEGACY_ACCESS_LOG_PATH = DATA_DIR / "access.log"
 LEGACY_APP_LOG_PATH = DATA_DIR / "app.log"
@@ -44,7 +45,7 @@ if not DB_PATH.exists() and LEGACY_DB_PATH.exists():
     except OSError:
         pass
 
-for legacy_log_path, active_log_path in ((LEGACY_ACCESS_LOG_PATH, ACCESS_LOG_PATH), (LEGACY_APP_LOG_PATH, APP_LOG_PATH)):
+for legacy_log_path, active_log_path in ((LEGACY_ACCESS_LOG_PATH, API_LOG_PATH), (LEGACY_APP_LOG_PATH, APP_LOG_PATH)):
     if not active_log_path.exists() and legacy_log_path.exists():
         try:
             legacy_log_path.rename(active_log_path)
@@ -100,19 +101,31 @@ def setup_logging() -> logging.Logger:
     return logger
 
 
-def setup_access_logger() -> logging.Logger:
+def setup_api_logger() -> logging.Logger:
+    logger = logging.getLogger("web_api")
+    logger.setLevel(logging.INFO)
+    if not logger.handlers:
+        # Keep API request logs separate from application logs.
+        api_handler = RotatingFileHandler(API_LOG_PATH, maxBytes=2_000_000, backupCount=3)
+        api_handler.setFormatter(logging.Formatter("%(asctime)s %(message)s"))
+        logger.addHandler(api_handler)
+    return logger
+
+
+def setup_web_access_logger() -> logging.Logger:
     logger = logging.getLogger("web_access")
     logger.setLevel(logging.INFO)
     if not logger.handlers:
-        # Keep HTTP access logs separate from application logs.
-        access_handler = RotatingFileHandler(ACCESS_LOG_PATH, maxBytes=2_000_000, backupCount=3)
+        # Keep web access/authentication logs separate from API call logs.
+        access_handler = RotatingFileHandler(WEB_ACCESS_LOG_PATH, maxBytes=2_000_000, backupCount=3)
         access_handler.setFormatter(logging.Formatter("%(asctime)s %(message)s"))
         logger.addHandler(access_handler)
     return logger
 
 
 logger = setup_logging()
-access_logger = setup_access_logger()
+api_logger = setup_api_logger()
+web_access_logger = setup_web_access_logger()
 
 
 MODULE_OPTIONS = [
@@ -682,6 +695,15 @@ def require_admin(request: Request) -> sqlite3.Row:
     return user
 
 
+def get_client_ip(request: Request) -> str:
+    xff = request.headers.get("x-forwarded-for", "")
+    if xff:
+        first = xff.split(",")[0].strip()
+        if first:
+            return first
+    return request.client.host if request.client else "unknown"
+
+
 def save_user_settings(user_id: int, settings: dict[str, Any]) -> None:
     conn = get_conn()
     conn.execute(
@@ -1226,8 +1248,8 @@ async def access_log_middleware(request: Request, call_next):
     start = time.perf_counter()
     response = await call_next(request)
     elapsed_ms = (time.perf_counter() - start) * 1000
-    client = request.client.host if request.client else "unknown"
-    access_logger.info(
+    client = get_client_ip(request)
+    api_logger.info(
         '%s "%s %s" status=%s duration_ms=%.2f',
         client,
         request.method,
@@ -1336,6 +1358,11 @@ def login_post(request: Request, username: str = Form(...), password: str = Form
     except (ValueError, TypeError):
         verified = False
     if not verified:
+        web_access_logger.warning(
+            "login failed user=%s ip=%s",
+            username.strip() or "unknown",
+            get_client_ip(request),
+        )
         conn.close()
         return templates.TemplateResponse(
             "login.html",
@@ -1351,6 +1378,11 @@ def login_post(request: Request, username: str = Form(...), password: str = Form
     conn.commit()
     conn.close()
 
+    web_access_logger.info(
+        "login success user=%s ip=%s",
+        user["username"],
+        get_client_ip(request),
+    )
     response = RedirectResponse(url="/", status_code=302)
     response.set_cookie("session_token", token, httponly=True, samesite="lax")
     return response
@@ -1806,13 +1838,17 @@ def logs_by_run(request: Request, run_id: int):
 @app.get("/logs/system", tags=["Runs & Logs"])
 def logs_system(request: Request, source: str = "app"):
     try:
-        require_user(request)
+        user = require_user(request)
     except PermissionError:
         return {"log": ""}
 
     source_key = (source or "app").lower().strip()
-    if source_key == "access":
-        path = ACCESS_LOG_PATH
+    if source_key in {"api", "access"}:
+        path = API_LOG_PATH
+    elif source_key in {"web-access", "web_access"}:
+        if user["role"] != "admin":
+            return {"log": ""}
+        path = WEB_ACCESS_LOG_PATH
     else:
         path = APP_LOG_PATH
 
@@ -1824,13 +1860,17 @@ def logs_system(request: Request, source: str = "app"):
 @app.post("/logs/system/delete", tags=["Runs & Logs"])
 def delete_system_logs(request: Request, source: str = "app"):
     try:
-        require_user(request)
+        user = require_user(request)
     except PermissionError:
         return {"ok": False}
 
     source_key = (source or "app").lower().strip()
-    if source_key == "access":
-        path = ACCESS_LOG_PATH
+    if source_key in {"api", "access"}:
+        path = API_LOG_PATH
+    elif source_key in {"web-access", "web_access"}:
+        if user["role"] != "admin":
+            return {"ok": False}
+        path = WEB_ACCESS_LOG_PATH
     else:
         path = APP_LOG_PATH
 
