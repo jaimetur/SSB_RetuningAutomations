@@ -403,6 +403,20 @@ A new web interface was added to run the same launcher modules using CLI under t
   - view total backend task execution time.
 - HTTP access log at `data/web-access.log`.
 
+### User Panel
+![Module Selector](https://github.com/jaimetur/SSB_RetuningAutomations/blob/main/assets/screenshots/web-interface-user-panel.png?raw=true) 
+
+### Inputs & Executions Panels
+![Module Selector](https://github.com/jaimetur/SSB_RetuningAutomations/blob/main/assets/screenshots/web-interface-inputs-executions-panels.png?raw=true) 
+
+### Logs Panels
+![Module Selector](https://github.com/jaimetur/SSB_RetuningAutomations/blob/main/assets/screenshots/web-interface-logs-panels.png?raw=true) 
+
+### Admin Panel
+![Module Selector](https://github.com/jaimetur/SSB_RetuningAutomations/blob/main/assets/screenshots/web-interface-admin-panel.png?raw=true) 
+
+
+
 ### Two deployment modes are available:
 
 #### Mode A: Standalone / static code image (port 7878)
