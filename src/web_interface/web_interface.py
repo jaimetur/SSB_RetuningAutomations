@@ -1117,6 +1117,19 @@ def startup() -> None:
     ensure_worker_started()
 
 
+def serialize_run_row(row: dict[str, Any], run_sizes: dict[int, int]) -> dict[str, Any]:
+    data = dict(row)
+    data["started_at"] = format_timestamp(data.get("started_at"))
+    data["finished_at"] = format_timestamp(data.get("finished_at"))
+    data["duration_hms"] = format_seconds_hms(data.get("duration_seconds"))
+    raw_status = (data.get("status") or "").strip().lower()
+    data["status_lower"] = "success" if raw_status == "ok" else raw_status
+    data["status_display"] = format_task_status(data.get("status") or "")
+    data["run_label"] = f"{data.get('module')}_{data.get('started_at')}_v{data.get('tool_version') or '—'}"
+    data["size_mb"] = format_mb(run_sizes.get(int(data.get("id") or 0), 0))
+    return data
+
+
 @app.get("/", response_class=HTMLResponse, tags=["Execution"])
 def index(request: Request):
     user = get_current_user(request)
@@ -1145,14 +1158,6 @@ def index(request: Request):
         (user["id"],),
     ).fetchall()
     latest_runs = [dict(row) for row in latest_runs]
-    for row in latest_runs:
-        row["started_at"] = format_timestamp(row["started_at"])
-        row["finished_at"] = format_timestamp(row["finished_at"])
-        row["duration_hms"] = format_seconds_hms(row.get("duration_seconds"))
-        raw_status = (row.get("status") or "").strip().lower()
-        row["status_lower"] = "success" if raw_status == "ok" else raw_status
-        row["status_display"] = format_task_status(row.get("status") or "")
-        row["run_label"] = f"{row['module']}_{row['started_at']}_v{row.get('tool_version') or '—'}"
 
     all_runs = conn.execute(
         "SELECT id, input_dir, output_dir FROM task_runs WHERE user_id = ?",
@@ -1162,9 +1167,7 @@ def index(request: Request):
 
     run_sizes, total_bytes = compute_runs_size(all_runs)
 
-    for row in latest_runs:
-        size_bytes = run_sizes.get(row["id"], 0)
-        row["size_mb"] = format_mb(size_bytes)
+    latest_runs = [serialize_run_row(row, run_sizes) for row in latest_runs]
 
     total_size_mb = format_mb(total_bytes)
     input_items = list_inputs_repository()
@@ -1624,6 +1627,32 @@ def logs_system(request: Request, source: str = "app"):
         path = APP_LOG_PATH
 
     return {"log": read_tail(path)}
+
+
+@app.get("/runs/list", tags=["Runs & Logs"])
+def runs_list(request: Request):
+    try:
+        user = require_user(request)
+    except PermissionError:
+        return {"ok": False, "items": []}
+
+    conn = get_conn()
+    latest_runs = conn.execute(
+        """
+        SELECT id, module, tool_version, input_name, status, started_at, finished_at, duration_seconds, output_zip, output_log_file
+        FROM task_runs
+        WHERE user_id = ?
+        ORDER BY id DESC
+        """,
+        (user["id"],),
+    ).fetchall()
+    latest_runs = [dict(row) for row in latest_runs]
+    all_runs = conn.execute("SELECT id, input_dir, output_dir FROM task_runs WHERE user_id = ?", (user["id"],)).fetchall()
+    conn.close()
+
+    run_sizes, _ = compute_runs_size(all_runs)
+    items = [serialize_run_row(row, run_sizes) for row in latest_runs]
+    return {"ok": True, "items": items}
 
 
 @app.get("/runs/{run_id}/download", tags=["Runs & Logs"])

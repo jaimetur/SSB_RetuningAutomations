@@ -204,7 +204,7 @@
       <input type="date" id="older_input_date_picker" class="hidden" />
       <div class="table-scroll" id="inputs_panel_table">
       <table>
-        <thead><tr><th></th><th class="sortable" data-sort-key="text">Input</th><th class="sortable" data-sort-key="text">Uploaded by</th><th class="sortable" data-sort-key="datetime">Uploaded at</th><th class="sortable" data-sort-key="size">Size</th><th>Send to Input</th><th class="sortable" data-sort-key="text">Target</th></tr></thead>
+        <thead><tr><th></th><th class="sortable" data-sort-key="text">Input</th><th class="sortable" data-sort-key="text">Uploaded by</th><th class="sortable" data-sort-key="datetime" data-default-sort="desc">Uploaded at</th><th class="sortable" data-sort-key="size">Size</th><th>Send to Input</th><th class="sortable" data-sort-key="text">Target</th></tr></thead>
         <tbody>
         {% for item in input_items %}
           <tr>
@@ -237,26 +237,26 @@
       <input type="date" id="older_date_picker" class="hidden" />
       <div class="latest-runs-scroll" id="runs_panel_table">
       <table>
-        <thead><tr><th></th><th class="sortable" data-sort-key="text">Module</th><th class="sortable" data-sort-key="text">Version</th><th class="sortable" data-sort-key="text">Input</th><th class="sortable" data-sort-key="text">Status</th><th class="sortable" data-sort-key="datetime">Start</th><th class="sortable" data-sort-key="datetime">End</th><th class="sortable" data-sort-key="duration">Duration</th><th class="sortable" data-sort-key="text">Output</th><th class="sortable" data-sort-key="text">Log</th><th class="sortable" data-sort-key="size">Size</th></tr></thead>
+        <thead><tr><th></th><th class="sortable" data-sort-key="text">Module</th><th class="sortable" data-sort-key="text">Version</th><th class="sortable" data-sort-key="text">Input</th><th class="sortable" data-sort-key="text">Status</th><th class="sortable" data-sort-key="datetime" data-default-sort="desc">Start</th><th class="sortable" data-sort-key="datetime">End</th><th class="sortable" data-sort-key="duration">Duration</th><th class="sortable" data-sort-key="text">Output</th><th class="sortable" data-sort-key="text">Log</th><th class="sortable" data-sort-key="size">Size</th></tr></thead>
         <tbody>
         {% for r in latest_runs %}
-          <tr class="{% if r.status_lower == 'error' %}run-error{% elif r.status_lower == 'success' %}run-success{% endif %}" data-status="{{ r.status_lower }}">
+          <tr class="run-row {% if r.status_lower == 'error' %}run-error{% elif r.status_lower == 'success' %}run-success{% endif %}" data-run-id="{{ r.id }}" data-status="{{ r.status_lower }}">
             <td><input type="checkbox" class="run-checkbox" value="{{ r.id }}" data-start="{{ r.started_at }}" data-status="{{ r.status_lower }}" /></td>
             <td>{{ r.module }}</td>
             <td>{{ r.tool_version or '—' }}</td>
             <td>{{ r.input_name or "—" }}</td>
-            <td>{{ r.status_display }}</td>
-            <td>{{ r.started_at }}</td>
-            <td>{{ r.finished_at }}</td>
-            <td>{{ r.duration_hms }}</td>
-            <td>
+            <td class="run-status-cell">{{ r.status_display }}</td>
+            <td class="run-start-cell">{{ r.started_at }}</td>
+            <td class="run-finished-cell">{{ r.finished_at }}</td>
+            <td class="run-duration-cell">{{ r.duration_hms }}</td>
+            <td class="run-output-cell">
               {% if r.output_zip %}
                 <a href="/runs/{{ r.id }}/download">Download zip</a>
               {% else %}
                 —
               {% endif %}
             </td>
-            <td>
+            <td class="run-log-cell">
               {% if r.output_log_file %}
                 <a href="/runs/{{ r.id }}/log">Download log</a>
               {% else %}
@@ -452,55 +452,81 @@
       return value.toLowerCase();
     }
 
+    function sortTableByHeader(table, header, forcedDirection = null) {
+      const tbody = table?.querySelector("tbody");
+      if (!tbody || !header) {
+        return;
+      }
+      const rows = Array.from(tbody.querySelectorAll("tr"));
+      if (rows.length <= 1) {
+        return;
+      }
+      const headers = Array.from(table.querySelectorAll("thead th.sortable"));
+      const columnIndex = Array.from(header.parentElement.children).indexOf(header);
+      headers.forEach((other) => {
+        if (!other.dataset.label) {
+          other.dataset.label = other.textContent.replace(/\s*[▲▼]$/, "").trim();
+        }
+      });
+
+      headers.forEach((other) => {
+        if (other !== header) {
+          other.dataset.sortDirection = "none";
+          other.textContent = other.dataset.label || other.textContent.replace(/\s*[▲▼]$/, "").trim();
+        }
+      });
+
+      const currentDirection = forcedDirection || (header.dataset.sortDirection === "asc" ? "desc" : "asc");
+      header.dataset.sortDirection = currentDirection;
+      const sortType = header.dataset.sortKey || "text";
+      const baseLabel = header.dataset.label || header.textContent.replace(/\s*[▲▼]$/, "").trim();
+      header.textContent = `${baseLabel} ${currentDirection === "asc" ? "▲" : "▼"}`;
+
+      rows.sort((rowA, rowB) => {
+        const aCell = rowA.cells[columnIndex];
+        const bCell = rowB.cells[columnIndex];
+        const aText = aCell ? aCell.textContent : "";
+        const bText = bCell ? bCell.textContent : "";
+        const aValue = parseSortableValue(aText, sortType);
+        const bValue = parseSortableValue(bText, sortType);
+        if (aValue < bValue) return currentDirection === "asc" ? -1 : 1;
+        if (aValue > bValue) return currentDirection === "asc" ? 1 : -1;
+        return 0;
+      });
+
+      rows.forEach((row) => tbody.appendChild(row));
+    }
+
+    function applyCurrentOrDefaultSort(tableSelector) {
+      const table = document.querySelector(tableSelector);
+      if (!table) {
+        return;
+      }
+      const headers = Array.from(table.querySelectorAll("thead th.sortable"));
+      const activeHeader = headers.find((header) => ["asc", "desc"].includes(header.dataset.sortDirection));
+      if (activeHeader) {
+        sortTableByHeader(table, activeHeader, activeHeader.dataset.sortDirection);
+        return;
+      }
+      const defaultHeader = headers.find((header) => header.dataset.defaultSort);
+      if (defaultHeader) {
+        sortTableByHeader(table, defaultHeader, defaultHeader.dataset.defaultSort);
+      }
+    }
+
     function initSortableTable(tableSelector) {
       const table = document.querySelector(tableSelector);
       if (!table) {
         return;
       }
       const headers = Array.from(table.querySelectorAll("thead th.sortable"));
-      headers.forEach((header, headerIndex) => {
-        const columnIndex = Array.from(header.parentElement.children).indexOf(header);
+      headers.forEach((header) => {
         header.dataset.sortDirection = "none";
+        header.dataset.label = header.textContent.replace(/\s*[▲▼]$/, "").trim();
         header.title = "Sort";
-        header.addEventListener("click", () => {
-          const tbody = table.querySelector("tbody");
-          if (!tbody) {
-            return;
-          }
-          const rows = Array.from(tbody.querySelectorAll("tr"));
-          if (rows.length <= 1) {
-            return;
-          }
-
-          headers.forEach((other, idx) => {
-            if (idx !== headerIndex) {
-              other.dataset.sortDirection = "none";
-              other.textContent = other.textContent.replace(/\s*[▲▼]$/, "");
-            }
-          });
-
-          const currentDirection = header.dataset.sortDirection === "asc" ? "desc" : "asc";
-          header.dataset.sortDirection = currentDirection;
-          const sortType = header.dataset.sortKey || "text";
-
-          const cleanedTitle = header.textContent.replace(/\s*[▲▼]$/, "").trim();
-          header.textContent = `${cleanedTitle} ${currentDirection === "asc" ? "▲" : "▼"}`;
-
-          rows.sort((rowA, rowB) => {
-            const aCell = rowA.cells[columnIndex];
-            const bCell = rowB.cells[columnIndex];
-            const aText = aCell ? aCell.textContent : "";
-            const bText = bCell ? bCell.textContent : "";
-            const aValue = parseSortableValue(aText, sortType);
-            const bValue = parseSortableValue(bText, sortType);
-            if (aValue < bValue) return currentDirection === "asc" ? -1 : 1;
-            if (aValue > bValue) return currentDirection === "asc" ? 1 : -1;
-            return 0;
-          });
-
-          rows.forEach((row) => tbody.appendChild(row));
-        });
+        header.addEventListener("click", () => sortTableByHeader(table, header));
       });
+      applyCurrentOrDefaultSort(tableSelector);
     }
 
     function refreshInputsRepository() {
@@ -519,6 +545,7 @@
           }
           if (!data.items || data.items.length === 0) {
             tbody.innerHTML = '<tr><td colspan="7">No inputs in repository.</td></tr>';
+            applyCurrentOrDefaultSort("#inputs_panel_table table");
             return;
           }
           tbody.innerHTML = data.items.map((item) => `
@@ -532,6 +559,7 @@
               <td><select class="send-target"><option value="single">Single Input</option><option value="pre">As Input PRE</option><option value="post">As Input POST</option></select></td>
             </tr>
           `).join("");
+          applyCurrentOrDefaultSort("#inputs_panel_table table");
         })
         .catch(() => {});
     }
@@ -940,6 +968,71 @@
         .catch(() => {
           renderLog("");
         });
+    }
+
+    function refreshRunsTable() {
+      return fetch("/runs/list")
+        .then((res) => res.json())
+        .then((data) => {
+          if (!data.ok) {
+            return;
+          }
+          const tbody = document.querySelector("#runs_panel_table tbody");
+          if (!tbody) {
+            return;
+          }
+          const selectedIds = new Set(Array.from(document.querySelectorAll(".run-checkbox:checked")).map((box) => Number(box.value)));
+          if (!data.items || data.items.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="11">No executions yet.</td></tr>';
+            applyCurrentOrDefaultSort("#runs_panel_table table");
+            return;
+          }
+
+          tbody.innerHTML = data.items.map((item) => {
+            const rowClass = item.status_lower === "error" ? "run-row run-error" : (item.status_lower === "success" ? "run-row run-success" : "run-row");
+            const checked = selectedIds.has(item.id) ? 'checked' : '';
+            const outputCell = item.output_zip ? `<a href="/runs/${item.id}/download">Download zip</a>` : "—";
+            const logCell = item.output_log_file ? `<a href="/runs/${item.id}/log">Download log</a>` : "—";
+            return `
+            <tr class="${rowClass}" data-run-id="${item.id}" data-status="${item.status_lower}">
+              <td><input type="checkbox" class="run-checkbox" value="${item.id}" data-start="${item.started_at}" data-status="${item.status_lower}" ${checked} /></td>
+              <td>${escapeHtml(item.module)}</td>
+              <td>${escapeHtml(item.tool_version || "—")}</td>
+              <td>${escapeHtml(item.input_name || "—")}</td>
+              <td class="run-status-cell">${escapeHtml(item.status_display)}</td>
+              <td class="run-start-cell">${escapeHtml(item.started_at || "")}</td>
+              <td class="run-finished-cell">${escapeHtml(item.finished_at || "")}</td>
+              <td class="run-duration-cell">${escapeHtml(item.duration_hms || "00:00:00")}</td>
+              <td class="run-output-cell">${outputCell}</td>
+              <td class="run-log-cell">${logCell}</td>
+              <td>${escapeHtml(item.size_mb || "0.00 MB")}</td>
+            </tr>`;
+          }).join("");
+
+          if (logRunSelector) {
+            const currentValue = logRunSelector.value;
+            logRunSelector.innerHTML = data.items.map((item) => `<option value="${item.id}">${escapeHtml(item.run_label)}</option>`).join("");
+            if (currentValue && data.items.some((item) => String(item.id) === String(currentValue))) {
+              logRunSelector.value = currentValue;
+            }
+          }
+
+          const latestStatus = (data.items[0]?.status_lower || "").toLowerCase();
+          runStatusLabel.dataset.latestStatus = latestStatus;
+          if (latestStatus === "ok" || latestStatus === "success") {
+            runStatusLabel.textContent = "SUCCESS!!!";
+            runStatusLabel.className = "run-status status-done";
+          } else if (latestStatus === "error") {
+            runStatusLabel.textContent = "ERROR!!!";
+            runStatusLabel.className = "run-status status-error";
+          } else if (latestStatus === "running" || latestStatus === "queued") {
+            runStatusLabel.textContent = "Task queued...";
+            runStatusLabel.className = "run-status status-running";
+          }
+
+          applyCurrentOrDefaultSort("#runs_panel_table table");
+        })
+        .catch(() => {});
     }
 
     function fetchLogByRun() {
@@ -1435,6 +1528,11 @@
     fetchLogByRun();
     fetchSystemLog();
     refreshInputsRepository();
+    refreshRunsTable();
+
+    setInterval(() => {
+      refreshRunsTable();
+    }, 3000);
 
     let systemLogTimer = null;
     if (systemLogAuto) {
