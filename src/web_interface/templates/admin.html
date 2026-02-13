@@ -98,6 +98,36 @@
 
     <section class="card">
       <div class="runs-header">
+        <h2>Inputs Repository</h2>
+        <div class="runs-actions">
+          <span class="runs-total" id="inputs_total_size">Total size: {{ inputs_total_size }}</span>
+          <button type="button" id="select_all_inputs">Select All</button>
+          <button type="button" id="unselect_all_inputs">Un-Select All</button>
+          <button type="button" id="select_older_inputs" class="btn btn-accent">Select Older</button>
+          <button type="button" id="delete_selected_inputs" class="btn btn-danger">Delete Selected</button>
+          <button type="button" id="toggle_inputs_panel" class="panel-toggle" aria-label="Collapse inputs panel" title="Collapse/Expand">▾</button>
+        </div>
+      </div>
+      <input type="date" id="older_input_date_picker" class="hidden" />
+      <div class="table-scroll" id="inputs_panel_table">
+      <table>
+        <thead><tr><th></th><th>Input</th><th>Uploaded by</th><th>Uploaded at</th><th>Size</th></tr></thead>
+        <tbody>
+          {% for item in input_items %}
+          <tr>
+            <td><input type="checkbox" class="input-checkbox" value="{{ item.id }}" data-uploaded-at="{{ item.uploaded_at }}" /></td>
+            <td>{{ item.input_name }}</td><td>{{ item.uploaded_by }}</td><td>{{ item.uploaded_at }}</td><td>{{ item.size_mb }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="5">No inputs yet.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="runs-header">
         <div class="runs-title-row">
           <h2>Latest Global Executions</h2>
         </div>
@@ -151,35 +181,6 @@
       </div>
     </section>
 
-    <section class="card">
-      <div class="runs-header">
-        <h2>Inputs Repository</h2>
-        <div class="runs-actions">
-          <span class="runs-total" id="inputs_total_size">Total size: {{ inputs_total_size }}</span>
-          <button type="button" id="select_all_inputs">Select All</button>
-          <button type="button" id="unselect_all_inputs">Un-Select All</button>
-          <button type="button" id="select_older_inputs" class="btn btn-accent">Select Older</button>
-          <button type="button" id="delete_selected_inputs" class="btn btn-danger">Delete Selected</button>
-          <button type="button" id="toggle_inputs_panel" class="panel-toggle" aria-label="Collapse inputs panel" title="Collapse/Expand">▾</button>
-        </div>
-      </div>
-      <input type="date" id="older_input_date_picker" class="hidden" />
-      <div class="table-scroll" id="inputs_panel_table">
-      <table>
-        <thead><tr><th></th><th>Input</th><th>Uploaded by</th><th>Uploaded at</th><th>Size</th></tr></thead>
-        <tbody>
-          {% for item in input_items %}
-          <tr>
-            <td><input type="checkbox" class="input-checkbox" value="{{ item.id }}" data-uploaded-at="{{ item.uploaded_at }}" /></td>
-            <td>{{ item.input_name }}</td><td>{{ item.uploaded_by }}</td><td>{{ item.uploaded_at }}</td><td>{{ item.size_mb }}</td>
-          </tr>
-          {% else %}
-          <tr><td colspan="5">No inputs yet.</td></tr>
-          {% endfor %}
-        </tbody>
-      </table>
-      </div>
-    </section>
 
   </main>
   <script>

@@ -410,6 +410,44 @@ def load_network_frequencies() -> list[str]:
     return load_default_network_frequencies()
 
 
+
+
+def parse_output_candidates(payload: dict[str, Any], input_dir_value: str) -> list[Path]:
+    candidates: list[Path] = []
+    for raw_path in (payload.get("output", ""), input_dir_value):
+        if not raw_path:
+            continue
+        path = Path(raw_path)
+        if path.exists() and path not in candidates:
+            candidates.append(path)
+    return candidates
+
+
+def find_task_output_dir(candidates: list[Path], prefixes: tuple[str, ...], started_at_raw: str | None) -> Path | None:
+    started_at_dt = parse_iso_datetime(started_at_raw)
+    all_dirs: list[Path] = []
+    for base in candidates:
+        try:
+            all_dirs.extend([p for p in base.iterdir() if p.is_dir() and p.name.startswith(prefixes)])
+        except OSError:
+            continue
+    if not all_dirs:
+        return None
+
+    if started_at_dt:
+        recent_dirs: list[Path] = []
+        for candidate in all_dirs:
+            try:
+                candidate_dt = datetime.fromtimestamp(candidate.stat().st_mtime, tz=timezone.utc).astimezone()
+                if candidate_dt >= (started_at_dt - timedelta(seconds=5)):
+                    recent_dirs.append(candidate)
+            except OSError:
+                continue
+        if recent_dirs:
+            return max(recent_dirs, key=lambda p: p.stat().st_mtime)
+
+    return max(all_dirs, key=lambda p: p.stat().st_mtime)
+
 def find_latest_output_dir(base_dir: Path, prefixes: tuple[str, ...]) -> Path | None:
     if not base_dir.exists():
         return None
@@ -792,7 +830,8 @@ def run_queued_task(task_row: sqlite3.Row) -> None:
     tool_version = task_row["tool_version"] or "unknown"
 
     if input_dir_value:
-        output_dir = find_latest_output_dir(Path(input_dir_value), build_output_prefixes(module))
+        output_candidates = parse_output_candidates(payload, input_dir_value)
+        output_dir = find_task_output_dir(output_candidates, build_output_prefixes(module), started_at)
         if output_dir:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             outputs_dir = OUTPUTS_DIR / sanitize_component(username)
@@ -1284,6 +1323,13 @@ def run_module(
                 payload_copy["input_pre"] = pre_value
                 payload_copy["input_post"] = post_value
                 queue_payloads.append(payload_copy)
+
+    base_output_root = Path(payload.get("output") or (OUTPUTS_DIR / sanitize_component(user["username"])))
+    for idx, queue_payload in enumerate(queue_payloads, start=1):
+        task_input = queue_payload.get("input_post", "") if module == "consistency-check" else queue_payload.get("input", "")
+        task_name = detect_task_name_from_input(task_input)
+        task_output_root = base_output_root / f"{sanitize_component(task_name)}_task{idx:03d}"
+        queue_payload["output"] = str(task_output_root)
 
     conn = get_conn()
     for queue_payload in queue_payloads:
