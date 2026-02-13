@@ -443,7 +443,7 @@ Examples:
 - Standalone mode: `http://localhost:7878/docs`
 - Dev mode: `http://localhost:7979/docs`
 
-### Troubleshooting (web_interface compose / port 7979)
+### Troubleshooting (web_interface docker-compose-dev.yml / port 7979)
 - **Container name conflict** (`container name "/ssb-retuning-automations-dev" is already in use`):
   - `run-docker-dev.sh` now removes stale container name reservations before `up --build`.
 - **Browser returns `{"detail":"Not Found"}`**:
