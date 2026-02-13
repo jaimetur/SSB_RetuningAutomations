@@ -364,6 +364,11 @@ def compute_runs_size(run_rows: list[sqlite3.Row] | list[dict[str, Any]]) -> tup
 
     for row in run_rows:
         row_id = int(read_value(row, "id") or 0)
+        status_value = (read_value(row, "status") or "").strip().lower()
+        if status_value not in {"ok", "error", "canceled"}:
+            run_sizes[row_id] = 0
+            continue
+
         output_zip_value = read_value(row, "output_zip")
         output_zip = Path(output_zip_value) if output_zip_value else None
         size_bytes = compute_path_size(output_zip) if output_zip else 0
@@ -1372,7 +1377,7 @@ def index(request: Request):
     latest_runs = [dict(row) for row in latest_runs]
 
     all_runs = conn.execute(
-        "SELECT id, input_dir, output_dir, output_zip FROM task_runs WHERE user_id = ?",
+        "SELECT id, status, input_dir, output_dir, output_zip FROM task_runs WHERE user_id = ?",
         (user["id"],),
     ).fetchall()
     conn.close()
@@ -1627,6 +1632,7 @@ async def stop_runs(request: Request):
     now_value = now_iso()
     queued_ids: list[int] = []
     running_ids: list[int] = []
+    running_without_process_ids: list[int] = []
     for row in rows:
         status = (row["status"] or "").lower()
         if status == "queued":
@@ -1640,19 +1646,34 @@ async def stop_runs(request: Request):
             % ",".join("?" for _ in queued_ids),
             (now_value, user["id"], *queued_ids),
         )
-    if running_ids:
+    running_with_process_ids: list[int] = []
+    with running_processes_lock:
+        for task_id in running_ids:
+            proc = running_processes.get(task_id)
+            if proc and proc.poll() is None:
+                running_with_process_ids.append(task_id)
+            else:
+                running_without_process_ids.append(task_id)
+
+    if running_with_process_ids:
         conn.execute(
             "UPDATE task_runs SET status = 'canceling', output_log = TRIM(output_log || '\\nCancellation requested by user.') WHERE user_id = ? AND id IN (%s)"
-            % ",".join("?" for _ in running_ids),
-            (user["id"], *running_ids),
+            % ",".join("?" for _ in running_with_process_ids),
+            (user["id"], *running_with_process_ids),
+        )
+    if running_without_process_ids:
+        conn.execute(
+            "UPDATE task_runs SET status = 'canceled', finished_at = ?, output_log = TRIM(output_log || '\\nCanceled by user (no active process found).') WHERE user_id = ? AND id IN (%s)"
+            % ",".join("?" for _ in running_without_process_ids),
+            (now_value, user["id"], *running_without_process_ids),
         )
     conn.commit()
     conn.close()
 
     with canceled_task_ids_lock:
-        canceled_task_ids.update(running_ids)
+        canceled_task_ids.update(running_with_process_ids)
     with running_processes_lock:
-        for task_id in running_ids:
+        for task_id in running_with_process_ids:
             proc = running_processes.get(task_id)
             if proc and proc.poll() is None:
                 try:
@@ -1661,7 +1682,11 @@ async def stop_runs(request: Request):
                     pass
 
     queue_event.set()
-    return {"ok": True, "stopped": len(queued_ids) + len(running_ids)}
+    return {
+        "ok": True,
+        "stopped": len(queued_ids) + len(running_ids),
+        "canceled_immediately": len(queued_ids) + len(running_without_process_ids),
+    }
 
 
 @app.post("/account/change_password", tags=["Authentication"])
@@ -1978,7 +2003,7 @@ def runs_list(request: Request):
         (user["id"],),
     ).fetchall()
     latest_runs = [dict(row) for row in latest_runs]
-    all_runs = conn.execute("SELECT id, input_dir, output_dir, output_zip FROM task_runs WHERE user_id = ?", (user["id"],)).fetchall()
+    all_runs = conn.execute("SELECT id, status, input_dir, output_dir, output_zip FROM task_runs WHERE user_id = ?", (user["id"],)).fetchall()
     conn.close()
 
     run_sizes, _ = compute_runs_size(all_runs)
