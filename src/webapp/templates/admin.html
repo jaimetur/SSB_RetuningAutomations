@@ -98,7 +98,7 @@
 
     <section class="card">
       <div class="runs-header">
-        <h2>Latest Global Executions</h2><button type="button" id="toggle_runs_panel">Collapse/Expand</button>
+        <h2>Latest Global Executions</h2><button type="button" id="toggle_runs_panel" class="panel-toggle" aria-label="Collapse runs panel" title="Collapse/Expand">▾</button>
         <div class="runs-actions">
           <span class="runs-total">Total size: {{ global_runs_size }}</span>
           <button type="button" id="select_all_runs">Select All</button>
@@ -152,11 +152,12 @@
       <div class="runs-header">
         <h2>Inputs Repository</h2>
         <div class="runs-actions">
+          <span class="runs-total" id="inputs_total_size">Total size: {{ inputs_total_size }}</span>
           <button type="button" id="select_all_inputs">Select All</button>
           <button type="button" id="unselect_all_inputs">Un-Select All</button>
           <button type="button" id="select_older_inputs" class="btn btn-accent">Select Older</button>
           <button type="button" id="delete_selected_inputs" class="btn btn-danger">Delete Selected</button>
-          <button type="button" id="toggle_inputs_panel">Collapse/Expand</button>
+          <button type="button" id="toggle_inputs_panel" class="panel-toggle" aria-label="Collapse inputs panel" title="Collapse/Expand">▾</button>
         </div>
       </div>
       <input type="date" id="older_input_date_picker" class="hidden" />
@@ -323,9 +324,15 @@
     }
     toggleRunsPanelButton?.addEventListener("click", () => {
       runsTable?.classList.toggle("hidden");
+      if (toggleRunsPanelButton) {
+        toggleRunsPanelButton.textContent = runsTable?.classList.contains("hidden") ? "▸" : "▾";
+      }
     });
     toggleInputsPanelButton?.addEventListener("click", () => {
       inputsPanelTable?.classList.toggle("hidden");
+      if (toggleInputsPanelButton) {
+        toggleInputsPanelButton.textContent = inputsPanelTable?.classList.contains("hidden") ? "▸" : "▾";
+      }
     });
     selectAllInputsButton?.addEventListener("click", () => document.querySelectorAll(".input-checkbox").forEach((b) => { b.checked = true; }));
     unselectAllInputsButton?.addEventListener("click", () => document.querySelectorAll(".input-checkbox").forEach((b) => { b.checked = false; }));

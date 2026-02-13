@@ -233,6 +233,23 @@ def compute_dir_size(path: Path) -> int:
     return total
 
 
+def compute_runs_size(run_rows: list[sqlite3.Row] | list[dict[str, Any]]) -> tuple[dict[int, int], int]:
+    run_sizes: dict[int, int] = {}
+    total_bytes = 0
+    for row in run_rows:
+        row_id = int(row["id"])
+        input_dir = Path(row["input_dir"]) if row.get("input_dir") else None
+        output_dir = Path(row["output_dir"]) if row.get("output_dir") else None
+        input_size = compute_dir_size(input_dir) if input_dir else 0
+        output_size = 0
+        if output_dir and not (input_dir and is_safe_path(input_dir, output_dir)):
+            output_size = compute_dir_size(output_dir)
+        size_bytes = input_size + output_size
+        run_sizes[row_id] = size_bytes
+        total_bytes += size_bytes
+    return run_sizes, total_bytes
+
+
 def format_mb(size_bytes: int) -> str:
     return f"{size_bytes / (1024 * 1024):.2f} MB"
 
@@ -627,6 +644,13 @@ def list_inputs_repository() -> list[dict[str, Any]]:
     return items
 
 
+def get_inputs_repository_total_size() -> str:
+    conn = get_conn()
+    row = conn.execute("SELECT COALESCE(SUM(size_bytes), 0) AS total_size FROM inputs_repository").fetchone()
+    conn.close()
+    return format_mb(int(row["total_size"] or 0))
+
+
 def run_queued_task(task_row: sqlite3.Row) -> None:
     task_id = task_row["id"]
     payload = json.loads(task_row["payload_json"] or "{}")
@@ -988,6 +1012,7 @@ def index(request: Request):
 
     total_size_mb = format_mb(total_bytes)
     input_items = list_inputs_repository()
+    inputs_total_size = get_inputs_repository_total_size()
 
     return templates.TemplateResponse(
         "index.html",
@@ -1001,6 +1026,7 @@ def index(request: Request):
             "network_frequencies": network_frequencies,
             "total_runs_size": total_size_mb,
             "input_items": input_items,
+            "inputs_total_size": inputs_total_size,
         },
     )
 
@@ -1301,8 +1327,8 @@ def inputs_list(request: Request):
     try:
         require_user(request)
     except PermissionError:
-        return {"ok": False, "items": []}
-    return {"ok": True, "items": list_inputs_repository()}
+        return {"ok": False, "items": [], "total_size": format_mb(0)}
+    return {"ok": True, "items": list_inputs_repository(), "total_size": get_inputs_repository_total_size()}
 
 
 @app.post("/inputs/delete")
@@ -1322,8 +1348,10 @@ async def delete_inputs(request: Request):
         "SELECT id, user_id, input_path FROM inputs_repository WHERE id IN (%s)" % ",".join("?" for _ in input_ids),
         tuple(input_ids),
     ).fetchall()
+    denied_count = 0
     for row in rows:
         if row["user_id"] != user["id"]:
+            denied_count += 1
             continue
         input_path = Path(row["input_path"])
         if is_safe_path(INPUTS_REPOSITORY_DIR, input_path):
@@ -1331,6 +1359,12 @@ async def delete_inputs(request: Request):
         conn.execute("DELETE FROM inputs_repository WHERE id = ?", (row["id"],))
     conn.commit()
     conn.close()
+    if denied_count:
+        return {
+            "ok": False,
+            "error": "forbidden_inputs",
+            "message": "Only inputs uploaded by your own user can be deleted from this panel.",
+        }
     return {"ok": True}
 
 
@@ -1614,6 +1648,7 @@ def admin_panel(request: Request):
             "recent_runs": recent_runs,
             "global_runs_size": format_mb(total_bytes),
             "input_items": list_inputs_repository(),
+            "inputs_total_size": get_inputs_repository_total_size(),
             "admin_settings": get_admin_settings(),
         },
     )

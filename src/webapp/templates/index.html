@@ -193,11 +193,12 @@
       <div class="runs-header">
         <h2>Inputs Repository</h2>
         <div class="runs-actions">
+          <span class="runs-total" id="inputs_total_size">Total size: {{ inputs_total_size }}</span>
           <button type="button" id="select_all_inputs">Select All</button>
           <button type="button" id="unselect_all_inputs">Un-Select All</button>
           <button type="button" id="select_older_inputs" class="btn btn-accent">Select Older</button>
           <button type="button" id="delete_selected_inputs" class="btn btn-danger">Delete Selected</button>
-          <button type="button" id="toggle_inputs_panel">Collapse/Expand</button>
+          <button type="button" id="toggle_inputs_panel" class="panel-toggle" aria-label="Collapse inputs panel" title="Collapse/Expand">▾</button>
         </div>
       </div>
       <input type="date" id="older_input_date_picker" class="hidden" />
@@ -230,7 +231,7 @@
           <button type="button" id="select_older_runs" class="btn btn-accent">Select Older</button>
           <button type="button" id="select_error_runs" class="btn btn-accent">Select Error</button>
           <button type="button" id="delete_selected_runs" class="btn btn-danger">Delete Selected</button>
-          <button type="button" id="toggle_runs_panel">Collapse/Expand</button>
+          <button type="button" id="toggle_runs_panel" class="panel-toggle" aria-label="Collapse runs panel" title="Collapse/Expand">▾</button>
         </div>
       </div>
       <input type="date" id="older_date_picker" class="hidden" />
@@ -353,6 +354,7 @@
     const olderInputDatePicker = document.getElementById("older_input_date_picker");
     const toggleInputsPanelButton = document.getElementById("toggle_inputs_panel");
     const inputsPanelTable = document.getElementById("inputs_panel_table");
+    const inputsTotalSizeLabel = document.getElementById("inputs_total_size");
 
     const inputFields = {
       input: document.getElementById("input_path"),
@@ -414,6 +416,9 @@
         .then((data) => {
           if (!data.ok) {
             return;
+          }
+          if (inputsTotalSizeLabel && data.total_size) {
+            inputsTotalSizeLabel.textContent = `Total size: ${data.total_size}`;
           }
           const tbody = document.querySelector("#inputs_panel_table tbody");
           if (!tbody) {
@@ -1088,13 +1093,26 @@
       const ids = getSelectedInputIds();
       if (!ids.length) return;
       if (!confirm("Delete selected inputs?")) return;
-      fetch("/inputs/delete", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ids})}).then(()=>refreshInputsRepository());
+      fetch("/inputs/delete", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ids})})
+        .then((res) => res.json())
+        .then((data) => {
+          if (!data.ok && data.error === "forbidden_inputs") {
+            alert("Only inputs uploaded by your user can be deleted. Admin users can delete any input only from the Admin panel.");
+          }
+          return refreshInputsRepository();
+        });
     });
     toggleRunsPanelButton?.addEventListener("click", () => {
       runsPanelTable?.classList.toggle("hidden");
+      if (toggleRunsPanelButton) {
+        toggleRunsPanelButton.textContent = runsPanelTable?.classList.contains("hidden") ? "▸" : "▾";
+      }
     });
     toggleInputsPanelButton?.addEventListener("click", () => {
       inputsPanelTable?.classList.toggle("hidden");
+      if (toggleInputsPanelButton) {
+        toggleInputsPanelButton.textContent = inputsPanelTable?.classList.contains("hidden") ? "▸" : "▾";
+      }
     });
     document.addEventListener("click", (event) => {
       const button = event.target.closest(".send-to-input");
