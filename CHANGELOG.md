@@ -8,20 +8,32 @@
 ### Release Date: 2026-02-13
   
 - #### 🚨 Breaking Changes:
+  - Renamed the web layer from `webapp` to `web_interface` and updated related paths, scripts and references across the project.
 
 - #### 🌟 New Features:
+  - Added queued execution flow in the Web Interface to process jobs asynchronously.
+  - Added a shared Inputs Repository in the Web Interface to upload once and reuse inputs in subsequent executions.
+  - Added `--output` override in CLI and integrated the same output-root behavior in the Web Interface.
 
 - #### 🚀 Enhancements:
-  - Enhancements in the Web Interface to improve UX.
-    - Added a new feature to select any Input folder that has already been uploaded into the Inputs Repository.
-    - Added a new Inputs Repository panel to manage uploaded inputs.
-    - Added a new feature in the Web Interface (Administrator panel) to manage the %CPU, %RAM and Max # of Threads to process the queue of the process to run.
+  - Reworked Web Interface UX with improved collapsible panels and modal dialogs (including explicit accept actions) for clearer user flows.
+  - Improved Inputs Repository workflow with better permissions/error feedback and smarter selection behavior.
+  - Added PRE/POST-aware filtering for Module 2 repository selection to reduce invalid input picks.
+  - Centralized execution artifacts under `data/outputs` and aligned run-size calculations to that outputs-only model.
+  - Hardened Docker startup scripts/deploy flow to better handle stale container conflicts and dual deployment modes.
+  - Improved Administrator panel controls for queue execution resources (%CPU, %RAM and max threads).
 
 - #### 🐛 Bug fixes:
-  - Minor bug fixing.
+  - Fixed missing login routes in the Web Interface.
+  - Fixed Administrator panel loading issues.
+  - Fixed `sqlite3.Row` handling in `compute_runs_size` for frontend pages.
+  - Fixed input repository workflow edge cases detected during frontend administration flows.
     
 - #### 📚 Documentation: 
-  - Updated documentation with the latest changes.
+  - Added FastAPI API discovery documentation for the Web Interface backend.
+  - Standardized terminology from "Web Frontend" to "Web Interface" across documentation.
+  - Updated docs and references after renaming `webapp.py` to `web_interface.py`.
+  - Updated README and related docs with all the latest changes.
 
 ---
 
