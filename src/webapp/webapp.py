@@ -240,9 +240,16 @@ def compute_dir_size(path: Path) -> int:
 def compute_runs_size(run_rows: list[sqlite3.Row] | list[dict[str, Any]]) -> tuple[dict[int, int], int]:
     run_sizes: dict[int, int] = {}
     total_bytes = 0
+
+    def read_value(row: sqlite3.Row | dict[str, Any], key: str) -> Any:
+        if isinstance(row, sqlite3.Row):
+            return row[key] if key in row.keys() else None
+        return row.get(key)
+
     for row in run_rows:
-        row_id = int(row["id"])
-        output_dir = Path(row["output_dir"]) if row.get("output_dir") else None
+        row_id = int(read_value(row, "id") or 0)
+        output_dir_value = read_value(row, "output_dir")
+        output_dir = Path(output_dir_value) if output_dir_value else None
         size_bytes = compute_dir_size(output_dir) if output_dir else 0
         run_sizes[row_id] = size_bytes
         total_bytes += size_bytes
