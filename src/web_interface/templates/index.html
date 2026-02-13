@@ -953,7 +953,7 @@
     }
 
     function fetchLatestLog() {
-      fetch("/logs/latest")
+      fetch(`/logs/latest?_=${Date.now()}`, { cache: "no-store" })
         .then((res) => res.json())
         .then((data) => {
           renderLog(data.log || "");
@@ -963,8 +963,39 @@
         });
     }
 
+    function pickExecutionLogRunId(items, currentRunId) {
+      const runningItems = items
+        .filter((item) => item.status_lower === "running")
+        .slice()
+        .sort((a, b) => {
+          const startCompare = String(a.started_at || "").localeCompare(String(b.started_at || ""));
+          if (startCompare !== 0) {
+            return startCompare;
+          }
+          return Number(a.id) - Number(b.id);
+        });
+      if (runningItems.length > 0) {
+        return String(runningItems[0].id);
+      }
+
+      const queuedItems = items
+        .filter((item) => item.status_lower === "queued")
+        .slice()
+        .sort((a, b) => Number(a.id) - Number(b.id));
+      if (queuedItems.length > 0) {
+        return String(queuedItems[0].id);
+      }
+
+      const currentExists = items.some((item) => String(item.id) === String(currentRunId || ""));
+      if (currentExists) {
+        return String(currentRunId);
+      }
+
+      return items[0] ? String(items[0].id) : "";
+    }
+
     function refreshRunsTable() {
-      return fetch("/runs/list")
+      return fetch(`/runs/list?_=${Date.now()}`, { cache: "no-store" })
         .then((res) => res.json())
         .then((data) => {
           if (!data.ok) {
@@ -1004,14 +1035,11 @@
           }).join("");
 
           if (logRunSelector) {
-            const runningItems = data.items.filter((item) => item.status_lower === "running");
-            const queuedItems = data.items.filter((item) => item.status_lower === "queued");
-            const firstRunningItem = runningItems.slice().sort((a, b) => Number(a.id) - Number(b.id))[0];
-            const firstQueuedItem = queuedItems.slice().sort((a, b) => Number(a.id) - Number(b.id))[0];
-            const activeItem = firstRunningItem || firstQueuedItem || data.items[0];
+            const currentRunId = logRunSelector.value;
+            const nextRunId = pickExecutionLogRunId(data.items, currentRunId);
             logRunSelector.innerHTML = data.items.map((item) => `<option value="${item.id}">${escapeHtml(item.run_label)}</option>`).join("");
-            if (activeItem) {
-              logRunSelector.value = String(activeItem.id);
+            if (nextRunId) {
+              logRunSelector.value = nextRunId;
             }
             fetchLogByRun();
           }
@@ -1043,7 +1071,7 @@
         fetchLatestLog();
         return;
       }
-      fetch(`/logs/by_run/${runId}`)
+      fetch(`/logs/by_run/${runId}?_=${Date.now()}`, { cache: "no-store" })
         .then((res) => res.json())
         .then((data) => {
           renderLog(data.log || "");
@@ -1074,7 +1102,7 @@
 
     function fetchSystemLog() {
       const source = systemLogSource?.value || "app";
-      fetch(`/logs/system?source=${encodeURIComponent(source)}`)
+      fetch(`/logs/system?source=${encodeURIComponent(source)}&_=${Date.now()}`, { cache: "no-store" })
         .then((res) => res.json())
         .then((data) => {
           renderSystemLog(data.log || "");
