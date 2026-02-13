@@ -282,7 +282,7 @@
             {% endfor %}
           </select>
           <label class="checkbox">
-            <input type="checkbox" id="execution_log_auto" />
+            <input type="checkbox" id="execution_log_auto" checked />
             Auto refresh
           </label>
           <button type="button" id="refresh_log">Refresh</button>
@@ -969,33 +969,38 @@
         });
     }
 
-    function pickExecutionLogRunId(items, currentRunId) {
+    function sortByNewestExecution(a, b) {
+      const aStart = String(a.started_at_raw || a.started_at || "");
+      const bStart = String(b.started_at_raw || b.started_at || "");
+      if (aStart !== bStart) {
+        return bStart.localeCompare(aStart);
+      }
+      return Number(b.id) - Number(a.id);
+    }
+
+    function pickExecutionLogRunId(items) {
       const runningItems = items
-        .filter((item) => item.status_lower === "running" || item.status_lower === "canceling")
+        .filter((item) => item.status_lower === "running")
         .slice()
-        .sort((a, b) => {
-          const aStart = String(a.started_at_raw || a.started_at || "");
-          const bStart = String(b.started_at_raw || b.started_at || "");
-          if (aStart !== bStart) {
-            return aStart.localeCompare(bStart);
-          }
-          return Number(a.id) - Number(b.id);
-        });
+        .sort(sortByNewestExecution);
       if (runningItems.length > 0) {
         return String(runningItems[0].id);
+      }
+
+      const cancelingItems = items
+        .filter((item) => item.status_lower === "canceling")
+        .slice()
+        .sort(sortByNewestExecution);
+      if (cancelingItems.length > 0) {
+        return String(cancelingItems[0].id);
       }
 
       const queuedItems = items
         .filter((item) => item.status_lower === "queued")
         .slice()
-        .sort((a, b) => Number(a.id) - Number(b.id));
+        .sort(sortByNewestExecution);
       if (queuedItems.length > 0) {
         return String(queuedItems[0].id);
-      }
-
-      const currentExists = items.some((item) => String(item.id) === String(currentRunId || ""));
-      if (currentExists) {
-        return String(currentRunId);
       }
 
       return items[0] ? String(items[0].id) : "";
@@ -1046,8 +1051,7 @@
           }).join("");
 
           if (logRunSelector) {
-            const currentRunId = logRunSelector.value;
-            const nextRunId = pickExecutionLogRunId(data.items, currentRunId);
+            const nextRunId = pickExecutionLogRunId(data.items);
             logRunSelector.innerHTML = data.items.map((item) => `<option value="${item.id}">${escapeHtml(item.run_label)}</option>`).join("");
             if (nextRunId) {
               logRunSelector.value = nextRunId;
@@ -1656,27 +1660,31 @@
     refreshInputsRepository();
     refreshRunsTable();
 
-    setInterval(() => {
-      refreshRunsTable();
-    }, 3000);
+    let executionPanelsRefreshTimer = null;
+    const refreshExecutionPanels = () => {
+      refreshRunsTable().then(() => {
+        fetchLogByRun();
+      });
+    };
+    refreshExecutionPanels();
+    executionPanelsRefreshTimer = setInterval(refreshExecutionPanels, 2000);
 
     let executionLogTimer = null;
     if (executionLogAuto) {
       executionLogAuto.addEventListener("change", () => {
-        if (executionLogAuto.checked) {
-          if (executionLogTimer) {
-            clearInterval(executionLogTimer);
-          }
-          fetchLogByRun();
-          executionLogTimer = setInterval(fetchLogByRun, 3000);
-        } else if (executionLogTimer) {
+        if (!executionLogAuto.checked && executionLogTimer) {
           clearInterval(executionLogTimer);
           executionLogTimer = null;
+          return;
+        }
+        if (executionLogAuto.checked && !executionLogTimer) {
+          fetchLogByRun();
+          executionLogTimer = setInterval(fetchLogByRun, 2000);
         }
       });
       if (executionLogAuto.checked) {
         fetchLogByRun();
-        executionLogTimer = setInterval(fetchLogByRun, 3000);
+        executionLogTimer = setInterval(fetchLogByRun, 2000);
       }
     }
 
