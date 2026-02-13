@@ -238,7 +238,7 @@
         <thead><tr><th></th><th class="sortable" data-sort-key="text">Module</th><th class="sortable" data-sort-key="text">Version</th><th class="sortable" data-sort-key="text">Input</th><th class="sortable" data-sort-key="text">Status</th><th class="sortable" data-sort-key="datetime" data-default-sort="desc">Start</th><th class="sortable" data-sort-key="datetime">End</th><th class="sortable" data-sort-key="duration">Duration</th><th class="sortable" data-sort-key="text">Output</th><th class="sortable" data-sort-key="text">Log</th><th class="sortable" data-sort-key="size">Size</th></tr></thead>
         <tbody>
         {% for r in latest_runs %}
-          <tr class="run-row {% if r.status_lower == 'error' %}run-error{% elif r.status_lower == 'success' %}run-success{% endif %}" data-run-id="{{ r.id }}" data-status="{{ r.status_lower }}">
+          <tr class="run-row {% if r.status_lower == 'error' %}run-error{% elif r.status_lower == 'success' %}run-success{% elif r.status_lower == 'canceled' %}run-canceled{% endif %}" data-run-id="{{ r.id }}" data-status="{{ r.status_lower }}">
             <td><input type="checkbox" class="run-checkbox" value="{{ r.id }}" data-start="{{ r.started_at }}" data-status="{{ r.status_lower }}" /></td>
             <td>{{ r.module }}</td>
             <td>{{ r.tool_version or '—' }}</td>
@@ -973,7 +973,7 @@
           }
 
           tbody.innerHTML = data.items.map((item) => {
-            const rowClass = item.status_lower === "error" ? "run-row run-error" : (item.status_lower === "success" ? "run-row run-success" : "run-row");
+            const rowClass = item.status_lower === "error" ? "run-row run-error" : (item.status_lower === "success" ? "run-row run-success" : (item.status_lower === "canceled" ? "run-row run-canceled" : "run-row"));
             const checked = selectedIds.has(item.id) ? 'checked' : '';
             const outputCell = item.output_zip ? `<a href="/runs/${item.id}/download">Download zip</a>` : "—";
             const logCell = item.output_log_file ? `<a href="/runs/${item.id}/log">Download log</a>` : "—";
