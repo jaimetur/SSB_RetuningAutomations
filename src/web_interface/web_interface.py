@@ -922,21 +922,30 @@ def run_queued_task(task_row: sqlite3.Row) -> None:
     output_log_file_value = ""
     tool_version = task_row["tool_version"] or "unknown"
 
-    if input_dir_value:
-        output_dir = None
-        temp_output_root_value = payload.get("output", "")
-        temp_output_root = Path(temp_output_root_value) if temp_output_root_value else None
+    output_dir = None
+    temp_output_root_value = payload.get("output", "")
+    temp_output_root = Path(temp_output_root_value) if temp_output_root_value else None
 
-        # Prioritize queue_task_* root so no temporary folder is left behind.
-        if (
-            temp_output_root
-            and temp_output_root.exists()
-            and temp_output_root.is_dir()
-            and temp_output_root.name.startswith("queue_task_")
-            and any(temp_output_root.iterdir())
-        ):
-            output_dir = temp_output_root
+    if (
+        temp_output_root
+        and temp_output_root.exists()
+        and temp_output_root.is_dir()
+        and temp_output_root.name.startswith("queue_task_")
+        and any(temp_output_root.iterdir())
+    ):
+        output_dir = temp_output_root
 
+
+    if output_dir is None:
+        output_snapshot_after = snapshot_output_dirs(output_candidates, output_prefixes)
+        changed_dirs: list[Path] = []
+        for raw_path, after_mtime in output_snapshot_after.items():
+            before_mtime = output_snapshot_before.get(raw_path)
+            if before_mtime is None or after_mtime > before_mtime:
+                changed_dirs.append(Path(raw_path))
+
+        if changed_dirs:
+            output_dir = max(changed_dirs, key=lambda p: p.stat().st_mtime)
         if output_dir is None:
             output_snapshot_after = snapshot_output_dirs(output_candidates, output_prefixes)
             changed_dirs: list[Path] = []
@@ -953,57 +962,69 @@ def run_queued_task(task_row: sqlite3.Row) -> None:
             if output_dir is None and temp_output_root and temp_output_root.exists() and temp_output_root.is_dir() and any(temp_output_root.iterdir()):
                 output_dir = temp_output_root
 
-        if output_dir:
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            outputs_dir = OUTPUTS_DIR / sanitize_component(username)
-            outputs_dir.mkdir(parents=True, exist_ok=True)
-            task_name_component = sanitize_component(detect_task_name_from_input(input_dir_value))
-            module_prefix = sanitize_component(module)
-            dest_name = f"{module_prefix}_{task_name_component}_{timestamp}"
-            persisted_output_dir = outputs_dir / sanitize_component(dest_name)
-            suffix = 1
-            while persisted_output_dir.exists():
-                persisted_output_dir = outputs_dir / sanitize_component(f"{dest_name}_{suffix:02d}")
-                suffix += 1
-            output_dir = move_directory_best_effort(output_dir, persisted_output_dir)
-            output_dir_value = str(output_dir)
-            try:
-                for existing in output_dir.glob("RetuningAutomation_*.log"):
-                    existing.unlink(missing_ok=True)
-                legacy_log = output_dir / "webapp_output.log"
-                if legacy_log.exists():
-                    legacy_log.unlink()
-                log_name = f"RetuningAutomation_{timestamp}_v{tool_version}.log"
-                output_log_file = output_dir / log_name
-                output_log_file.write_text(output_log, encoding="utf-8")
-                output_log_file_value = str(output_log_file)
-            except OSError:
-                output_log_file_value = ""
+        if output_dir is None and temp_output_root and temp_output_root.exists() and temp_output_root.is_dir() and any(temp_output_root.iterdir()):
+            output_dir = temp_output_root
 
-            zip_name = f"{sanitize_component(module)}_{timestamp}_v{sanitize_component(tool_version)}.zip"
-            output_zip_path = output_dir / zip_name
-            try:
-                create_zip_from_dir(output_dir, output_zip_path)
-                output_zip_value = str(output_zip_path)
-                for item in list(output_dir.iterdir()):
-                    if item == output_zip_path:
-                        continue
-                    if output_log_file_value and item == Path(output_log_file_value):
-                        continue
-                    if item.is_dir():
-                        shutil.rmtree(item, ignore_errors=True)
-                    else:
-                        item.unlink(missing_ok=True)
-            except OSError:
-                output_zip_value = ""
+    if output_dir:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        outputs_dir = OUTPUTS_DIR / sanitize_component(username)
+        outputs_dir.mkdir(parents=True, exist_ok=True)
+        task_name_component = sanitize_component(detect_task_name_from_input(input_dir_value))
+        module_prefix = sanitize_component(module)
+        dest_name = f"{module_prefix}_{task_name_component}_{timestamp}"
+        persisted_output_dir = outputs_dir / sanitize_component(dest_name)
+        suffix = 1
+        while persisted_output_dir.exists():
+            persisted_output_dir = outputs_dir / sanitize_component(f"{dest_name}_{suffix:02d}")
+            suffix += 1
+        output_dir = move_directory_best_effort(output_dir, persisted_output_dir)
+        output_dir_value = str(output_dir)
+        try:
+            for existing in output_dir.glob("RetuningAutomation_*.log"):
+                existing.unlink(missing_ok=True)
+            legacy_log = output_dir / "webapp_output.log"
+            if legacy_log.exists():
+                legacy_log.unlink()
+            log_name = f"RetuningAutomation_{timestamp}_v{tool_version}.log"
+            output_log_file = output_dir / log_name
+            output_log_file.write_text(output_log, encoding="utf-8")
+            output_log_file_value = str(output_log_file)
+        except OSError:
+            output_log_file_value = ""
+
+        zip_name = f"{sanitize_component(module)}_{timestamp}_v{sanitize_component(tool_version)}.zip"
+        output_zip_path = output_dir / zip_name
+        try:
+            create_zip_from_dir(output_dir, output_zip_path)
+            output_zip_value = str(output_zip_path)
+            for item in list(output_dir.iterdir()):
+                if item == output_zip_path:
+                    continue
+                if output_log_file_value and item == Path(output_log_file_value):
+                    continue
+                if item.is_dir():
+                    shutil.rmtree(item, ignore_errors=True)
+                else:
+                    item.unlink(missing_ok=True)
+        except OSError:
+            output_zip_value = ""
 
     temp_output_root_value = payload.get("output", "")
     if temp_output_root_value:
         temp_output_root = Path(temp_output_root_value)
         if temp_output_root.name.startswith("queue_task_"):
             try:
-                if temp_output_root.exists() and temp_output_root.is_dir() and not any(temp_output_root.iterdir()):
-                    temp_output_root.rmdir()
+                if temp_output_root.exists() and temp_output_root.is_dir():
+                    moved_elsewhere = False
+                    if output_dir_value:
+                        try:
+                            moved_elsewhere = Path(output_dir_value).resolve() != temp_output_root.resolve()
+                        except OSError:
+                            moved_elsewhere = output_dir_value != str(temp_output_root)
+                    if moved_elsewhere:
+                        shutil.rmtree(temp_output_root, ignore_errors=True)
+                    elif not any(temp_output_root.iterdir()):
+                        temp_output_root.rmdir()
             except OSError:
                 pass
 
