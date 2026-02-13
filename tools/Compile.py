@@ -177,6 +177,12 @@ def main():
                         help="Windows-only: 32 | 64 | ARM64 (can also be set via env TARGET_ARCH)")
     args = parser.parse_args()
 
+    script_dir = Path(__file__).resolve().parent
+    repo_root = script_dir.parent
+
+    # Resolve relative paths from repository root when executing from tools/
+    os.chdir(repo_root)
+
     entry_file = Path(args.main).resolve()
     if not entry_file.exists():
         raise FileNotFoundError(f"Main entry file not found: {entry_file}")
