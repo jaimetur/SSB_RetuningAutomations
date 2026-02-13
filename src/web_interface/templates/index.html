@@ -58,7 +58,6 @@
               <span class="input-with-button">
                 <input type="text" name="input" id="input_path" value="{{ settings.get('input', '') }}" placeholder="/path/input" aria-label="Input" />
                 <button type="button" class="browse-button upload-button" data-target="input_path" data-file="input_zip" data-kind="input">Upload/Save Input</button>
-                <button type="button" class="browse-button" id="select_from_repository">Select from Inputs Repository</button>
               </span>
             </label>
           </div>
@@ -67,14 +66,12 @@
               <span class="input-with-button">
                 <input type="text" name="input_pre" id="input_pre_path" value="{{ settings.get('input_pre', '') }}" />
                 <button type="button" class="browse-button upload-button" data-target="input_pre_path" data-file="input_pre_zip" data-kind="input_pre">Upload/Save Input</button>
-                <button type="button" class="browse-button" id="select_pre_from_repository">Select from Inputs Repository</button>
               </span>
             </label>
             <label>Input POST
               <span class="input-with-button">
                 <input type="text" name="input_post" id="input_post_path" value="{{ settings.get('input_post', '') }}" />
                 <button type="button" class="browse-button upload-button" data-target="input_post_path" data-file="input_post_zip" data-kind="input_post">Upload/Save Input</button>
-                <button type="button" class="browse-button" id="select_post_from_repository">Select from Inputs Repository</button>
               </span>
             </label>
           </div>
@@ -197,6 +194,7 @@
           <button type="button" id="select_all_inputs">Select All</button>
           <button type="button" id="unselect_all_inputs">Un-Select All</button>
           <button type="button" id="select_older_inputs" class="btn btn-accent">Select Older</button>
+          <button type="button" id="send_selected_inputs" class="btn btn-success">Send to Input</button>
           <button type="button" id="delete_selected_inputs" class="btn btn-danger">Delete Selected</button>
           <button type="button" id="toggle_inputs_panel" class="panel-toggle" aria-label="Collapse inputs panel" title="Collapse/Expand">▾</button>
         </div>
@@ -204,17 +202,16 @@
       <input type="date" id="older_input_date_picker" class="hidden" />
       <div class="table-scroll" id="inputs_panel_table">
       <table>
-        <thead><tr><th></th><th class="sortable" data-sort-key="text">Input</th><th class="sortable" data-sort-key="text">Uploaded by</th><th class="sortable" data-sort-key="datetime" data-default-sort="desc">Uploaded at</th><th class="sortable" data-sort-key="size">Size</th><th>Send to Input</th><th class="sortable" data-sort-key="text">Target</th></tr></thead>
+        <thead><tr><th></th><th class="sortable" data-sort-key="text">Input</th><th class="sortable" data-sort-key="text">Uploaded by</th><th class="sortable" data-sort-key="datetime" data-default-sort="desc">Uploaded at</th><th class="sortable" data-sort-key="size">Size</th><th class="sortable" data-sort-key="text">Target</th></tr></thead>
         <tbody>
         {% for item in input_items %}
           <tr>
             <td><input type="checkbox" class="input-checkbox" value="{{ item.id }}" data-uploaded-at="{{ item.uploaded_at }}" /></td>
             <td>{{ item.input_name }}</td><td>{{ item.uploaded_by }}</td><td>{{ item.uploaded_at }}</td><td>{{ item.size_mb }}</td>
-            <td><button type="button" class="btn btn-primary send-to-input" data-input-name="{{ item.input_name }}" data-input-path="{{ item.input_path }}">Send to Input</button></td>
-            <td><select class="send-target"><option value="single">Single Input</option><option value="pre">As Input PRE</option><option value="post">As Input POST</option></select></td>
+            <td data-input-path="{{ item.input_path }}"><select class="send-target"><option value="single">Single Input</option><option value="pre">Input PRE</option><option value="post">Input POST</option></select></td>
           </tr>
         {% else %}
-          <tr><td colspan="7">No inputs in repository.</td></tr>
+          <tr><td colspan="6">No inputs in repository.</td></tr>
         {% endfor %}
         </tbody>
       </table>
@@ -352,6 +349,7 @@
     const selectAllInputsButton = document.getElementById("select_all_inputs");
     const unselectAllInputsButton = document.getElementById("unselect_all_inputs");
     const selectOlderInputsButton = document.getElementById("select_older_inputs");
+    const sendSelectedInputsButton = document.getElementById("send_selected_inputs");
     const deleteSelectedInputsButton = document.getElementById("delete_selected_inputs");
     const olderInputDatePicker = document.getElementById("older_input_date_picker");
     const toggleInputsPanelButton = document.getElementById("toggle_inputs_panel");
@@ -386,9 +384,6 @@
     const freqClearButton = document.getElementById("freq_clear");
     const selectAllButton = document.getElementById("freq_select_all");
     const blockedModuleValue = "consistency-check-bulk";
-    const selectFromRepositoryButton = document.getElementById("select_from_repository");
-    const selectPreFromRepositoryButton = document.getElementById("select_pre_from_repository");
-    const selectPostFromRepositoryButton = document.getElementById("select_post_from_repository");
     const toggleRunsPanelButton = document.getElementById("toggle_runs_panel");
     const runsPanelTable = document.getElementById("runs_panel_table");
     const selectedInputsSingleField = document.getElementById("selected_inputs_single");
@@ -546,7 +541,7 @@
             return;
           }
           if (!data.items || data.items.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="7">No inputs in repository.</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="6">No inputs in repository.</td></tr>';
             applyCurrentOrDefaultSort("#inputs_panel_table table");
             return;
           }
@@ -557,8 +552,7 @@
               <td>${escapeHtml(item.uploaded_by)}</td>
               <td>${escapeHtml(item.uploaded_at)}</td>
               <td>${escapeHtml(item.size_mb)}</td>
-              <td><button type="button" class="btn btn-primary send-to-input" data-input-name="${escapeHtml(item.input_name)}" data-input-path="${escapeHtml(item.input_path || "")}">Send to Input</button></td>
-              <td><select class="send-target"><option value="single">Single Input</option><option value="pre">As Input PRE</option><option value="post">As Input POST</option></select></td>
+              <td data-input-path="${escapeHtml(item.input_path || "")}"><select class="send-target"><option value="single">Single Input</option><option value="pre">Input PRE</option><option value="post">Input POST</option></select></td>
             </tr>
           `).join("");
           applyCurrentOrDefaultSort("#inputs_panel_table table");
@@ -566,40 +560,19 @@
         .catch(() => {});
     }
 
-    function assignInputToTarget(inputName, targetMode, inputPath = "") {
-      const resolvedInputPath = inputPath || buildRepositoryPath(inputName);
-      if (targetMode === "pre") {
-        inputFields.input_pre.value = resolvedInputPath;
-      } else if (targetMode === "post") {
-        inputFields.input_post.value = resolvedInputPath;
-      } else {
-        inputFields.input.value = resolvedInputPath;
-      }
-      scheduleAutoSave();
-    }
-
-    function getCheckedInputNames(targetMode = null) {
-      return Array.from(document.querySelectorAll(".input-checkbox:checked")).map((box) => {
+    function collectSelectedInputsByTarget() {
+      const selected = { single: [], pre: [], post: [] };
+      Array.from(document.querySelectorAll(".input-checkbox:checked")).forEach((box) => {
         const row = box.closest("tr");
         const rowTarget = row?.querySelector(".send-target")?.value || "single";
-        if (targetMode && rowTarget !== targetMode) {
-          return "";
+        const inputName = row?.cells?.[1]?.textContent?.trim() || "";
+        const inputPath = row?.cells?.[5]?.dataset?.inputPath || "";
+        const value = inputPath || buildRepositoryPath(inputName);
+        if (value && selected[rowTarget]) {
+          selected[rowTarget].push(value);
         }
-        return row?.cells?.[1]?.textContent?.trim() || "";
-      }).filter((name) => name);
-    }
-
-
-    function getCheckedInputPaths(targetMode = null) {
-      return Array.from(document.querySelectorAll(".input-checkbox:checked")).map((box) => {
-        const row = box.closest("tr");
-        const rowTarget = row?.querySelector(".send-target")?.value || "single";
-        if (targetMode && rowTarget !== targetMode) {
-          return "";
-        }
-        const button = row?.querySelector(".send-to-input");
-        return button?.dataset?.inputPath || "";
-      }).filter((path) => path);
+      });
+      return selected;
     }
 
     function isModuleBlocked() {
@@ -1390,6 +1363,26 @@
       });
       olderInputDatePicker.value = "";
     });
+
+    sendSelectedInputsButton?.addEventListener("click", async () => {
+      const selectedByTarget = collectSelectedInputsByTarget();
+      const totalSelected = selectedByTarget.single.length + selectedByTarget.pre.length + selectedByTarget.post.length;
+      if (!totalSelected) {
+        await showModal({ title: "Selection required", message: "Select at least one input in Inputs Repository panel.", confirmText: "Accept" });
+        return;
+      }
+      if (selectedByTarget.single.length) {
+        inputFields.input.value = selectedByTarget.single.join(",");
+      }
+      if (selectedByTarget.pre.length) {
+        inputFields.input_pre.value = selectedByTarget.pre.join(",");
+      }
+      if (selectedByTarget.post.length) {
+        inputFields.input_post.value = selectedByTarget.post.join(",");
+      }
+      scheduleAutoSave();
+      await showModal({ title: "Inputs assigned", message: "Selected inputs were sent to Input / Input PRE / Input POST based on each row target.", confirmText: "Accept" });
+    });
     deleteSelectedInputsButton?.addEventListener("click", async () => {
       const ids = getSelectedInputIds();
       if (!ids.length) return;
@@ -1416,49 +1409,6 @@
         toggleInputsPanelButton.textContent = inputsPanelTable?.classList.contains("hidden") ? "▸" : "▾";
       }
     });
-    document.addEventListener("click", (event) => {
-      const button = event.target.closest(".send-to-input");
-      if (!button) {
-        return;
-      }
-      const row = button.closest("tr");
-      const targetMode = row?.querySelector(".send-target")?.value || "single";
-      const inputName = button.dataset.inputName || "";
-      const inputPath = button.dataset.inputPath || "";
-      if (!inputName) {
-        return;
-      }
-      assignInputToTarget(inputName, targetMode, inputPath);
-    });
-
-    function assignSelectedRepositoryInputs(targetMode) {
-      const selectedFilter = targetMode === "single" ? null : targetMode;
-      const selectedNames = getCheckedInputNames(selectedFilter);
-      if (selectedNames.length === 0) {
-        if (targetMode === "pre" || targetMode === "post") {
-          showModal({ title: "Selection required", message: `Select at least one input marked as As Input ${targetMode.toUpperCase()} in Inputs Repository panel.`, confirmText: "Accept" });
-        } else {
-          showModal({ title: "Selection required", message: "Select at least one input in Inputs Repository panel.", confirmText: "Accept" });
-        }
-        return;
-      }
-      const selectedPaths = getCheckedInputPaths(selectedFilter);
-      const values = selectedPaths.length ? selectedPaths : selectedNames.map((name) => buildRepositoryPath(name));
-      if (targetMode === "pre") {
-        inputFields.input_pre.value = values.join(",");
-      } else if (targetMode === "post") {
-        inputFields.input_post.value = values.join(",");
-      } else {
-        inputFields.input.value = values.join(",");
-      }
-      scheduleAutoSave();
-    }
-
-    selectFromRepositoryButton?.addEventListener("click", () => {
-      assignSelectedRepositoryInputs("single");
-    });
-    selectPreFromRepositoryButton?.addEventListener("click", () => assignSelectedRepositoryInputs("pre"));
-    selectPostFromRepositoryButton?.addEventListener("click", () => assignSelectedRepositoryInputs("post"));
 
     moduleSelect.addEventListener("change", () => {
       toggleInputRows();

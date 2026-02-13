@@ -923,6 +923,16 @@ def run_queued_task(task_row: sqlite3.Row) -> None:
             except OSError:
                 output_zip_value = ""
 
+    temp_output_root_value = payload.get("output", "")
+    if temp_output_root_value:
+        temp_output_root = Path(temp_output_root_value)
+        if temp_output_root.name.startswith("queue_task_"):
+            try:
+                if temp_output_root.exists() and temp_output_root.is_dir() and not any(temp_output_root.iterdir()):
+                    temp_output_root.rmdir()
+            except OSError:
+                pass
+
     conn = get_conn()
     conn.execute(
         """
