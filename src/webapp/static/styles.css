@@ -1,4 +1,4 @@
-/* Base layout and typography for the web frontend. */
+/* Base layout and typography for the web interface. */
 body{font-family:Arial,sans-serif;background:#e6ebf2;margin:0;padding:0;color:#1b2430}
 body::before{content:"";position:fixed;inset:0;background-image:radial-gradient(circle at 1px 1px,rgba(17,24,39,.08) 1px,transparent 0),radial-gradient(circle at 1px 1px,rgba(17,24,39,.04) 1px,transparent 0);background-size:28px 28px,10px 10px;pointer-events:none;z-index:-1}
 .container{max-width:1200px;margin:2rem auto;padding:0 1rem}
@@ -12,6 +12,8 @@ body::before{content:"";position:fixed;inset:0;background-image:radial-gradient(
 .runs-header{display:flex;justify-content:space-between;align-items:center;gap:1rem;margin-bottom:.6rem}
 .runs-actions{display:flex;align-items:center;gap:.6rem;flex-wrap:wrap}
 .runs-total{color:#5a6a80;font-size:.9rem}
+.panel-toggle{width:28px;height:28px;border-radius:999px;padding:0;display:inline-flex;align-items:center;justify-content:center;font-size:14px;line-height:1;background:#edf2ff;color:#2447a8;border:1px solid #c7d4ff}
+.panel-toggle:hover{background:#dfe8ff}
 .latest-runs-scroll{max-height:380px;overflow-y:auto}
 .run-error{background:#ffe6e6}
 .run-success{background:#e6f5ea}
@@ -77,6 +79,12 @@ th,td{border-bottom:1px solid #e3e8ee;padding:.55rem;text-align:left;font-size:.
 .input-with-button input{flex:1;min-width:0}
 .browse-button{padding:.5rem .9rem;white-space:nowrap}
 .hidden{display:none}
+.modal-backdrop{position:fixed;inset:0;background:rgba(15,23,42,.45);display:flex;align-items:center;justify-content:center;z-index:1000}
+.modal-box{width:min(520px,92vw);background:#fff;border-radius:12px;box-shadow:0 20px 60px rgba(15,23,42,.35);padding:1rem 1rem .85rem}
+.modal-title{margin:0 0 .5rem;color:#1f2d3d;font-size:1.05rem}
+.modal-message{margin:0 0 .85rem;color:#4a5b70;line-height:1.35;white-space:pre-wrap}
+.modal-input{width:100%;box-sizing:border-box;margin-bottom:.85rem}
+.modal-actions{display:flex;justify-content:flex-end;gap:.5rem}
 .log-card{margin-bottom:2rem}
 .log-header{display:flex;justify-content:space-between;align-items:center;gap:1rem}
 .log-actions{display:flex;gap:.5rem;align-items:center;flex-wrap:wrap}
