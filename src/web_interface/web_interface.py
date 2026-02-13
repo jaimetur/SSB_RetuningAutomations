@@ -806,6 +806,22 @@ def get_inputs_repository_total_size() -> str:
     return format_mb(int(row["total_size"] or 0))
 
 
+def move_directory_best_effort(source_dir: Path, destination_dir: Path) -> Path:
+    """Move a directory, falling back to copy+delete when rename/move fails."""
+    try:
+        shutil.move(str(source_dir), str(destination_dir))
+        return destination_dir
+    except OSError:
+        pass
+
+    try:
+        shutil.copytree(source_dir, destination_dir)
+        shutil.rmtree(source_dir, ignore_errors=True)
+        return destination_dir
+    except OSError:
+        return source_dir
+
+
 def run_queued_task(task_row: sqlite3.Row) -> None:
     task_id = task_row["id"]
     payload = json.loads(task_row["payload_json"] or "{}")
@@ -886,22 +902,33 @@ def run_queued_task(task_row: sqlite3.Row) -> None:
 
     if input_dir_value:
         output_dir = None
-        output_snapshot_after = snapshot_output_dirs(output_candidates, output_prefixes)
-        changed_dirs: list[Path] = []
-        for raw_path, after_mtime in output_snapshot_after.items():
-            before_mtime = output_snapshot_before.get(raw_path)
-            if before_mtime is None or after_mtime > before_mtime:
-                changed_dirs.append(Path(raw_path))
-
-        if changed_dirs:
-            output_dir = max(changed_dirs, key=lambda p: p.stat().st_mtime)
-        if output_dir is None:
-            output_dir = find_task_output_dir(output_candidates, output_prefixes, started_at)
-
         temp_output_root_value = payload.get("output", "")
-        if output_dir is None and temp_output_root_value:
-            temp_output_root = Path(temp_output_root_value)
-            if temp_output_root.exists() and temp_output_root.is_dir() and any(temp_output_root.iterdir()):
+        temp_output_root = Path(temp_output_root_value) if temp_output_root_value else None
+
+        # Prioritize queue_task_* root so no temporary folder is left behind.
+        if (
+            temp_output_root
+            and temp_output_root.exists()
+            and temp_output_root.is_dir()
+            and temp_output_root.name.startswith("queue_task_")
+            and any(temp_output_root.iterdir())
+        ):
+            output_dir = temp_output_root
+
+        if output_dir is None:
+            output_snapshot_after = snapshot_output_dirs(output_candidates, output_prefixes)
+            changed_dirs: list[Path] = []
+            for raw_path, after_mtime in output_snapshot_after.items():
+                before_mtime = output_snapshot_before.get(raw_path)
+                if before_mtime is None or after_mtime > before_mtime:
+                    changed_dirs.append(Path(raw_path))
+
+            if changed_dirs:
+                output_dir = max(changed_dirs, key=lambda p: p.stat().st_mtime)
+            if output_dir is None:
+                output_dir = find_task_output_dir(output_candidates, output_prefixes, started_at)
+
+            if output_dir is None and temp_output_root and temp_output_root.exists() and temp_output_root.is_dir() and any(temp_output_root.iterdir()):
                 output_dir = temp_output_root
 
         if output_dir:
@@ -916,11 +943,7 @@ def run_queued_task(task_row: sqlite3.Row) -> None:
             while persisted_output_dir.exists():
                 persisted_output_dir = outputs_dir / sanitize_component(f"{dest_name}_{suffix:02d}")
                 suffix += 1
-            try:
-                shutil.move(str(output_dir), str(persisted_output_dir))
-                output_dir = persisted_output_dir
-            except OSError:
-                pass
+            output_dir = move_directory_best_effort(output_dir, persisted_output_dir)
             output_dir_value = str(output_dir)
             try:
                 for existing in output_dir.glob("RetuningAutomation_*.log"):
