@@ -111,11 +111,12 @@ def build_priority_selection(script_root: Path, candidates: List[Path], max_file
 
 def main() -> None:
     script_root = Path(__file__).resolve().parent
-    src_folder = (script_root / Path(r".\src")).resolve()
+    repo_root = script_root.parent
+    src_folder = (repo_root / "src").resolve()
     if not src_folder.exists() or not src_folder.is_dir():
         raise SystemExit(f"ERROR: src folder not found: {src_folder}")
 
-    dest_folder = script_root / DEST_FOLDER_NAME
+    dest_folder = repo_root / DEST_FOLDER_NAME
     dest_folder.mkdir(parents=True, exist_ok=True)
 
     all_candidates = list_py_files(src_folder)
@@ -125,7 +126,7 @@ def main() -> None:
         to_copy = sorted(p.resolve() for p in all_candidates)
         print(f"Copying ALL eligible files: {len(to_copy)}")
     else:
-        to_copy = build_priority_selection(script_root, all_candidates, MAX_FILES)
+        to_copy = build_priority_selection(repo_root, all_candidates, MAX_FILES)
         print(f"Candidates exceed {MAX_FILES}. Copying TOP {len(to_copy)} by priority order.")
 
     copied = copy_files_flat_overwrite(to_copy, dest_folder)

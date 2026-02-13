@@ -1,8 +1,11 @@
 # ------------------------------------------------------------
-# Add 'src/' folder to sys.path to import any module from 'src/'.
+# Add project root and 'src/' folder to sys.path.
 import os, sys
 current_dir = os.path.dirname(__file__)
-src_path = os.path.abspath(os.path.join(current_dir, "src"))
+project_root = os.path.abspath(os.path.join(current_dir, os.pardir))
+src_path = os.path.join(project_root, "src")
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
 if src_path not in sys.path:
     sys.path.insert(0, src_path)
 # ------------------------------------------------------------
@@ -427,8 +430,11 @@ def main(compiler='pyinstaller', compile_in_one_file=COMPILE_IN_ONE_FILE):
     TOOL_VERSION_WITHOUT_V = _get_clean_version(TOOL_VERSION)
     TOOL_NAME_VERSION = f"{TOOL_NAME}_v{TOOL_VERSION}"
 
-    # Get working directory
-    root_dir = os.getcwd()
+    # Use repository root (parent directory of this script in tools/)
+    root_dir = project_root
+
+    # Ensure all relative paths in this script are resolved from repository root.
+    os.chdir(root_dir)
     # Get the root directory one level above the working directory
     # root_dir = os.path.abspath(os.path.join(os.getcwd(), os.pardir))
 
@@ -465,14 +471,14 @@ def main(compiler='pyinstaller', compile_in_one_file=COMPILE_IN_ONE_FILE):
     # Paths for CHANGELOG.md, RELEASE-NOTES.md and DOWNLOAD.md
     download_filepath = os.path.join(root_dir, 'DOWNLOAD.md')
     changelog_filepath = os.path.join(root_dir, 'CHANGELOG.md')
-    current_release_filepath = os.path.join(root_dir, 'RELEASE-NOTES.md')
+    current_release_filepath = os.path.join(current_dir, 'RELEASE-NOTES.md')
 
     # Extract the body of the current release from CHANGELOG.md
     _extract_release_body(input_file=changelog_filepath, output_file=current_release_filepath, download_file=download_filepath)
     print(f"File '{current_release_filepath}' created successfully!.")
 
     # Save build_info.txt
-    with open(os.path.join(root_dir, 'build_info.txt'), 'w') as file:
+    with open(os.path.join(current_dir, 'build_info.txt'), 'w') as file:
         file.write('OPERATING_SYSTEM=' + OPERATING_SYSTEM + '\n')
         file.write('ARCHITECTURE=' + ARCHITECTURE + '\n')
         file.write('TOOL_NAME=' + TOOL_NAME + '\n')
@@ -539,7 +545,7 @@ def compile(compiler='pyinstaller', compile_in_one_file=COMPILE_IN_ONE_FILE):
         script_compiled_with_version_os_arch_extension = f"{TOOL_NAME_WITH_VERSION_OS_ARCH}.run"
 
     # Append additional info into build_info.txt
-    with open(os.path.join(root_dir, 'build_info.txt'), 'a') as file:
+    with open(os.path.join(current_dir, 'build_info.txt'), 'a') as file:
         file.write('COMPILER=' + str(compiler) + '\n')
         file.write('SCRIPT_COMPILED=' + os.path.abspath(script_compiled_with_version_os_arch_extension) + '\n')
         print('')

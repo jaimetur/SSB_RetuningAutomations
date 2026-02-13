@@ -17,7 +17,8 @@ import sys
 # ---------------------------------------------------------------------
 try:
     current_dir = os.path.dirname(__file__)
-    src_path = os.path.abspath(os.path.join(current_dir, "src"))
+    project_root = os.path.abspath(os.path.join(current_dir, os.pardir))
+    src_path = os.path.abspath(os.path.join(project_root, "src"))
     if src_path not in sys.path:
         sys.path.insert(0, src_path)
     from SSB_RetuningAutomations import TOOL_VERSION
@@ -25,7 +26,7 @@ except Exception as e:
     print(f"❌ ERROR: Unable to import TOOL_VERSION from SSB_RetuningAutomations.py\n{e}")
     sys.exit(1)
 
-download_md = os.path.join(os.path.dirname(__file__), "DOWNLOAD.md")
+download_md = os.path.join(project_root, "DOWNLOAD.md")
 if not os.path.isfile(download_md):
     print(f"❌ File not found: {download_md}")
     sys.exit(1)
