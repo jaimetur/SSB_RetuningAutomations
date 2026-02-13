@@ -37,8 +37,9 @@ if docker ps -a --format '{{.Names}}' | grep -Fxq "$CONTAINER_NAME"; then
   docker rm -f "$CONTAINER_NAME" >/dev/null || true
 fi
 
-echo "Starting compose (build + remove orphans)..."
-docker compose -f "$COMPOSE_FILE" up --build -d --remove-orphans
+echo "Starting compose (build + force recreate + remove orphans)..."
+docker compose -f "$COMPOSE_FILE" build --no-cache
+docker compose -f "$COMPOSE_FILE" up -d --force-recreate --remove-orphans
 
 echo "Logs:"
 docker compose -f "$COMPOSE_FILE" logs -f
