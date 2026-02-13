@@ -33,7 +33,8 @@ DATA_DIR = PROJECT_ROOT / "data"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 DB_PATH = DATA_DIR / "web_interface.db"
 LEGACY_DB_PATH = DATA_DIR / "web_frontend.db"  # legacy filename from previous Web Interface naming
-ACCESS_LOG_PATH = DATA_DIR / "web-access.log"
+API_LOG_PATH = DATA_DIR / "web-api.log"
+WEB_ACCESS_LOG_PATH = DATA_DIR / "web-access.log"
 APP_LOG_PATH = DATA_DIR / "web-interface.log"
 LEGACY_ACCESS_LOG_PATH = DATA_DIR / "access.log"
 LEGACY_APP_LOG_PATH = DATA_DIR / "app.log"
@@ -44,7 +45,7 @@ if not DB_PATH.exists() and LEGACY_DB_PATH.exists():
     except OSError:
         pass
 
-for legacy_log_path, active_log_path in ((LEGACY_ACCESS_LOG_PATH, ACCESS_LOG_PATH), (LEGACY_APP_LOG_PATH, APP_LOG_PATH)):
+for legacy_log_path, active_log_path in ((LEGACY_ACCESS_LOG_PATH, API_LOG_PATH), (LEGACY_APP_LOG_PATH, APP_LOG_PATH)):
     if not active_log_path.exists() and legacy_log_path.exists():
         try:
             legacy_log_path.rename(active_log_path)
@@ -100,19 +101,31 @@ def setup_logging() -> logging.Logger:
     return logger
 
 
-def setup_access_logger() -> logging.Logger:
+def setup_api_logger() -> logging.Logger:
+    logger = logging.getLogger("web_api")
+    logger.setLevel(logging.INFO)
+    if not logger.handlers:
+        # Keep API request logs separate from application logs.
+        api_handler = RotatingFileHandler(API_LOG_PATH, maxBytes=2_000_000, backupCount=3)
+        api_handler.setFormatter(logging.Formatter("%(asctime)s %(message)s"))
+        logger.addHandler(api_handler)
+    return logger
+
+
+def setup_web_access_logger() -> logging.Logger:
     logger = logging.getLogger("web_access")
     logger.setLevel(logging.INFO)
     if not logger.handlers:
-        # Keep HTTP access logs separate from application logs.
-        access_handler = RotatingFileHandler(ACCESS_LOG_PATH, maxBytes=2_000_000, backupCount=3)
+        # Keep web access/authentication logs separate from API call logs.
+        access_handler = RotatingFileHandler(WEB_ACCESS_LOG_PATH, maxBytes=2_000_000, backupCount=3)
         access_handler.setFormatter(logging.Formatter("%(asctime)s %(message)s"))
         logger.addHandler(access_handler)
     return logger
 
 
 logger = setup_logging()
-access_logger = setup_access_logger()
+api_logger = setup_api_logger()
+web_access_logger = setup_web_access_logger()
 
 
 MODULE_OPTIONS = [
@@ -682,6 +695,15 @@ def require_admin(request: Request) -> sqlite3.Row:
     return user
 
 
+def get_client_ip(request: Request) -> str:
+    xff = request.headers.get("x-forwarded-for", "")
+    if xff:
+        first = xff.split(",")[0].strip()
+        if first:
+            return first
+    return request.client.host if request.client else "unknown"
+
+
 def save_user_settings(user_id: int, settings: dict[str, Any]) -> None:
     conn = get_conn()
     conn.execute(
@@ -806,6 +828,22 @@ def get_inputs_repository_total_size() -> str:
     return format_mb(int(row["total_size"] or 0))
 
 
+def move_directory_best_effort(source_dir: Path, destination_dir: Path) -> Path:
+    """Move a directory, falling back to copy+delete when rename/move fails."""
+    try:
+        shutil.move(str(source_dir), str(destination_dir))
+        return destination_dir
+    except OSError:
+        pass
+
+    try:
+        shutil.copytree(source_dir, destination_dir)
+        shutil.rmtree(source_dir, ignore_errors=True)
+        return destination_dir
+    except OSError:
+        return source_dir
+
+
 def run_queued_task(task_row: sqlite3.Row) -> None:
     task_id = task_row["id"]
     payload = json.loads(task_row["payload_json"] or "{}")
@@ -823,19 +861,42 @@ def run_queued_task(task_row: sqlite3.Row) -> None:
     output_prefixes = build_output_prefixes(module)
     output_snapshot_before = snapshot_output_dirs(output_candidates, output_prefixes)
 
+    def persist_partial_output_log(log_text: str) -> None:
+        conn_partial = get_conn()
+        conn_partial.execute(
+            "UPDATE task_runs SET output_log = ? WHERE id = ?",
+            (strip_ansi(log_text)[:20000], task_id),
+        )
+        conn_partial.commit()
+        conn_partial.close()
+
     try:
         proc = subprocess.Popen(
             cmd,
             cwd=str(PROJECT_ROOT),
             stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
             text=True,
+            bufsize=1,
             env={**os.environ, "TERM": "xterm", "SSB_RA_NO_CLEAR": "1"},
         )
         with running_processes_lock:
             running_processes[task_id] = proc
-        stdout, stderr = proc.communicate()
-        output_log = (stdout or "") + "\n" + (stderr or "")
+        output_chunks: list[str] = []
+        last_partial_update = time.perf_counter()
+        stream = proc.stdout
+        if stream is not None:
+            for line in iter(stream.readline, ""):
+                output_chunks.append(line)
+                now_perf = time.perf_counter()
+                if now_perf - last_partial_update >= 1.0:
+                    persist_partial_output_log("".join(output_chunks))
+                    last_partial_update = now_perf
+            stream.close()
+
+        proc.wait()
+        output_log = "".join(output_chunks)
+        persist_partial_output_log(output_log)
         canceled = False
         with canceled_task_ids_lock:
             if task_id in canceled_task_ids:
@@ -861,8 +922,21 @@ def run_queued_task(task_row: sqlite3.Row) -> None:
     output_log_file_value = ""
     tool_version = task_row["tool_version"] or "unknown"
 
-    if input_dir_value:
-        output_dir = None
+    output_dir = None
+    temp_output_root_value = payload.get("output", "")
+    temp_output_root = Path(temp_output_root_value) if temp_output_root_value else None
+
+    if (
+        temp_output_root
+        and temp_output_root.exists()
+        and temp_output_root.is_dir()
+        and temp_output_root.name.startswith("queue_task_")
+        and any(temp_output_root.iterdir())
+    ):
+        output_dir = temp_output_root
+
+
+    if output_dir is None:
         output_snapshot_after = snapshot_output_dirs(output_candidates, output_prefixes)
         changed_dirs: list[Path] = []
         for raw_path, after_mtime in output_snapshot_after.items():
@@ -875,61 +949,69 @@ def run_queued_task(task_row: sqlite3.Row) -> None:
         if output_dir is None:
             output_dir = find_task_output_dir(output_candidates, output_prefixes, started_at)
 
-        if output_dir:
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            outputs_dir = OUTPUTS_DIR / sanitize_component(username)
-            outputs_dir.mkdir(parents=True, exist_ok=True)
-            task_name_component = sanitize_component(detect_task_name_from_input(input_dir_value))
-            module_prefix = sanitize_component(module)
-            dest_name = f"{module_prefix}_{task_name_component}_{timestamp}"
-            persisted_output_dir = outputs_dir / sanitize_component(dest_name)
-            suffix = 1
-            while persisted_output_dir.exists():
-                persisted_output_dir = outputs_dir / sanitize_component(f"{dest_name}_{suffix:02d}")
-                suffix += 1
-            try:
-                shutil.move(str(output_dir), str(persisted_output_dir))
-                output_dir = persisted_output_dir
-            except OSError:
-                pass
-            output_dir_value = str(output_dir)
-            try:
-                for existing in output_dir.glob("RetuningAutomation_*.log"):
-                    existing.unlink(missing_ok=True)
-                legacy_log = output_dir / "webapp_output.log"
-                if legacy_log.exists():
-                    legacy_log.unlink()
-                log_name = f"RetuningAutomation_{timestamp}_v{tool_version}.log"
-                output_log_file = output_dir / log_name
-                output_log_file.write_text(output_log, encoding="utf-8")
-                output_log_file_value = str(output_log_file)
-            except OSError:
-                output_log_file_value = ""
+        if output_dir is None and temp_output_root and temp_output_root.exists() and temp_output_root.is_dir() and any(temp_output_root.iterdir()):
+            output_dir = temp_output_root
 
-            zip_name = f"{sanitize_component(module)}_{timestamp}_v{sanitize_component(tool_version)}.zip"
-            output_zip_path = output_dir / zip_name
-            try:
-                create_zip_from_dir(output_dir, output_zip_path)
-                output_zip_value = str(output_zip_path)
-                for item in list(output_dir.iterdir()):
-                    if item == output_zip_path:
-                        continue
-                    if output_log_file_value and item == Path(output_log_file_value):
-                        continue
-                    if item.is_dir():
-                        shutil.rmtree(item, ignore_errors=True)
-                    else:
-                        item.unlink(missing_ok=True)
-            except OSError:
-                output_zip_value = ""
+    if output_dir:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        outputs_dir = OUTPUTS_DIR / sanitize_component(username)
+        outputs_dir.mkdir(parents=True, exist_ok=True)
+        task_name_component = sanitize_component(detect_task_name_from_input(input_dir_value))
+        module_prefix = sanitize_component(module)
+        dest_name = f"{module_prefix}_{task_name_component}_{timestamp}"
+        persisted_output_dir = outputs_dir / sanitize_component(dest_name)
+        suffix = 1
+        while persisted_output_dir.exists():
+            persisted_output_dir = outputs_dir / sanitize_component(f"{dest_name}_{suffix:02d}")
+            suffix += 1
+        output_dir = move_directory_best_effort(output_dir, persisted_output_dir)
+        output_dir_value = str(output_dir)
+        try:
+            for existing in output_dir.glob("RetuningAutomation_*.log"):
+                existing.unlink(missing_ok=True)
+            legacy_log = output_dir / "webapp_output.log"
+            if legacy_log.exists():
+                legacy_log.unlink()
+            log_name = f"RetuningAutomation_{timestamp}_v{tool_version}.log"
+            output_log_file = output_dir / log_name
+            output_log_file.write_text(output_log, encoding="utf-8")
+            output_log_file_value = str(output_log_file)
+        except OSError:
+            output_log_file_value = ""
+
+        zip_name = f"{sanitize_component(module)}_{timestamp}_v{sanitize_component(tool_version)}.zip"
+        output_zip_path = output_dir / zip_name
+        try:
+            create_zip_from_dir(output_dir, output_zip_path)
+            output_zip_value = str(output_zip_path)
+            for item in list(output_dir.iterdir()):
+                if item == output_zip_path:
+                    continue
+                if output_log_file_value and item == Path(output_log_file_value):
+                    continue
+                if item.is_dir():
+                    shutil.rmtree(item, ignore_errors=True)
+                else:
+                    item.unlink(missing_ok=True)
+        except OSError:
+            output_zip_value = ""
 
     temp_output_root_value = payload.get("output", "")
     if temp_output_root_value:
         temp_output_root = Path(temp_output_root_value)
         if temp_output_root.name.startswith("queue_task_"):
             try:
-                if temp_output_root.exists() and temp_output_root.is_dir() and not any(temp_output_root.iterdir()):
-                    temp_output_root.rmdir()
+                if temp_output_root.exists() and temp_output_root.is_dir():
+                    moved_elsewhere = False
+                    if output_dir_value:
+                        try:
+                            moved_elsewhere = Path(output_dir_value).resolve() != temp_output_root.resolve()
+                        except OSError:
+                            moved_elsewhere = output_dir_value != str(temp_output_root)
+                    if moved_elsewhere:
+                        shutil.rmtree(temp_output_root, ignore_errors=True)
+                    elif not any(temp_output_root.iterdir()):
+                        temp_output_root.rmdir()
             except OSError:
                 pass
 
@@ -1174,8 +1256,8 @@ async def access_log_middleware(request: Request, call_next):
     start = time.perf_counter()
     response = await call_next(request)
     elapsed_ms = (time.perf_counter() - start) * 1000
-    client = request.client.host if request.client else "unknown"
-    access_logger.info(
+    client = get_client_ip(request)
+    api_logger.info(
         '%s "%s %s" status=%s duration_ms=%.2f',
         client,
         request.method,
@@ -1200,7 +1282,7 @@ def serialize_run_row(row: dict[str, Any], run_sizes: dict[int, int]) -> dict[st
     raw_status = (data.get("status") or "").strip().lower()
     data["status_lower"] = "success" if raw_status == "ok" else raw_status
     data["status_display"] = format_task_status(data.get("status") or "")
-    data["run_label"] = f"{data.get('module')}_{data.get('started_at')}_v{data.get('tool_version') or '—'}"
+    data["run_label"] = f"#{data.get('id')} - {data.get('module') or '—'} - {data.get('started_at') or '—'}"
     data["size_mb"] = format_mb(run_sizes.get(int(data.get("id") or 0), 0))
     return data
 
@@ -1284,6 +1366,11 @@ def login_post(request: Request, username: str = Form(...), password: str = Form
     except (ValueError, TypeError):
         verified = False
     if not verified:
+        web_access_logger.warning(
+            "login failed user=%s ip=%s",
+            username.strip() or "unknown",
+            get_client_ip(request),
+        )
         conn.close()
         return templates.TemplateResponse(
             "login.html",
@@ -1299,6 +1386,11 @@ def login_post(request: Request, username: str = Form(...), password: str = Form
     conn.commit()
     conn.close()
 
+    web_access_logger.info(
+        "login success user=%s ip=%s",
+        user["username"],
+        get_client_ip(request),
+    )
     response = RedirectResponse(url="/", status_code=302)
     response.set_cookie("session_token", token, httponly=True, samesite="lax")
     return response
@@ -1754,13 +1846,17 @@ def logs_by_run(request: Request, run_id: int):
 @app.get("/logs/system", tags=["Runs & Logs"])
 def logs_system(request: Request, source: str = "app"):
     try:
-        require_user(request)
+        user = require_user(request)
     except PermissionError:
         return {"log": ""}
 
     source_key = (source or "app").lower().strip()
-    if source_key == "access":
-        path = ACCESS_LOG_PATH
+    if source_key in {"api", "access"}:
+        path = API_LOG_PATH
+    elif source_key in {"web-access", "web_access"}:
+        if user["role"] != "admin":
+            return {"log": ""}
+        path = WEB_ACCESS_LOG_PATH
     else:
         path = APP_LOG_PATH
 
@@ -1772,13 +1868,17 @@ def logs_system(request: Request, source: str = "app"):
 @app.post("/logs/system/delete", tags=["Runs & Logs"])
 def delete_system_logs(request: Request, source: str = "app"):
     try:
-        require_user(request)
+        user = require_user(request)
     except PermissionError:
         return {"ok": False}
 
     source_key = (source or "app").lower().strip()
-    if source_key == "access":
-        path = ACCESS_LOG_PATH
+    if source_key in {"api", "access"}:
+        path = API_LOG_PATH
+    elif source_key in {"web-access", "web_access"}:
+        if user["role"] != "admin":
+            return {"ok": False}
+        path = WEB_ACCESS_LOG_PATH
     else:
         path = APP_LOG_PATH
 

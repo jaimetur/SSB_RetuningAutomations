@@ -235,11 +235,12 @@
       <input type="date" id="older_date_picker" class="hidden" />
       <div class="latest-runs-scroll" id="runs_panel_table">
       <table>
-        <thead><tr><th></th><th class="sortable" data-sort-key="text">Module</th><th class="sortable" data-sort-key="text">Version</th><th class="sortable" data-sort-key="text">Input</th><th class="sortable" data-sort-key="text">Status</th><th class="sortable" data-sort-key="datetime" data-default-sort="desc">Start</th><th class="sortable" data-sort-key="datetime">End</th><th class="sortable" data-sort-key="duration">Duration</th><th class="sortable" data-sort-key="text">Output</th><th class="sortable" data-sort-key="text">Log</th><th class="sortable" data-sort-key="size">Size</th></tr></thead>
+        <thead><tr><th></th><th class="sortable" data-sort-key="number">ID</th><th class="sortable" data-sort-key="text">Module</th><th class="sortable" data-sort-key="text">Version</th><th class="sortable" data-sort-key="text">Input</th><th class="sortable" data-sort-key="text">Status</th><th class="sortable" data-sort-key="datetime" data-default-sort="desc">Start</th><th class="sortable" data-sort-key="datetime">End</th><th class="sortable" data-sort-key="duration">Duration</th><th class="sortable" data-sort-key="text">Output</th><th class="sortable" data-sort-key="text">Log</th><th class="sortable" data-sort-key="size">Size</th></tr></thead>
         <tbody>
         {% for r in latest_runs %}
-          <tr class="run-row {% if r.status_lower == 'error' %}run-error{% elif r.status_lower == 'success' %}run-success{% endif %}" data-run-id="{{ r.id }}" data-status="{{ r.status_lower }}">
+          <tr class="run-row {% if r.status_lower == 'error' %}run-error{% elif r.status_lower == 'success' %}run-success{% elif r.status_lower == 'canceled' %}run-canceled{% endif %}" data-run-id="{{ r.id }}" data-status="{{ r.status_lower }}">
             <td><input type="checkbox" class="run-checkbox" value="{{ r.id }}" data-start="{{ r.started_at }}" data-status="{{ r.status_lower }}" /></td>
+            <td>{{ r.id }}</td>
             <td>{{ r.module }}</td>
             <td>{{ r.tool_version or '—' }}</td>
             <td>{{ r.input_name or "—" }}</td>
@@ -264,7 +265,7 @@
             <td>{{ r.size_mb }}</td>
           </tr>
         {% else %}
-          <tr><td colspan="11">No executions yet.</td></tr>
+          <tr><td colspan="12">No executions yet.</td></tr>
         {% endfor %}
         </tbody>
       </table>
@@ -284,6 +285,10 @@
           <button type="button" id="clear_log">Clear</button>
           <button type="button" id="copy_log">Copy all</button>
           <button type="button" id="copy_selection">Copy selection</button>
+          <label class="checkbox">
+            <input type="checkbox" id="execution_log_auto" />
+            Auto refresh
+          </label>
           <button type="button" id="toggle_execution_log_panel" class="panel-toggle" aria-label="Collapse execution log panel" title="Collapse/Expand">▾</button>
         </div>
       </div>
@@ -296,7 +301,7 @@
         <div class="log-actions">
           <select id="system_log_source">
             <option value="app" selected>Application</option>
-            <option value="access">Access</option>
+            <option value="api">API</option>
           </select>
           <label class="checkbox">
             <input type="checkbox" id="system_log_auto" />
@@ -331,6 +336,7 @@
     const copyLogButton = document.getElementById("copy_log");
     const copySelectionButton = document.getElementById("copy_selection");
     const toggleExecutionLogPanelButton = document.getElementById("toggle_execution_log_panel");
+    const executionLogAuto = document.getElementById("execution_log_auto");
     const logOutput = document.getElementById("log_output");
     const logRunSelector = document.getElementById("log_run_selector");
     const configPicker = document.getElementById("config_picker");
@@ -941,6 +947,9 @@
         }
         return `<span class="${cls}">${escapeHtml(line)}</span>`;
       }).join("\n");
+      if (executionLogAuto?.checked) {
+        logOutput.scrollTop = logOutput.scrollHeight;
+      }
     }
 
     function fetchLatestLog() {
@@ -967,19 +976,20 @@
           }
           const selectedIds = new Set(Array.from(document.querySelectorAll(".run-checkbox:checked")).map((box) => Number(box.value)));
           if (!data.items || data.items.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="11">No executions yet.</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="12">No executions yet.</td></tr>';
             applyCurrentOrDefaultSort("#runs_panel_table table");
             return;
           }
 
           tbody.innerHTML = data.items.map((item) => {
-            const rowClass = item.status_lower === "error" ? "run-row run-error" : (item.status_lower === "success" ? "run-row run-success" : "run-row");
+            const rowClass = item.status_lower === "error" ? "run-row run-error" : (item.status_lower === "success" ? "run-row run-success" : (item.status_lower === "canceled" ? "run-row run-canceled" : "run-row"));
             const checked = selectedIds.has(item.id) ? 'checked' : '';
             const outputCell = item.output_zip ? `<a href="/runs/${item.id}/download">Download zip</a>` : "—";
             const logCell = item.output_log_file ? `<a href="/runs/${item.id}/log">Download log</a>` : "—";
             return `
             <tr class="${rowClass}" data-run-id="${item.id}" data-status="${item.status_lower}">
               <td><input type="checkbox" class="run-checkbox" value="${item.id}" data-start="${item.started_at}" data-status="${item.status_lower}" ${checked} /></td>
+              <td>${escapeHtml(item.id)}</td>
               <td>${escapeHtml(item.module)}</td>
               <td>${escapeHtml(item.tool_version || "—")}</td>
               <td>${escapeHtml(item.input_name || "—")}</td>
@@ -994,11 +1004,18 @@
           }).join("");
 
           if (logRunSelector) {
-            const currentValue = logRunSelector.value;
+            const previousValue = logRunSelector.value;
+            const previousOptionExists = previousValue && data.items.some((item) => String(item.id) === String(previousValue));
+            const runningItem = data.items.find((item) => item.status_lower === "running");
+            const queuedItem = data.items.find((item) => item.status_lower === "queued");
+            const activeItem = runningItem || queuedItem || data.items[0];
             logRunSelector.innerHTML = data.items.map((item) => `<option value="${item.id}">${escapeHtml(item.run_label)}</option>`).join("");
-            if (currentValue && data.items.some((item) => String(item.id) === String(currentValue))) {
-              logRunSelector.value = currentValue;
+            if (previousOptionExists && previousValue) {
+              logRunSelector.value = previousValue;
+            } else if (activeItem) {
+              logRunSelector.value = String(activeItem.id);
             }
+            fetchLogByRun();
           }
 
           const latestStatus = (data.items[0]?.status_lower || "").toLowerCase();
@@ -1561,6 +1578,22 @@
     setInterval(() => {
       refreshRunsTable();
     }, 3000);
+
+    let executionLogTimer = null;
+    if (executionLogAuto) {
+      executionLogAuto.addEventListener("change", () => {
+        if (executionLogAuto.checked) {
+          if (executionLogTimer) {
+            clearInterval(executionLogTimer);
+          }
+          fetchLogByRun();
+          executionLogTimer = setInterval(fetchLogByRun, 3000);
+        } else if (executionLogTimer) {
+          clearInterval(executionLogTimer);
+          executionLogTimer = null;
+        }
+      });
+    }
 
     let systemLogTimer = null;
     if (systemLogAuto) {
