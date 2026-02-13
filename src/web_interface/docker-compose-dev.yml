@@ -1,15 +1,15 @@
-# ssb-retuning-automations-dev (including Web frontend) compose file for development.
+# ssb-retuning-automations-dev (including Web Interface) compose file for development.
 
 version: '3.9'
 services:
-  ssb_webapp:
+  ssb_web_interface:
     build:
       context: ${APP_DIR}
       dockerfile: docker/Dockerfile
     container_name: ${CONTAINER_NAME:-ssb-retuning-automations-dev}
     ports:
       - "${PORT}:${PORT}"
-    command: ["sh", "-c", "exec uvicorn src.webapp.webapp:app --host 0.0.0.0 --port ${PORT} --reload --reload-dir /app/src"]
+    command: ["sh", "-c", "exec uvicorn src.web_interface.webapp:app --host 0.0.0.0 --port ${PORT} --reload --reload-dir /app/src"]
     env_file:
       - .env
     volumes:

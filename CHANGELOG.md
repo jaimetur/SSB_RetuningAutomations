@@ -12,10 +12,10 @@
 - #### 🌟 New Features:
 
 - #### 🚀 Enhancements:
-  - Enhancements in the Web Frontend to improve UX.
+  - Enhancements in the Web Interface to improve UX.
     - Added a new feature to select any Input folder that has already been uploaded into the Inputs Repository.
     - Added a new Inputs Repository panel to manage uploaded inputs.
-    - Added a new feature in the Web Frontend (Administrator panel) to manage the %CPU, %RAM and Max # of Threads to process the queue of the process to run.
+    - Added a new feature in the Web Interface (Administrator panel) to manage the %CPU, %RAM and Max # of Threads to process the queue of the process to run.
 
 - #### 🐛 Bug fixes:
   - Minor bug fixing.
@@ -31,12 +31,12 @@
 - #### 🚨 Breaking Changes:
 
 - #### 🌟 New Features:
-  - Added a new webapp frontend (using docker) to use the tool from a browser.
-  - Web frontend now supports uploading MO files/ZIPs as inputs and downloading exports from the Latest Runs panel.
+  - Added a new Web Interface (using docker) to use the tool from a browser.
+  - Web Interface now supports uploading MO files/ZIPs as inputs and downloading exports from the Latest Runs panel.
   - New docker image with the whole application (GUI + CLI) available on DockerHub.
 
 - #### 🚀 Enhancements:
-  - Disabled the `Consistency Check (Bulk mode)` module in the Web Frontend due to incompatibility.
+  - Disabled the `Consistency Check (Bulk mode)` module in the Web Interface due to incompatibility.
 
 - #### 🐛 Bug fixes:
   - Minor bug fixing.

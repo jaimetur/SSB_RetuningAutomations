@@ -216,9 +216,9 @@ python SSB_RetuningAutomations.py
 
 ---
 
-## 🌐 Private Web Frontend (2 deployment modes)
+## 🌐 Web Interface Deployment (2 deployment modes)
 
-A private web frontend was added to run the same launcher modules using CLI under the hood.
+A private web interface was added to run the same launcher modules using CLI under the hood.
 
 ### Included features
 - Private login with session management.
@@ -232,7 +232,7 @@ A private web frontend was added to run the same launcher modules using CLI unde
   - reset passwords,
   - view total logged-in time,
   - view total backend task execution time.
-- HTTP access log at `data/access.log`.
+- HTTP access log at `data/web-access.log`.
 
 ### Mode A: Standalone / static code image (port 7878)
 Use the main compose in `/docker` when you want a self-contained runtime image (code baked inside image).
@@ -244,13 +244,13 @@ docker compose -f docker/docker-compose.yml up --build -d
 Expected URL:
 - `http://localhost:7878`
 
-### Mode B: Development / repo-linked webapp (port 7979)
-Use the webapp compose when you want hot-reload and latest local source code mounted from your repository.
+### Mode B: Development / repo-linked web interface (port 7979)
+Use the web interface compose when you want hot-reload and latest local source code mounted from your repository.
 
 ```bash
-docker compose -f src/webapp/docker-compose-dev.yml up --build -d
+docker compose -f src/web_interface/docker-compose-dev.yml up --build -d
 # or
-bash src/webapp/run-docker-dev.sh
+bash src/web_interface/run-docker-dev.sh
 ```
 
 Expected URL:
@@ -262,20 +262,30 @@ Initial credentials:
 
 > ⚠️ Change the admin password immediately after first login.
 
-### Troubleshooting (webapp compose / port 7979)
-- **Container name conflict** (`container name "/ssb_webapp" is already in use`):
-  - `run_webapp.sh` now removes stale container name reservations before `up --build`.
+### Inspecting Web Interface APIs
+The Web Interface backend is a FastAPI app. You can inspect supported endpoints from:
+- Swagger UI: `/docs`
+- ReDoc: `/redoc`
+- OpenAPI JSON: `/openapi.json`
+
+Examples:
+- Standalone mode: `http://localhost:7878/docs`
+- Dev mode: `http://localhost:7979/docs`
+
+### Troubleshooting (web interface compose / port 7979)
+- **Container name conflict** (`container name "/ssb_web_interface" is already in use`):
+  - `run-docker-dev.sh` now removes stale container name reservations before `up --build`.
 - **Browser returns `{"detail":"Not Found"}`**:
   - Ensure you are opening `http://<host>:7979/login` (not just a proxied root).
-  - Verify container logs: `docker logs -f ssb_webapp`.
-  - Verify that compose points to the correct repo root (`APP_DIR`) and that `src/webapp/webapp.py` exists there.
+  - Verify container logs: `docker logs -f ssb_web_interface`.
+  - Verify that compose points to the correct repo root (`APP_DIR`) and that `src/web_interface/webapp.py` exists there.
   - In dev compose, `PYTHONPATH=/app` and `--app-dir /app` are set to force loading the mounted repository code.
 
 ### Persistent data
 - Database and logs stored in `data/`.
-  - `web_frontend.db`
-  - `access.log`
-  - `app.log`
+  - `web_interface.db`
+  - `web-access.log`
+  - `web-interface.log`
 - User uploads/exports stored under `data/users/<user>/`:
   - `upload/` for uploaded inputs
   - `export/` for downloadable outputs
@@ -296,6 +306,7 @@ SSB_RetuningAutomations.exe/bin --module <module-name> [options]
 --inputs                  Input folders to process module in batch mode. Example: "--module configuration-audit --inputs dir1 dir2 dir3"
 --input-pre               PRE input folder (only for consistency-check)
 --input-post              POST input folder (only for consistency-check)
+--output                  Output root folder override (all modules). The tool still creates the same module/version subfolder logic under this root.
    
 --n77-ssb-pre             N77 SSB frequency before refarming (Pre), e.g. 647328
 --n77-ssb-post            N77 SSB frequency after refarming (Post), e.g. 653952
@@ -526,4 +537,3 @@ Check the `LICENSE` file at the root of the repo.
 > - OS/arch and Python version (or binary flavor)  
 > - A redacted screenshot or snippet of the input folder structure  
 > - The generated timestamp/version suffix
-

@@ -11,4 +11,4 @@ COPY . /app
 ENV PORT=7878
 
 # IMPORTANT: use "sh -c" so ${PORT} is expanded at container runtime (JSON-form CMD does not expand variables).
-CMD ["sh", "-c", "exec uvicorn src.webapp.webapp:app --host 0.0.0.0 --port ${PORT}"]
+CMD ["sh", "-c", "exec uvicorn src.web_interface.webapp:app --host 0.0.0.0 --port ${PORT}"]

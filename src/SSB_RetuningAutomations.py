@@ -805,6 +805,7 @@ def parse_args() -> argparse.Namespace:
     # Dual-input (consistency-check manual)
     parser.add_argument("--input-pre", help="PRE input folder (only for consistency-check manual)")
     parser.add_argument("--input-post", help="POST input folder (only for consistency-check manual)")
+    parser.add_argument("--output", help="Output root folder override for generated results (all modules).")
 
     parser.add_argument("--n77-ssb-pre", help="Frequency before refarming (Pre)")
     parser.add_argument("--n77-ssb-post", help="Frequency after refarming (Post)")
@@ -1123,14 +1124,14 @@ def run_configuration_audit(
             if ml and ml.upper() != "GLOBAL":
                 suffix = f"_{ml}"
 
-        # Create dedicated output folder for ConfigurationAudit
-        # NEW: if external_output_dir is provided, use it as-is (shared output folder with ConsistencyChecks)
+        # Create dedicated output folder for ConfigurationAudit.
+        # If external_output_dir is provided, use it as base root and keep same subfolder naming logic.
+        folder_prefix = "ConfigurationAudit"  # keep output naming stable even when profiles_audit=True
         if external_output_dir:
-            output_dir = to_long_path(external_output_dir)
+            output_root_fs = to_long_path(external_output_dir)
         else:
-            # folder_prefix = "ProfilesAudit" if profiles_audit else "ConfigurationAudit"
-            folder_prefix = "ConfigurationAudit"  # keep output naming stable even when profiles_audit=True
-            output_dir = os.path.join(folder_fs, f"{folder_prefix}_{folder_versioned_suffix}{suffix}")
+            output_root_fs = folder_fs
+        output_dir = os.path.join(output_root_fs, f"{folder_prefix}_{folder_versioned_suffix}{suffix}")
 
         # Attach log mirror early so the whole execution is captured into the per-output folder mirror file
         try:
@@ -1309,6 +1310,7 @@ def run_consistency_checks(
     fast_excel_autofit_rows: int = 50,
     fast_excel_autofit_max_width: int = 60,
     mode: str = "",
+    output_root_dir: Optional[str] = None,
 ) -> None:
     """
     Unified runner for ConsistencyChecks:
@@ -1626,11 +1628,12 @@ def run_consistency_checks(
                 print(f"{module_name} {market_tag} [INFO] POST ZIP logs detected. Using extracted folder: '{pretty_path(post_dir_process_fs)}'")
 
             try:
-                # NEW: compute output_dir upfront so both audits and consistency outputs land together (folder uses execution timestamp)
+                # Compute output_dir upfront so both audits and consistency outputs land together.
+                output_base_root = to_long_path(output_root_dir) if output_root_dir else post_dir_fs
                 if market_label != "GLOBAL":
-                    output_dir = os.path.join(post_dir_fs, f"ConsistencyChecks_{folder_versioned_suffix}_{market_label}")
+                    output_dir = os.path.join(output_base_root, f"ConsistencyChecks_{folder_versioned_suffix}_{market_label}")
                 else:
-                    output_dir = os.path.join(post_dir_fs, f"ConsistencyChecks_{folder_versioned_suffix}")
+                    output_dir = os.path.join(output_base_root, f"ConsistencyChecks_{folder_versioned_suffix}")
 
                 # Attach log mirror early so the whole execution is captured into the per-output folder mirror file
                 try:
@@ -1897,7 +1900,7 @@ def run_consistency_checks(
 
 
 
-def run_final_cleanup(input_dir: str, *_args) -> None:
+def run_final_cleanup(input_dir: str, *_args, output_root_dir: Optional[str] = None) -> None:
     module_name = "[Final Clean-Up]"
     input_dir_fs = to_long_path(input_dir) if input_dir else input_dir
 
@@ -1908,7 +1911,7 @@ def run_final_cleanup(input_dir: str, *_args) -> None:
     versioned_suffix = f"{timestamp}_v{TOOL_VERSION}"
 
     app = FinalCleanUp()
-    out = app.run(input_dir_fs, module_name=module_name, versioned_suffix=versioned_suffix)
+    out = app.run(input_dir_fs, module_name=module_name, versioned_suffix=versioned_suffix, output_root_dir=output_root_dir)
 
     if out:
         print(f"{module_name} [INFO] Done → '{pretty_path(out)}'")
@@ -2033,6 +2036,7 @@ def execute_module(
     export_correction_cmd: bool = True,
     fast_excel_export: bool = False,
     selected_module: str = "",
+    output_root_dir: str = "",
 ) -> None:
     """
     Launch selected module with the proper signature (and measure execution time).
@@ -2063,9 +2067,9 @@ def execute_module(
                 total = len(input_list)
                 for idx, one_dir in enumerate(input_list, start=1):
                     print(f"[Consistency Checks (Bulk Pre/Post Auto-Detection)] [INFO] ({idx}/{total}) Processing base folder: '{pretty_path(one_dir)}'")
-                    module_fn(input_dir=one_dir, input_pre_dir=input_pre_dir, input_post_dir=input_post_dir, n77_ssb_pre=n77_ssb_pre, n77_ssb_post=n77_ssb_post, n77b_ssb=n77b_ssb, ca_freq_filters_csv=ca_freq_filters_csv, cc_freq_filters_csv=cc_freq_filters_csv, allowed_n77_ssb_pre_csv=allowed_n77_ssb_pre_csv, allowed_n77_arfcn_pre_csv=allowed_n77_arfcn_pre_csv, allowed_n77_ssb_post_csv=allowed_n77_ssb_post_csv, allowed_n77_arfcn_post_csv=allowed_n77_arfcn_post_csv, frequency_audit=frequency_audit, profiles_audit=profiles_audit, export_correction_cmd_post=export_correction_cmd, fast_excel_export=fast_excel_export, mode=selected_module)
+                    module_fn(input_dir=one_dir, input_pre_dir=input_pre_dir, input_post_dir=input_post_dir, n77_ssb_pre=n77_ssb_pre, n77_ssb_post=n77_ssb_post, n77b_ssb=n77b_ssb, ca_freq_filters_csv=ca_freq_filters_csv, cc_freq_filters_csv=cc_freq_filters_csv, allowed_n77_ssb_pre_csv=allowed_n77_ssb_pre_csv, allowed_n77_arfcn_pre_csv=allowed_n77_arfcn_pre_csv, allowed_n77_ssb_post_csv=allowed_n77_ssb_post_csv, allowed_n77_arfcn_post_csv=allowed_n77_arfcn_post_csv, frequency_audit=frequency_audit, profiles_audit=profiles_audit, export_correction_cmd_post=export_correction_cmd, fast_excel_export=fast_excel_export, mode=selected_module, output_root_dir=output_root_dir)
             else:
-                module_fn(input_dir=input_dir, input_pre_dir=input_pre_dir, input_post_dir=input_post_dir, n77_ssb_pre=n77_ssb_pre, n77_ssb_post=n77_ssb_post, n77b_ssb=n77b_ssb, ca_freq_filters_csv=ca_freq_filters_csv, cc_freq_filters_csv=cc_freq_filters_csv, allowed_n77_ssb_pre_csv=allowed_n77_ssb_pre_csv, allowed_n77_arfcn_pre_csv=allowed_n77_arfcn_pre_csv, allowed_n77_ssb_post_csv=allowed_n77_ssb_post_csv, allowed_n77_arfcn_post_csv=allowed_n77_arfcn_post_csv, frequency_audit=frequency_audit, profiles_audit=profiles_audit, export_correction_cmd_post=export_correction_cmd, fast_excel_export=fast_excel_export, mode=selected_module)
+                module_fn(input_dir=input_dir, input_pre_dir=input_pre_dir, input_post_dir=input_post_dir, n77_ssb_pre=n77_ssb_pre, n77_ssb_post=n77_ssb_post, n77b_ssb=n77b_ssb, ca_freq_filters_csv=ca_freq_filters_csv, cc_freq_filters_csv=cc_freq_filters_csv, allowed_n77_ssb_pre_csv=allowed_n77_ssb_pre_csv, allowed_n77_arfcn_pre_csv=allowed_n77_arfcn_pre_csv, allowed_n77_ssb_post_csv=allowed_n77_ssb_post_csv, allowed_n77_arfcn_post_csv=allowed_n77_arfcn_post_csv, frequency_audit=frequency_audit, profiles_audit=profiles_audit, export_correction_cmd_post=export_correction_cmd, fast_excel_export=fast_excel_export, mode=selected_module, output_root_dir=output_root_dir)
 
 
         elif module_fn is run_configuration_audit:
@@ -2210,7 +2214,7 @@ def execute_module(
                 rerun_set = set(to_long_path(x) for x in (selected or []) if x)
 
             if not input_list:
-                module_fn(input_dir, ca_freq_filters_csv=ca_freq_filters_csv, n77_ssb_pre=n77_ssb_pre, n77_ssb_post=n77_ssb_post, n77b_ssb=n77b_ssb, allowed_n77_ssb_pre_csv=allowed_n77_ssb_pre_csv, allowed_n77_arfcn_pre_csv=allowed_n77_arfcn_pre_csv, allowed_n77_ssb_post_csv=allowed_n77_ssb_post_csv, allowed_n77_arfcn_post_csv=allowed_n77_arfcn_post_csv, frequency_audit=frequency_audit, profiles_audit=profiles_audit, export_correction_cmd=export_correction_cmd, fast_excel_export=fast_excel_export, recursive_if_missing_logs=None, skip_existing_audit_prompt=False)
+                module_fn(input_dir, ca_freq_filters_csv=ca_freq_filters_csv, n77_ssb_pre=n77_ssb_pre, n77_ssb_post=n77_ssb_post, n77b_ssb=n77b_ssb, allowed_n77_ssb_pre_csv=allowed_n77_ssb_pre_csv, allowed_n77_arfcn_pre_csv=allowed_n77_arfcn_pre_csv, allowed_n77_ssb_post_csv=allowed_n77_ssb_post_csv, allowed_n77_arfcn_post_csv=allowed_n77_arfcn_post_csv, frequency_audit=frequency_audit, profiles_audit=profiles_audit, export_correction_cmd=export_correction_cmd, fast_excel_export=fast_excel_export, recursive_if_missing_logs=None, skip_existing_audit_prompt=False, external_output_dir=output_root_dir or None)
             else:
                 total = len(input_list)
                 for idx, one_dir in enumerate(input_list, start=1):
@@ -2226,7 +2230,7 @@ def execute_module(
                     if one_dir in missing_dirs:
                         recursive_if_missing_logs = bool(recursive_answer)
 
-                    module_fn(one_dir, ca_freq_filters_csv=ca_freq_filters_csv, n77_ssb_pre=n77_ssb_pre, n77_ssb_post=n77_ssb_post, n77b_ssb=n77b_ssb, allowed_n77_ssb_pre_csv=allowed_n77_ssb_pre_csv, allowed_n77_arfcn_pre_csv=allowed_n77_arfcn_pre_csv, allowed_n77_ssb_post_csv=allowed_n77_ssb_post_csv, allowed_n77_arfcn_post_csv=allowed_n77_arfcn_post_csv, frequency_audit=frequency_audit, profiles_audit=profiles_audit, export_correction_cmd=export_correction_cmd, fast_excel_export=fast_excel_export, recursive_if_missing_logs=recursive_if_missing_logs, skip_existing_audit_prompt=(total > 1))
+                    module_fn(one_dir, ca_freq_filters_csv=ca_freq_filters_csv, n77_ssb_pre=n77_ssb_pre, n77_ssb_post=n77_ssb_post, n77b_ssb=n77b_ssb, allowed_n77_ssb_pre_csv=allowed_n77_ssb_pre_csv, allowed_n77_arfcn_pre_csv=allowed_n77_arfcn_pre_csv, allowed_n77_ssb_post_csv=allowed_n77_ssb_post_csv, allowed_n77_arfcn_post_csv=allowed_n77_arfcn_post_csv, frequency_audit=frequency_audit, profiles_audit=profiles_audit, export_correction_cmd=export_correction_cmd, fast_excel_export=fast_excel_export, recursive_if_missing_logs=recursive_if_missing_logs, skip_existing_audit_prompt=(total > 1), external_output_dir=output_root_dir or None)
 
 
         elif module_fn is run_final_cleanup:
@@ -2242,9 +2246,9 @@ def execute_module(
                 total = len(input_list)
                 for idx, one_dir in enumerate(input_list, start=1):
                     print(f"[Final Clean-Up] [INFO] ({idx}/{total}) Processing input folder: '{pretty_path(one_dir)}'")
-                    module_fn(one_dir, n77_ssb_pre, n77_ssb_post)
+                    module_fn(one_dir, n77_ssb_pre, n77_ssb_post, output_root_dir=output_root_dir or None)
             else:
-                module_fn(input_dir, n77_ssb_pre, n77_ssb_post)
+                module_fn(input_dir, n77_ssb_pre, n77_ssb_post, output_root_dir=output_root_dir or None)
 
 
         else:
@@ -2576,6 +2580,7 @@ def main():
                     export_correction_cmd=sel.export_correction_cmd,
                     fast_excel_export=sel.fast_excel_export,
                     selected_module=sel.module,
+                    output_root_dir="",
                 )
             except Exception as e:
                 log_module_exception(sel.module, e)
@@ -2613,7 +2618,7 @@ def main():
             print("[ERROR] Error: --input is required for update-network-frequencies in CLI mode.\n")
             parser.print_help()
             return
-        execute_module(module_fn, input_dir=input_dir, selected_module=args.module)
+        execute_module(module_fn, input_dir=input_dir, selected_module=args.module, output_root_dir=(args.output or ""))
         return
 
 
@@ -2643,6 +2648,7 @@ def main():
             export_correction_cmd=cli_export_correction_cmd,
             fast_excel_export=cli_fast_excel_export,
             selected_module=args.module,
+            output_root_dir=(args.output or ""),
         )
         return
 
@@ -2673,6 +2679,7 @@ def main():
             export_correction_cmd=cli_export_correction_cmd,
             fast_excel_export=cli_fast_excel_export,
             selected_module=args.module,
+            output_root_dir=(args.output or ""),
         )
         return
 
@@ -2700,6 +2707,7 @@ def main():
             export_correction_cmd=cli_export_correction_cmd,
             fast_excel_export=cli_fast_excel_export,
             selected_module=args.module,
+            output_root_dir=(args.output or ""),
         )
         return
 
@@ -2725,6 +2733,7 @@ def main():
         allowed_n77_arfcn_post_csv=allowed_n77_arfcn_post_csv,
         fast_excel_export=cli_fast_excel_export,
         selected_module=args.module,
+        output_root_dir=(args.output or ""),
     )
 
 

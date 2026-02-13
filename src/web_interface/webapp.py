@@ -30,9 +30,16 @@ BASE_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = BASE_DIR.parents[1]
 DATA_DIR = PROJECT_ROOT / "data"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
-DB_PATH = DATA_DIR / "web_frontend.db"
-ACCESS_LOG_PATH = DATA_DIR / "access.log"
-APP_LOG_PATH = DATA_DIR / "app.log"
+DB_PATH = DATA_DIR / "web_interface.db"
+LEGACY_DB_PATH = DATA_DIR / "web_frontend.db"  # legacy filename from previous Web Interface naming
+ACCESS_LOG_PATH = DATA_DIR / "web-access.log"
+APP_LOG_PATH = DATA_DIR / "web-interface.log"
+
+if not DB_PATH.exists() and LEGACY_DB_PATH.exists():
+    try:
+        LEGACY_DB_PATH.rename(DB_PATH)
+    except OSError:
+        pass
 
 CONFIG_DIR = Path.home() / ".retuning_automations"
 CONFIG_PATH = CONFIG_DIR / "config.cfg"
@@ -67,7 +74,7 @@ pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 
 
 def setup_logging() -> logging.Logger:
-    logger = logging.getLogger("web_frontend")
+    logger = logging.getLogger("web_interface")
     logger.setLevel(logging.INFO)
     if not logger.handlers:
         # Persist application logs across restarts.
@@ -104,13 +111,15 @@ MODULE_OPTIONS = [
     ("consistency-check-bulk", "3. Consistency Check (Bulk mode Pre/Post auto-detection)"),
     ("final-cleanup", "4. Final Clean-Up"),
 ]
-WEB_FRONTEND_BLOCKED_MODULES = {"consistency-check-bulk"}
+WEB_INTERFACE_BLOCKED_MODULES = {"consistency-check-bulk"}
 SESSION_IDLE_TIMEOUT_SECONDS = 600
 
 TOOL_METADATA_PATH = PROJECT_ROOT / "src" / "SSB_RetuningAutomations.py"
 
 INPUTS_REPOSITORY_DIR = DATA_DIR / "inputs"
 INPUTS_REPOSITORY_DIR.mkdir(parents=True, exist_ok=True)
+OUTPUTS_DIR = DATA_DIR / "outputs"
+OUTPUTS_DIR.mkdir(parents=True, exist_ok=True)
 
 MAX_CPU_DEFAULT = 80
 MAX_MEMORY_DEFAULT = 80
@@ -210,6 +219,8 @@ def create_zip_from_dir(source_dir: Path, dest_zip: Path) -> None:
     with zipfile.ZipFile(dest_zip, "w", compression=zipfile.ZIP_DEFLATED) as zf:
         for file_path in source_dir.rglob("*"):
             if file_path.is_file():
+                if file_path.resolve() == dest_zip.resolve():
+                    continue
                 zf.write(file_path, file_path.relative_to(source_dir))
 
 
@@ -233,6 +244,25 @@ def compute_dir_size(path: Path) -> int:
     return total
 
 
+def compute_runs_size(run_rows: list[sqlite3.Row] | list[dict[str, Any]]) -> tuple[dict[int, int], int]:
+    run_sizes: dict[int, int] = {}
+    total_bytes = 0
+
+    def read_value(row: sqlite3.Row | dict[str, Any], key: str) -> Any:
+        if isinstance(row, sqlite3.Row):
+            return row[key] if key in row.keys() else None
+        return row.get(key)
+
+    for row in run_rows:
+        row_id = int(read_value(row, "id") or 0)
+        output_dir_value = read_value(row, "output_dir")
+        output_dir = Path(output_dir_value) if output_dir_value else None
+        size_bytes = compute_dir_size(output_dir) if output_dir else 0
+        run_sizes[row_id] = size_bytes
+        total_bytes += size_bytes
+    return run_sizes, total_bytes
+
+
 def format_mb(size_bytes: int) -> str:
     return f"{size_bytes / (1024 * 1024):.2f} MB"
 
@@ -250,9 +280,11 @@ def format_seconds_hms(value: float | int | None) -> str:
 def get_user_storage_dirs(username: str) -> dict[str, Path]:
     safe_name = sanitize_component(username)
     user_root = DATA_DIR / "users" / safe_name
+    outputs_root = OUTPUTS_DIR / safe_name
     return {
         "uploads": user_root / "upload",
-        "exports": user_root / "export",
+        "outputs": outputs_root,
+        "exports": outputs_root,
     }
 
 
@@ -627,6 +659,13 @@ def list_inputs_repository() -> list[dict[str, Any]]:
     return items
 
 
+def get_inputs_repository_total_size() -> str:
+    conn = get_conn()
+    row = conn.execute("SELECT COALESCE(SUM(size_bytes), 0) AS total_size FROM inputs_repository").fetchone()
+    conn.close()
+    return format_mb(int(row["total_size"] or 0))
+
+
 def run_queued_task(task_row: sqlite3.Row) -> None:
     task_id = task_row["id"]
     payload = json.loads(task_row["payload_json"] or "{}")
@@ -673,8 +712,17 @@ def run_queued_task(task_row: sqlite3.Row) -> None:
     if input_dir_value:
         output_dir = find_latest_output_dir(Path(input_dir_value), build_output_prefixes(module))
         if output_dir:
-            output_dir_value = str(output_dir)
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            outputs_dir = OUTPUTS_DIR / sanitize_component(username)
+            outputs_dir.mkdir(parents=True, exist_ok=True)
+            dest_name = f"{output_dir.name}_{timestamp}_run{task_id}"
+            persisted_output_dir = outputs_dir / sanitize_component(dest_name)
+            try:
+                shutil.move(str(output_dir), str(persisted_output_dir))
+                output_dir = persisted_output_dir
+            except OSError:
+                pass
+            output_dir_value = str(output_dir)
             try:
                 for existing in output_dir.glob("RetuningAutomation_*.log"):
                     existing.unlink(missing_ok=True)
@@ -688,20 +736,13 @@ def run_queued_task(task_row: sqlite3.Row) -> None:
             except OSError:
                 output_log_file_value = ""
 
-            exports_dir = DATA_DIR / "users" / sanitize_component(username) / "export"
-            exports_dir.mkdir(parents=True, exist_ok=True)
             zip_name = f"{sanitize_component(module)}_{timestamp}_v{sanitize_component(tool_version)}.zip"
-            output_zip_path = exports_dir / zip_name
+            output_zip_path = output_dir / zip_name
             try:
                 create_zip_from_dir(output_dir, output_zip_path)
                 output_zip_value = str(output_zip_path)
             except OSError:
                 output_zip_value = ""
-
-            try:
-                shutil.rmtree(output_dir, ignore_errors=True)
-            except OSError:
-                pass
 
     conn = get_conn()
     conn.execute(
@@ -860,6 +901,8 @@ def build_cli_command(payload: dict[str, Any]) -> list[str]:
         cmd.extend(["--input-pre", payload["input_pre"]])
     if payload.get("input_post"):
         cmd.extend(["--input-post", payload["input_post"]])
+    if payload.get("output"):
+        cmd.extend(["--output", payload["output"]])
 
     if payload.get("n77_ssb_pre"):
         cmd.extend(["--n77-ssb-pre", payload["n77_ssb_pre"]])
@@ -900,7 +943,18 @@ def build_cli_command(payload: dict[str, Any]) -> list[str]:
     return cmd
 
 
-app = FastAPI(title="SSB Retuning Automations Web Frontend")
+OPENAPI_TAGS = [
+    {"name": "UI", "description": "HTML pages for the web interface."},
+    {"name": "Authentication", "description": "Login and logout endpoints."},
+    {"name": "Execution", "description": "Run modules and queue operations."},
+    {"name": "Configuration", "description": "User and runtime configuration endpoints."},
+    {"name": "Inputs", "description": "Inputs Repository upload/list/delete endpoints."},
+    {"name": "Runs", "description": "Execution artifacts and run history endpoints."},
+    {"name": "Logs", "description": "System and run log endpoints."},
+    {"name": "Administration", "description": "Administrative endpoints."},
+]
+
+app = FastAPI(title="SSB Retuning Automations Web Interface", openapi_tags=OPENAPI_TAGS)
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
@@ -928,7 +982,7 @@ def startup() -> None:
     ensure_worker_started()
 
 
-@app.get("/", response_class=HTMLResponse)
+@app.get("/", response_class=HTMLResponse, tags=["UI"])
 def index(request: Request):
     user = get_current_user(request)
     if user is None:
@@ -969,18 +1023,7 @@ def index(request: Request):
     ).fetchall()
     conn.close()
 
-    run_sizes: dict[int, int] = {}
-    total_bytes = 0
-    for row in all_runs:
-        input_dir = Path(row["input_dir"]) if row["input_dir"] else None
-        output_dir = Path(row["output_dir"]) if row["output_dir"] else None
-        input_size = compute_dir_size(input_dir) if input_dir else 0
-        output_size = 0
-        if output_dir and not (input_dir and is_safe_path(input_dir, output_dir)):
-            output_size = compute_dir_size(output_dir)
-        size_bytes = input_size + output_size
-        run_sizes[row["id"]] = size_bytes
-        total_bytes += size_bytes
+    run_sizes, total_bytes = compute_runs_size(all_runs)
 
     for row in latest_runs:
         size_bytes = run_sizes.get(row["id"], 0)
@@ -988,6 +1031,7 @@ def index(request: Request):
 
     total_size_mb = format_mb(total_bytes)
     input_items = list_inputs_repository()
+    inputs_total_size = get_inputs_repository_total_size()
 
     return templates.TemplateResponse(
         "index.html",
@@ -1001,16 +1045,17 @@ def index(request: Request):
             "network_frequencies": network_frequencies,
             "total_runs_size": total_size_mb,
             "input_items": input_items,
+            "inputs_total_size": inputs_total_size,
         },
     )
 
 
-@app.get("/login", response_class=HTMLResponse)
+@app.get("/login", response_class=HTMLResponse, tags=["Authentication"])
 def login_get(request: Request):
     return templates.TemplateResponse("login.html", {"request": request, "error": ""})
 
 
-@app.post("/login", response_class=HTMLResponse)
+@app.post("/login", response_class=HTMLResponse, tags=["Authentication"])
 def login_post(request: Request, username: str = Form(...), password: str = Form(...)):
     conn = get_conn()
     user = conn.execute(
@@ -1041,7 +1086,7 @@ def login_post(request: Request, username: str = Form(...), password: str = Form
     return response
 
 
-@app.get("/logout")
+@app.get("/logout", tags=["Authentication"])
 def logout(request: Request):
     token = request.cookies.get("session_token")
     if token:
@@ -1054,13 +1099,14 @@ def logout(request: Request):
     return response
 
 
-@app.post("/run")
+@app.post("/run", tags=["Execution"])
 def run_module(
     request: Request,
     module: str = Form(...),
     input: str = Form(""),
     input_pre: str = Form(""),
     input_post: str = Form(""),
+    output: str = Form(""),
     n77_ssb_pre: str = Form(""),
     n77_ssb_post: str = Form(""),
     n77b_ssb: str = Form(""),
@@ -1075,6 +1121,9 @@ def run_module(
     frequency_audit: str | None = Form(None),
     export_correction_cmd: str | None = Form(None),
     fast_excel_export: str | None = Form(None),
+    selected_inputs_single: str = Form(""),
+    selected_inputs_pre: str = Form(""),
+    selected_inputs_post: str = Form(""),
 ):
     try:
         user = require_user(request)
@@ -1100,34 +1149,63 @@ def run_module(
         "frequency_audit": frequency_audit,
         "export_correction_cmd": export_correction_cmd,
         "fast_excel_export": fast_excel_export,
+        "output": output.strip() or str((OUTPUTS_DIR / sanitize_component(user["username"])).resolve()),
     }
     save_user_settings(user["id"], payload)
     persist_settings_to_config(module, payload)
-    if module in WEB_FRONTEND_BLOCKED_MODULES:
-        logger.info("Blocked module run from web frontend: %s", module)
+    if module in WEB_INTERFACE_BLOCKED_MODULES:
+        logger.info("Blocked module run from web interface: %s", module)
         return RedirectResponse("/", status_code=302)
 
     tool_meta = load_tool_metadata()
     tool_version = tool_meta.get("version", "unknown")
-    task_input = payload.get("input_post", "") if module == "consistency-check" else payload.get("input", "")
-    task_name = detect_task_name_from_input(task_input)
+
+    def parse_selected(raw: str) -> list[str]:
+        return [item.strip() for item in (raw or "").split("|") if item.strip()]
+
+    queue_payloads = [payload]
+    selected_single = parse_selected(selected_inputs_single)
+    selected_pre = parse_selected(selected_inputs_pre)
+    selected_post = parse_selected(selected_inputs_post)
+
+    if module != "consistency-check" and len(selected_single) > 1:
+        queue_payloads = []
+        for selected_input in selected_single:
+            payload_copy = dict(payload)
+            payload_copy["input"] = selected_input
+            queue_payloads.append(payload_copy)
+    elif module == "consistency-check" and (len(selected_pre) > 1 or len(selected_post) > 1):
+        pairable = len(selected_pre) == len(selected_post) or len(selected_pre) == 1 or len(selected_post) == 1
+        if pairable:
+            queue_payloads = []
+            queued_len = max(len(selected_pre), len(selected_post))
+            for idx in range(queued_len):
+                pre_value = selected_pre[idx] if len(selected_pre) > 1 else (selected_pre[0] if selected_pre else payload.get("input_pre", ""))
+                post_value = selected_post[idx] if len(selected_post) > 1 else (selected_post[0] if selected_post else payload.get("input_post", ""))
+                payload_copy = dict(payload)
+                payload_copy["input_pre"] = pre_value
+                payload_copy["input_post"] = post_value
+                queue_payloads.append(payload_copy)
 
     conn = get_conn()
-    conn.execute(
-        """
-        INSERT INTO task_runs(user_id, module, tool_version, input_name, status, started_at, command, output_log, payload_json, input_dir)
-        VALUES (?, ?, ?, ?, 'queued', ?, '', '', ?, ?)
-        """,
-        (
-            user["id"],
-            module,
-            tool_version,
-            task_name,
-            now_iso(),
-            json.dumps(payload),
-            task_input,
-        ),
-    )
+    for queue_payload in queue_payloads:
+        task_input = queue_payload.get("input_post", "") if module == "consistency-check" else queue_payload.get("input", "")
+        task_name = detect_task_name_from_input(task_input)
+        conn.execute(
+            """
+            INSERT INTO task_runs(user_id, module, tool_version, input_name, status, started_at, command, output_log, payload_json, input_dir)
+            VALUES (?, ?, ?, ?, 'queued', ?, '', '', ?, ?)
+            """,
+            (
+                user["id"],
+                module,
+                tool_version,
+                task_name,
+                now_iso(),
+                json.dumps(queue_payload),
+                task_input,
+            ),
+        )
     conn.commit()
     conn.close()
 
@@ -1137,7 +1215,7 @@ def run_module(
 
 
 
-@app.post("/settings/update")
+@app.post("/settings/update", tags=["Configuration"])
 async def update_settings(request: Request):
     try:
         user = require_user(request)
@@ -1151,7 +1229,7 @@ async def update_settings(request: Request):
     return {"ok": True}
 
 
-@app.post("/account/change_password")
+@app.post("/account/change_password", tags=["Configuration"])
 async def change_password(request: Request):
     try:
         user = require_user(request)
@@ -1171,19 +1249,19 @@ async def change_password(request: Request):
     return {"ok": True}
 
 
-@app.get("/config/load")
+@app.get("/config/load", tags=["Configuration"])
 def load_config():
     return load_persistent_config()
 
 
-@app.get("/config/export")
+@app.get("/config/export", tags=["Configuration"])
 def export_config():
     if CONFIG_PATH.exists():
         return FileResponse(CONFIG_PATH, filename="config.cfg")
     return PlainTextResponse("", media_type="text/plain")
 
 
-@app.post("/uploads/zip")
+@app.post("/uploads/zip", tags=["Inputs"])
 async def upload_zip(
     request: Request,
     module: str = Form(...),
@@ -1265,16 +1343,16 @@ async def upload_zip(
     return {"ok": True, "path": str(target_dir), "input_name": requested_name}
 
 
-@app.get("/inputs/list")
+@app.get("/inputs/list", tags=["Inputs"])
 def inputs_list(request: Request):
     try:
         require_user(request)
     except PermissionError:
-        return {"ok": False, "items": []}
-    return {"ok": True, "items": list_inputs_repository()}
+        return {"ok": False, "items": [], "total_size": format_mb(0)}
+    return {"ok": True, "items": list_inputs_repository(), "total_size": get_inputs_repository_total_size()}
 
 
-@app.post("/inputs/delete")
+@app.post("/inputs/delete", tags=["Inputs"])
 async def delete_inputs(request: Request):
     try:
         user = require_user(request)
@@ -1291,8 +1369,10 @@ async def delete_inputs(request: Request):
         "SELECT id, user_id, input_path FROM inputs_repository WHERE id IN (%s)" % ",".join("?" for _ in input_ids),
         tuple(input_ids),
     ).fetchall()
+    denied_count = 0
     for row in rows:
         if row["user_id"] != user["id"]:
+            denied_count += 1
             continue
         input_path = Path(row["input_path"])
         if is_safe_path(INPUTS_REPOSITORY_DIR, input_path):
@@ -1300,10 +1380,16 @@ async def delete_inputs(request: Request):
         conn.execute("DELETE FROM inputs_repository WHERE id = ?", (row["id"],))
     conn.commit()
     conn.close()
+    if denied_count:
+        return {
+            "ok": False,
+            "error": "forbidden_inputs",
+            "message": "Only inputs uploaded by your own user can be deleted from this panel.",
+        }
     return {"ok": True}
 
 
-@app.post("/admin/inputs/delete")
+@app.post("/admin/inputs/delete", tags=["Administration"])
 async def admin_delete_inputs(request: Request):
     try:
         require_admin(request)
@@ -1330,7 +1416,7 @@ async def admin_delete_inputs(request: Request):
     return {"ok": True}
 
 
-@app.get("/logs/latest")
+@app.get("/logs/latest", tags=["Logs"])
 def latest_logs(request: Request):
     try:
         user = require_user(request)
@@ -1346,7 +1432,7 @@ def latest_logs(request: Request):
     return {"log": row["output_log"] if row else ""}
 
 
-@app.get("/logs/by_run/{run_id}")
+@app.get("/logs/by_run/{run_id}", tags=["Logs"])
 def logs_by_run(request: Request, run_id: int):
     try:
         user = require_user(request)
@@ -1362,7 +1448,7 @@ def logs_by_run(request: Request, run_id: int):
     return {"log": row["output_log"] if row else ""}
 
 
-@app.get("/logs/system")
+@app.get("/logs/system", tags=["Logs"])
 def logs_system(request: Request, source: str = "app"):
     try:
         require_user(request)
@@ -1378,7 +1464,7 @@ def logs_system(request: Request, source: str = "app"):
     return {"log": read_tail(path)}
 
 
-@app.get("/runs/{run_id}/download")
+@app.get("/runs/{run_id}/download", tags=["Runs"])
 def download_run_output(request: Request, run_id: int):
     try:
         user = require_user(request)
@@ -1402,7 +1488,7 @@ def download_run_output(request: Request, run_id: int):
     return FileResponse(output_zip, filename=output_zip.name)
 
 
-@app.get("/runs/{run_id}/log")
+@app.get("/runs/{run_id}/log", tags=["Runs"])
 def download_run_log(request: Request, run_id: int):
     try:
         user = require_user(request)
@@ -1426,7 +1512,7 @@ def download_run_log(request: Request, run_id: int):
     return FileResponse(log_path, filename=log_path.name)
 
 
-@app.post("/runs/delete")
+@app.post("/runs/delete", tags=["Runs"])
 async def delete_runs(request: Request):
     try:
         user = require_user(request)
@@ -1451,13 +1537,11 @@ async def delete_runs(request: Request):
         output_zip = Path(row["output_zip"]) if row["output_zip"] else None
         output_log = Path(row["output_log_file"]) if row["output_log_file"] else None
 
-        if input_dir and is_safe_path(DATA_DIR / "users", input_dir):
-            shutil.rmtree(input_dir, ignore_errors=True)
-        if output_dir and is_safe_path(DATA_DIR / "users", output_dir):
+        if output_dir and is_safe_path(OUTPUTS_DIR, output_dir):
             shutil.rmtree(output_dir, ignore_errors=True)
-        if output_zip and output_zip.is_file() and is_safe_path(DATA_DIR / "users", output_zip):
+        if output_zip and output_zip.is_file() and is_safe_path(OUTPUTS_DIR, output_zip):
             output_zip.unlink(missing_ok=True)
-        if output_log and output_log.is_file() and is_safe_path(DATA_DIR / "users", output_log):
+        if output_log and output_log.is_file() and is_safe_path(OUTPUTS_DIR, output_log):
             output_log.unlink(missing_ok=True)
 
     conn.execute(
@@ -1470,7 +1554,7 @@ async def delete_runs(request: Request):
     return {"ok": True}
 
 
-@app.post("/admin/runs/delete")
+@app.post("/admin/runs/delete", tags=["Administration"])
 async def admin_delete_runs(request: Request):
     try:
         require_admin(request)
@@ -1495,13 +1579,11 @@ async def admin_delete_runs(request: Request):
         output_zip = Path(row["output_zip"]) if row["output_zip"] else None
         output_log = Path(row["output_log_file"]) if row["output_log_file"] else None
 
-        if input_dir and is_safe_path(DATA_DIR / "users", input_dir):
-            shutil.rmtree(input_dir, ignore_errors=True)
-        if output_dir and is_safe_path(DATA_DIR / "users", output_dir):
+        if output_dir and is_safe_path(OUTPUTS_DIR, output_dir):
             shutil.rmtree(output_dir, ignore_errors=True)
-        if output_zip and output_zip.is_file() and is_safe_path(DATA_DIR / "users", output_zip):
+        if output_zip and output_zip.is_file() and is_safe_path(OUTPUTS_DIR, output_zip):
             output_zip.unlink(missing_ok=True)
-        if output_log and output_log.is_file() and is_safe_path(DATA_DIR / "users", output_log):
+        if output_log and output_log.is_file() and is_safe_path(OUTPUTS_DIR, output_log):
             output_log.unlink(missing_ok=True)
 
     conn.execute(
@@ -1514,7 +1596,7 @@ async def admin_delete_runs(request: Request):
     return {"ok": True}
 
 
-@app.get("/admin", response_class=HTMLResponse)
+@app.get("/admin", response_class=HTMLResponse, tags=["Administration"])
 def admin_panel(request: Request):
     try:
         admin = require_admin(request)
@@ -1549,8 +1631,8 @@ def admin_panel(request: Request):
     for row in users:
         dirs = get_user_storage_dirs(row["username"])
         uploads_size = compute_dir_size(dirs["uploads"])
-        exports_size = compute_dir_size(dirs["exports"])
-        row["storage_size"] = format_mb(uploads_size + exports_size)
+        outputs_size = compute_dir_size(dirs["outputs"])
+        row["storage_size"] = format_mb(uploads_size + outputs_size)
         row["total_login_hms"] = format_seconds_hms(row.get("total_login_seconds"))
         row["total_execution_hms"] = format_seconds_hms(row.get("total_execution_seconds"))
     recent_runs = conn.execute(
@@ -1583,12 +1665,13 @@ def admin_panel(request: Request):
             "recent_runs": recent_runs,
             "global_runs_size": format_mb(total_bytes),
             "input_items": list_inputs_repository(),
+            "inputs_total_size": get_inputs_repository_total_size(),
             "admin_settings": get_admin_settings(),
         },
     )
 
 
-@app.post("/admin/settings")
+@app.post("/admin/settings", tags=["Administration"])
 def admin_settings_update(
     request: Request,
     max_cpu_percent: int = Form(MAX_CPU_DEFAULT),
@@ -1604,7 +1687,7 @@ def admin_settings_update(
     return RedirectResponse("/admin", status_code=302)
 
 
-@app.post("/admin/users/create")
+@app.post("/admin/users/create", tags=["Administration"])
 def admin_create_user(request: Request, username: str = Form(...), password: str = Form(...), role: str = Form("user")):
     try:
         require_admin(request)
@@ -1625,7 +1708,7 @@ def admin_create_user(request: Request, username: str = Form(...), password: str
     return RedirectResponse("/admin", status_code=302)
 
 
-@app.post("/admin/users/{user_id}/toggle")
+@app.post("/admin/users/{user_id}/toggle", tags=["Administration"])
 def admin_toggle_user(request: Request, user_id: int):
     try:
         admin = require_admin(request)
@@ -1644,7 +1727,7 @@ def admin_toggle_user(request: Request, user_id: int):
     return RedirectResponse("/admin", status_code=302)
 
 
-@app.post("/admin/users/{user_id}/set_password")
+@app.post("/admin/users/{user_id}/set_password", tags=["Administration"])
 def admin_set_password(request: Request, user_id: int, new_password: str = Form(...)):
     try:
         require_admin(request)
@@ -1659,7 +1742,7 @@ def admin_set_password(request: Request, user_id: int, new_password: str = Form(
     return RedirectResponse("/admin", status_code=302)
 
 
-@app.post("/admin/users/{user_id}/update")
+@app.post("/admin/users/{user_id}/update", tags=["Administration"])
 def admin_update_user(
     request: Request,
     user_id: int,
@@ -1717,7 +1800,7 @@ def admin_update_user(
     return RedirectResponse("/admin", status_code=302)
 
 
-@app.post("/admin/users/{user_id}/clear_storage")
+@app.post("/admin/users/{user_id}/clear_storage", tags=["Administration"])
 def admin_clear_storage(request: Request, user_id: int):
     try:
         require_admin(request)
@@ -1741,13 +1824,11 @@ def admin_clear_storage(request: Request, user_id: int):
         output_zip = Path(row["output_zip"]) if row["output_zip"] else None
         output_log = Path(row["output_log_file"]) if row["output_log_file"] else None
 
-        if input_dir and is_safe_path(DATA_DIR / "users", input_dir):
-            shutil.rmtree(input_dir, ignore_errors=True)
-        if output_dir and is_safe_path(DATA_DIR / "users", output_dir):
+        if output_dir and is_safe_path(OUTPUTS_DIR, output_dir):
             shutil.rmtree(output_dir, ignore_errors=True)
-        if output_zip and is_safe_path(DATA_DIR / "users", output_zip):
+        if output_zip and is_safe_path(OUTPUTS_DIR, output_zip):
             output_zip.unlink(missing_ok=True)
-        if output_log and is_safe_path(DATA_DIR / "users", output_log):
+        if output_log and is_safe_path(OUTPUTS_DIR, output_log):
             output_log.unlink(missing_ok=True)
 
     conn.execute("DELETE FROM task_runs WHERE user_id = ?", (user_id,))
@@ -1756,12 +1837,12 @@ def admin_clear_storage(request: Request, user_id: int):
 
     dirs = get_user_storage_dirs(user_row["username"])
     shutil.rmtree(dirs["uploads"], ignore_errors=True)
-    shutil.rmtree(dirs["exports"], ignore_errors=True)
+    shutil.rmtree(dirs["outputs"], ignore_errors=True)
 
     return RedirectResponse("/admin", status_code=302)
 
 
-@app.post("/admin/users/{user_id}/delete")
+@app.post("/admin/users/{user_id}/delete", tags=["Administration"])
 def admin_delete_user(request: Request, user_id: int):
     try:
         admin = require_admin(request)
@@ -1785,6 +1866,6 @@ def admin_delete_user(request: Request, user_id: int):
 
     dirs = get_user_storage_dirs(user_row["username"])
     shutil.rmtree(dirs["uploads"], ignore_errors=True)
-    shutil.rmtree(dirs["exports"], ignore_errors=True)
+    shutil.rmtree(dirs["outputs"], ignore_errors=True)
 
     return RedirectResponse("/admin", status_code=302)
