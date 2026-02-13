@@ -1769,6 +1769,41 @@ def logs_system(request: Request, source: str = "app"):
     return {"log": read_tail(path)}
 
 
+
+
+@app.post("/logs/system/delete", tags=["Runs & Logs"])
+def delete_system_logs(request: Request, source: str = "app"):
+    try:
+        require_user(request)
+    except PermissionError:
+        return {"ok": False}
+
+    source_key = (source or "app").lower().strip()
+    if source_key == "access":
+        path = ACCESS_LOG_PATH
+    else:
+        path = APP_LOG_PATH
+
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("", encoding="utf-8")
+    except OSError:
+        return {"ok": False}
+    return {"ok": True}
+
+
+@app.get("/admin/logs/by_run/{run_id}", tags=["Administration"])
+def admin_logs_by_run(request: Request, run_id: int):
+    try:
+        require_admin(request)
+    except PermissionError:
+        return {"log": ""}
+
+    conn = get_conn()
+    row = conn.execute("SELECT output_log FROM task_runs WHERE id = ?", (run_id,)).fetchone()
+    conn.close()
+    return {"log": row["output_log"] if row else ""}
+
 @app.get("/runs/list", tags=["Runs & Logs"])
 def runs_list(request: Request):
     try:

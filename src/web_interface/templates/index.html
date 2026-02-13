@@ -284,6 +284,7 @@
           <button type="button" id="clear_log">Clear</button>
           <button type="button" id="copy_log">Copy all</button>
           <button type="button" id="copy_selection">Copy selection</button>
+          <button type="button" id="toggle_execution_log_panel" class="panel-toggle" aria-label="Collapse execution log panel" title="Collapse/Expand">▾</button>
         </div>
       </div>
       <pre id="log_output" class="log-output">No logs yet.</pre>
@@ -305,6 +306,8 @@
           <button type="button" id="clear_system_log">Clear</button>
           <button type="button" id="copy_system_log">Copy all</button>
           <button type="button" id="copy_system_selection">Copy selection</button>
+          <button type="button" id="delete_system_log" class="btn btn-danger">Delete</button>
+          <button type="button" id="toggle_system_log_panel" class="panel-toggle" aria-label="Collapse system log panel" title="Collapse/Expand">▾</button>
         </div>
       </div>
       <pre id="system_log_output" class="log-output">No logs yet.</pre>
@@ -327,6 +330,7 @@
     const clearLogButton = document.getElementById("clear_log");
     const copyLogButton = document.getElementById("copy_log");
     const copySelectionButton = document.getElementById("copy_selection");
+    const toggleExecutionLogPanelButton = document.getElementById("toggle_execution_log_panel");
     const logOutput = document.getElementById("log_output");
     const logRunSelector = document.getElementById("log_run_selector");
     const configPicker = document.getElementById("config_picker");
@@ -346,6 +350,8 @@
     const clearSystemLogButton = document.getElementById("clear_system_log");
     const copySystemLogButton = document.getElementById("copy_system_log");
     const copySystemSelectionButton = document.getElementById("copy_system_selection");
+    const deleteSystemLogButton = document.getElementById("delete_system_log");
+    const toggleSystemLogPanelButton = document.getElementById("toggle_system_log_panel");
     const selectAllInputsButton = document.getElementById("select_all_inputs");
     const unselectAllInputsButton = document.getElementById("unselect_all_inputs");
     const selectOlderInputsButton = document.getElementById("select_older_inputs");
@@ -1176,6 +1182,23 @@
         systemLogOutput.textContent = "";
       });
     }
+    if (deleteSystemLogButton) {
+      deleteSystemLogButton.addEventListener("click", async () => {
+        const ok = await showModal({ title: "Delete system log", message: "Delete all contents from the selected system log file?", confirmText: "Accept", cancelText: "Cancel" });
+        if (!ok.ok) {
+          return;
+        }
+        const source = systemLogSource?.value || "app";
+        fetch(`/logs/system/delete?source=${encodeURIComponent(source)}`, { method: "POST" })
+          .then((res) => res.json())
+          .then((data) => {
+            if (data.ok) {
+              renderSystemLog("");
+            }
+          })
+          .catch(() => {});
+      });
+    }
     if (copySystemLogButton) {
       copySystemLogButton.addEventListener("click", () => {
         copyToClipboard(systemLogOutput.textContent || "");
@@ -1401,6 +1424,18 @@
       runsPanelTable?.classList.toggle("hidden");
       if (toggleRunsPanelButton) {
         toggleRunsPanelButton.textContent = runsPanelTable?.classList.contains("hidden") ? "▸" : "▾";
+      }
+    });
+    toggleExecutionLogPanelButton?.addEventListener("click", () => {
+      logOutput?.classList.toggle("hidden");
+      if (toggleExecutionLogPanelButton) {
+        toggleExecutionLogPanelButton.textContent = logOutput?.classList.contains("hidden") ? "▸" : "▾";
+      }
+    });
+    toggleSystemLogPanelButton?.addEventListener("click", () => {
+      systemLogOutput?.classList.toggle("hidden");
+      if (toggleSystemLogPanelButton) {
+        toggleSystemLogPanelButton.textContent = systemLogOutput?.classList.contains("hidden") ? "▸" : "▾";
       }
     });
     toggleInputsPanelButton?.addEventListener("click", () => {

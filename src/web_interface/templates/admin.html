@@ -48,8 +48,13 @@
     </section>
 
     <section class="card">
-      <h2>Users</h2>
-      <div class="table-scroll latest-global-scroll">
+      <div class="runs-header">
+        <h2>Users</h2>
+        <div class="runs-actions">
+          <button type="button" id="toggle_users_panel" class="panel-toggle" aria-label="Collapse users panel" title="Collapse/Expand">▾</button>
+        </div>
+      </div>
+      <div class="table-scroll latest-global-scroll" id="users_panel_table">
       <table>
         <thead><tr><th>User</th><th>Password</th><th>Role</th><th>Status</th><th>Logged time</th><th>Execution time</th><th>Storage</th><th>Actions</th></tr></thead>
         <tbody>
@@ -182,6 +187,45 @@
     </section>
 
 
+    <section class="card log-card">
+      <div class="log-header">
+        <h2>Execution Logs</h2>
+        <div class="log-actions">
+          <select id="admin_log_run_selector">
+            {% for r in recent_runs %}
+              <option value="{{ r.id }}" {% if loop.first %}selected{% endif %}>#{{ r.id }} - {{ r.username }} - {{ r.module }} - {{ r.input_name or '—' }}</option>
+            {% endfor %}
+          </select>
+          <button type="button" id="admin_refresh_log">Refresh</button>
+          <button type="button" id="admin_clear_log">Clear</button>
+          <button type="button" id="admin_copy_log">Copy all</button>
+          <button type="button" id="admin_copy_selection">Copy selection</button>
+          <button type="button" id="toggle_admin_execution_log_panel" class="panel-toggle" aria-label="Collapse execution log panel" title="Collapse/Expand">▾</button>
+        </div>
+      </div>
+      <pre id="admin_log_output" class="log-output">No logs yet.</pre>
+    </section>
+
+    <section class="card log-card">
+      <div class="log-header">
+        <h2>System Logs</h2>
+        <div class="log-actions">
+          <select id="admin_system_log_source">
+            <option value="app" selected>Application</option>
+            <option value="access">Access</option>
+          </select>
+          <button type="button" id="admin_refresh_system_log">Refresh</button>
+          <button type="button" id="admin_clear_system_log">Clear</button>
+          <button type="button" id="admin_copy_system_log">Copy all</button>
+          <button type="button" id="admin_copy_system_selection">Copy selection</button>
+          <button type="button" id="admin_delete_system_log" class="btn btn-danger">Delete</button>
+          <button type="button" id="toggle_admin_system_log_panel" class="panel-toggle" aria-label="Collapse system log panel" title="Collapse/Expand">▾</button>
+        </div>
+      </div>
+      <pre id="admin_system_log_output" class="log-output">No logs yet.</pre>
+    </section>
+
+
   </main>
   <script>
 
@@ -254,6 +298,23 @@
     const olderInputDatePicker = document.getElementById("older_input_date_picker");
     const toggleInputsPanelButton = document.getElementById("toggle_inputs_panel");
     const inputsPanelTable = document.getElementById("inputs_panel_table");
+    const toggleUsersPanelButton = document.getElementById("toggle_users_panel");
+    const usersPanelTable = document.getElementById("users_panel_table");
+    const adminLogRunSelector = document.getElementById("admin_log_run_selector");
+    const adminRefreshLogButton = document.getElementById("admin_refresh_log");
+    const adminClearLogButton = document.getElementById("admin_clear_log");
+    const adminCopyLogButton = document.getElementById("admin_copy_log");
+    const adminCopySelectionButton = document.getElementById("admin_copy_selection");
+    const toggleAdminExecutionLogPanelButton = document.getElementById("toggle_admin_execution_log_panel");
+    const adminLogOutput = document.getElementById("admin_log_output");
+    const adminSystemLogSource = document.getElementById("admin_system_log_source");
+    const adminRefreshSystemLogButton = document.getElementById("admin_refresh_system_log");
+    const adminClearSystemLogButton = document.getElementById("admin_clear_system_log");
+    const adminCopySystemLogButton = document.getElementById("admin_copy_system_log");
+    const adminCopySystemSelectionButton = document.getElementById("admin_copy_system_selection");
+    const adminDeleteSystemLogButton = document.getElementById("admin_delete_system_log");
+    const toggleAdminSystemLogPanelButton = document.getElementById("toggle_admin_system_log_panel");
+    const adminSystemLogOutput = document.getElementById("admin_system_log_output");
 
     function getSelectedRunIds() {
       return Array.from(document.querySelectorAll(".run-checkbox:checked")).map((box) => Number(box.value));
@@ -407,6 +468,102 @@
       if (!ok) return;
       fetch("/admin/inputs/delete", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ids})}).then(() => window.location.reload());
     });
+
+
+    toggleUsersPanelButton?.addEventListener("click", () => {
+      usersPanelTable?.classList.toggle("hidden");
+      if (toggleUsersPanelButton) {
+        toggleUsersPanelButton.textContent = usersPanelTable?.classList.contains("hidden") ? "▸" : "▾";
+      }
+    });
+
+    function renderAdminLog(text, target) {
+      if (!target) return;
+      if (!text) {
+        target.textContent = "No logs yet.";
+        return;
+      }
+      const lines = text.split(/\r?\n/);
+      target.innerHTML = lines.map((line) => {
+        let cls = "log-info";
+        if (line.includes("[ERROR]")) cls = "log-error";
+        else if (line.includes("[WARNING]")) cls = "log-warning";
+        else if (line.includes("[DEBUG]")) cls = "log-debug";
+        return `<span class="${cls}">${line.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")}</span>`;
+      }).join("\n");
+    }
+
+    function copyToClipboard(text) {
+      if (!text) return;
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).catch(() => {});
+        return;
+      }
+      const helper = document.createElement("textarea");
+      helper.value = text;
+      document.body.appendChild(helper);
+      helper.select();
+      document.execCommand("copy");
+      document.body.removeChild(helper);
+    }
+
+    function fetchAdminRunLog() {
+      const runId = adminLogRunSelector?.value;
+      if (!runId) {
+        renderAdminLog("", adminLogOutput);
+        return;
+      }
+      fetch(`/admin/logs/by_run/${runId}`)
+        .then((res) => res.json())
+        .then((data) => renderAdminLog(data.log || "", adminLogOutput))
+        .catch(() => renderAdminLog("", adminLogOutput));
+    }
+
+    function fetchAdminSystemLog() {
+      const source = adminSystemLogSource?.value || "app";
+      fetch(`/logs/system?source=${encodeURIComponent(source)}`)
+        .then((res) => res.json())
+        .then((data) => renderAdminLog(data.log || "", adminSystemLogOutput))
+        .catch(() => renderAdminLog("", adminSystemLogOutput));
+    }
+
+    adminLogRunSelector?.addEventListener("change", fetchAdminRunLog);
+    adminRefreshLogButton?.addEventListener("click", fetchAdminRunLog);
+    adminClearLogButton?.addEventListener("click", () => { if (adminLogOutput) adminLogOutput.textContent = ""; });
+    adminCopyLogButton?.addEventListener("click", () => copyToClipboard(adminLogOutput?.textContent || ""));
+    adminCopySelectionButton?.addEventListener("click", () => copyToClipboard(window.getSelection()?.toString() || ""));
+
+    adminSystemLogSource?.addEventListener("change", fetchAdminSystemLog);
+    adminRefreshSystemLogButton?.addEventListener("click", fetchAdminSystemLog);
+    adminClearSystemLogButton?.addEventListener("click", () => { if (adminSystemLogOutput) adminSystemLogOutput.textContent = ""; });
+    adminCopySystemLogButton?.addEventListener("click", () => copyToClipboard(adminSystemLogOutput?.textContent || ""));
+    adminCopySystemSelectionButton?.addEventListener("click", () => copyToClipboard(window.getSelection()?.toString() || ""));
+    adminDeleteSystemLogButton?.addEventListener("click", async () => {
+      const ok = await showModal({ title: "Delete system log", message: "Delete all contents from the selected system log file?", confirmText: "Accept", cancelText: "Cancel" });
+      if (!ok) return;
+      const source = adminSystemLogSource?.value || "app";
+      fetch(`/logs/system/delete?source=${encodeURIComponent(source)}`, { method: "POST" })
+        .then((res) => res.json())
+        .then((data) => { if (data.ok) renderAdminLog("", adminSystemLogOutput); })
+        .catch(() => {});
+    });
+
+    toggleAdminExecutionLogPanelButton?.addEventListener("click", () => {
+      adminLogOutput?.classList.toggle("hidden");
+      if (toggleAdminExecutionLogPanelButton) {
+        toggleAdminExecutionLogPanelButton.textContent = adminLogOutput?.classList.contains("hidden") ? "▸" : "▾";
+      }
+    });
+    toggleAdminSystemLogPanelButton?.addEventListener("click", () => {
+      adminSystemLogOutput?.classList.toggle("hidden");
+      if (toggleAdminSystemLogPanelButton) {
+        toggleAdminSystemLogPanelButton.textContent = adminSystemLogOutput?.classList.contains("hidden") ? "▸" : "▾";
+      }
+    });
+
+    fetchAdminRunLog();
+    fetchAdminSystemLog();
+
 
   </script>
 </body>
