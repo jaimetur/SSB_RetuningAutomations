@@ -413,7 +413,7 @@
     function refreshInputsRepository() {
       return fetch("/inputs/list")
         .then((res) => res.json())
-        .then((data) => {
+        .then(async (data) => {
           if (!data.ok) {
             return;
           }
@@ -479,6 +479,66 @@
       moduleUnavailableMessage.classList.toggle("hidden", !blocked);
     }
 
+
+    function showModal({ title = "Notice", message = "", confirmText = "Accept", cancelText = "", showInput = false, inputValue = "", inputPlaceholder = "" }) {
+      return new Promise((resolve) => {
+        const backdrop = document.createElement("div");
+        backdrop.className = "modal-backdrop";
+        const box = document.createElement("div");
+        box.className = "modal-box";
+        const titleEl = document.createElement("h3");
+        titleEl.className = "modal-title";
+        titleEl.textContent = title;
+        const messageEl = document.createElement("p");
+        messageEl.className = "modal-message";
+        messageEl.textContent = message;
+        box.appendChild(titleEl);
+        box.appendChild(messageEl);
+
+        let inputEl = null;
+        if (showInput) {
+          inputEl = document.createElement("input");
+          inputEl.type = "text";
+          inputEl.className = "modal-input";
+          inputEl.value = inputValue;
+          inputEl.placeholder = inputPlaceholder;
+          box.appendChild(inputEl);
+        }
+
+        const actions = document.createElement("div");
+        actions.className = "modal-actions";
+        if (cancelText) {
+          const cancelBtn = document.createElement("button");
+          cancelBtn.type = "button";
+          cancelBtn.className = "btn btn-danger";
+          cancelBtn.textContent = cancelText;
+          cancelBtn.addEventListener("click", () => {
+            backdrop.remove();
+            resolve({ ok: false, value: null });
+          });
+          actions.appendChild(cancelBtn);
+        }
+        const okBtn = document.createElement("button");
+        okBtn.type = "button";
+        okBtn.className = "btn btn-primary";
+        okBtn.textContent = confirmText;
+        okBtn.addEventListener("click", () => {
+          const value = inputEl ? inputEl.value : null;
+          backdrop.remove();
+          resolve({ ok: true, value });
+        });
+        actions.appendChild(okBtn);
+
+        box.appendChild(actions);
+        backdrop.appendChild(box);
+        document.body.appendChild(backdrop);
+        if (inputEl) {
+          inputEl.focus();
+          inputEl.select();
+        }
+      });
+    }
+
     function uploadZip(files, moduleValue, kindValue, inputName, overwrite) {
       const formData = new FormData();
       Array.from(files).forEach((file) => {
@@ -505,7 +565,7 @@
     });
 
     Object.entries(uploadInputs).forEach(([inputId, inputElement]) => {
-      inputElement.addEventListener("change", () => {
+      inputElement.addEventListener("change", async () => {
         const files = inputElement.files;
         if (!files || files.length === 0) {
           return;
@@ -517,8 +577,16 @@
           return;
         }
         const defaultInputName = files[0] ? (files[0].name.split(".")[0] || "uploaded_input") : "uploaded_input";
-        let selectedInputName = prompt("Input name for repository", defaultInputName);
-        if (selectedInputName === null) {
+        const modalInput = await showModal({
+          title: "Input name",
+          message: "Input name for repository",
+          confirmText: "Accept",
+          cancelText: "Cancel",
+          showInput: true,
+          inputValue: defaultInputName
+        });
+        let selectedInputName = modalInput.value;
+        if (!modalInput.ok || selectedInputName === null) {
           inputElement.value = "";
           return;
         }
@@ -528,7 +596,7 @@
         }
         targetInput.value = "Uploading...";
         uploadZip(files, moduleSelect.value, kindValue, selectedInputName, false)
-          .then((data) => {
+          .then(async (data) => {
             if (data.ok && data.path) {
               targetInput.value = data.path;
               scheduleAutoSave();
@@ -536,8 +604,8 @@
               return;
             }
             if (data.error === "already_exists") {
-              const replaceExisting = confirm(`Input ${data.existing_name} already exists. Overwrite?`);
-              if (replaceExisting) {
+              const overwriteResponse = await showModal({ title: "Input already exists", message: `Input ${data.existing_name} already exists. Overwrite?`, confirmText: "Accept", cancelText: "Cancel" });
+              if (overwriteResponse.ok) {
                 uploadZip(files, moduleSelect.value, kindValue, selectedInputName, true).then((retry) => {
                   if (retry.ok && retry.path) {
                     targetInput.value = retry.path;
@@ -862,18 +930,26 @@
       window.location.href = "/config/export";
     });
 
-    changePasswordButton.addEventListener("click", () => {
-      const newPassword = prompt("Enter a new password:");
-      if (!newPassword) {
+    changePasswordButton.addEventListener("click", async () => {
+      const response = await showModal({
+        title: "Change password",
+        message: "Enter a new password:",
+        confirmText: "Accept",
+        cancelText: "Cancel",
+        showInput: true,
+        inputPlaceholder: "New password"
+      });
+      const newPassword = (response.value || "").trim();
+      if (!response.ok || !newPassword) {
         return;
       }
       fetch("/account/change_password", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ new_password: newPassword })
-      }).then((res) => {
+      }).then(async (res) => {
         if (res.ok) {
-          alert("Password updated. Please sign in again.");
+          await showModal({ title: "Password updated", message: "Password updated. Please sign in again.", confirmText: "Accept" });
           window.location.href = "/login";
         }
       });
@@ -1035,12 +1111,13 @@
       olderDatePicker.value = "";
     });
 
-    deleteSelectedRunsButton.addEventListener("click", () => {
+    deleteSelectedRunsButton.addEventListener("click", async () => {
       const ids = getSelectedRunIds();
       if (ids.length === 0) {
         return;
       }
-      if (!confirm("This will delete the Uploads and Exports for the selected executions. Continue?")) {
+      const removeRunsAnswer = await showModal({ title: "Delete executions", message: "This will delete the Uploads and Exports for the selected executions. Continue?", confirmText: "Accept", cancelText: "Cancel" });
+      if (!removeRunsAnswer.ok) {
         return;
       }
       fetch("/runs/delete", {
@@ -1089,15 +1166,16 @@
       });
       olderInputDatePicker.value = "";
     });
-    deleteSelectedInputsButton?.addEventListener("click", () => {
+    deleteSelectedInputsButton?.addEventListener("click", async () => {
       const ids = getSelectedInputIds();
       if (!ids.length) return;
-      if (!confirm("Delete selected inputs?")) return;
+      const removeInputsAnswer = await showModal({ title: "Delete inputs", message: "Delete selected inputs?", confirmText: "Accept", cancelText: "Cancel" });
+      if (!removeInputsAnswer.ok) return;
       fetch("/inputs/delete", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ids})})
         .then((res) => res.json())
-        .then((data) => {
+         .then(async (data) => {
           if (!data.ok && data.error === "forbidden_inputs") {
-            alert("Only inputs uploaded by your user can be deleted. Admin users can delete any input only from the Admin panel.");
+            await showModal({ title: "Action not allowed", message: "Only inputs uploaded by your user can be deleted. Admin users can delete any input only from the Admin panel.", confirmText: "Accept" });
           }
           return refreshInputsRepository();
         });
@@ -1133,9 +1211,9 @@
       const selectedNames = getCheckedInputNames(selectedFilter);
       if (selectedNames.length === 0) {
         if (targetMode === "pre" || targetMode === "post") {
-          alert(`Select at least one input marked as As Input ${targetMode.toUpperCase()} in Inputs Repository panel.`);
+          showModal({ title: "Selection required", message: `Select at least one input marked as As Input ${targetMode.toUpperCase()} in Inputs Repository panel.`, confirmText: "Accept" });
         } else {
-          alert("Select at least one input in Inputs Repository panel.");
+          showModal({ title: "Selection required", message: "Select at least one input in Inputs Repository panel.", confirmText: "Accept" });
         }
         return;
       }
@@ -1162,7 +1240,7 @@
     });
     toggleInputRows();
     updateModuleAvailability();
-    document.querySelector(".module-form").addEventListener("submit", (event) => {
+    document.querySelector(".module-form").addEventListener("submit", async (event) => {
       if (isModuleBlocked()) {
         event.preventDefault();
         updateModuleAvailability();
@@ -1186,7 +1264,7 @@
       } else if (isConsistencyCheck && (preInputs.length > 1 || postInputs.length > 1)) {
         const isPairable = preInputs.length === postInputs.length || preInputs.length === 1 || postInputs.length === 1;
         if (!isPairable) {
-          alert("Cannot queue tasks: PRE and POST selections have different lengths and both are greater than 1.");
+          showModal({ title: "Invalid PRE/POST pairing", message: "Cannot queue tasks: PRE and POST selections have different lengths and both are greater than 1.", confirmText: "Accept" });
           event.preventDefault();
           return;
         }
@@ -1201,7 +1279,8 @@
       const currentInput = isConsistencyCheck ? (document.getElementById("input_post_path")?.value || "") : (document.getElementById("input_path")?.value || "");
       const taskName = currentInput.split("/").filter(Boolean).pop() || "unknown";
       const confirmText = confirmationMessage || `Queue task: ${taskName}?`;
-      if (!confirm(confirmText)) {
+      const queueAnswer = await showModal({ title: "Queue task", message: confirmText, confirmText: "Accept", cancelText: "Cancel" });
+      if (!queueAnswer.ok) {
         event.preventDefault();
         return;
       }

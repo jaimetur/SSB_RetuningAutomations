@@ -180,10 +180,57 @@
 
   </main>
   <script>
+
+    function showModal({ title = "Notice", message = "", confirmText = "Accept", cancelText = "" }) {
+      return new Promise((resolve) => {
+        const backdrop = document.createElement("div");
+        backdrop.className = "modal-backdrop";
+        const box = document.createElement("div");
+        box.className = "modal-box";
+        const titleEl = document.createElement("h3");
+        titleEl.className = "modal-title";
+        titleEl.textContent = title;
+        const messageEl = document.createElement("p");
+        messageEl.className = "modal-message";
+        messageEl.textContent = message;
+        const actions = document.createElement("div");
+        actions.className = "modal-actions";
+
+        if (cancelText) {
+          const cancelBtn = document.createElement("button");
+          cancelBtn.type = "button";
+          cancelBtn.className = "btn btn-danger";
+          cancelBtn.textContent = cancelText;
+          cancelBtn.addEventListener("click", () => {
+            backdrop.remove();
+            resolve(false);
+          });
+          actions.appendChild(cancelBtn);
+        }
+
+        const okBtn = document.createElement("button");
+        okBtn.type = "button";
+        okBtn.className = "btn btn-primary";
+        okBtn.textContent = confirmText;
+        okBtn.addEventListener("click", () => {
+          backdrop.remove();
+          resolve(true);
+        });
+        actions.appendChild(okBtn);
+
+        box.appendChild(titleEl);
+        box.appendChild(messageEl);
+        box.appendChild(actions);
+        backdrop.appendChild(box);
+        document.body.appendChild(backdrop);
+      });
+    }
+
     document.querySelectorAll(".confirm-form").forEach((form) => {
-      form.addEventListener("submit", (event) => {
+      form.addEventListener("submit", async (event) => {
         const message = form.dataset.confirm || "Are you sure?";
-        if (!confirm(message)) {
+        const ok = await showModal({ title: "Please confirm", message, confirmText: "Accept", cancelText: "Cancel" });
+        if (!ok) {
           event.preventDefault();
         }
       });
@@ -302,12 +349,13 @@
     }
 
     if (deleteSelectedRunsButton) {
-      deleteSelectedRunsButton.addEventListener("click", () => {
+      deleteSelectedRunsButton.addEventListener("click", async () => {
         const ids = getSelectedRunIds();
         if (ids.length === 0) {
           return;
         }
-        if (!confirm("This will delete the Uploads and Exports for the selected executions. Continue?")) {
+        const ok = await showModal({ title: "Delete executions", message: "This will delete the Uploads and Exports for the selected executions. Continue?", confirmText: "Accept", cancelText: "Cancel" });
+        if (!ok) {
           return;
         }
         fetch("/admin/runs/delete", {
@@ -348,10 +396,11 @@
       });
       olderInputDatePicker.value = "";
     });
-    deleteSelectedInputsButton?.addEventListener("click", () => {
+    deleteSelectedInputsButton?.addEventListener("click", async () => {
       const ids = getSelectedInputIds();
       if (!ids.length) return;
-      if (!confirm("Delete selected inputs?")) return;
+      const ok = await showModal({ title: "Delete inputs", message: "Delete selected inputs?", confirmText: "Accept", cancelText: "Cancel" });
+      if (!ok) return;
       fetch("/admin/inputs/delete", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ids})}).then(() => window.location.reload());
     });
 

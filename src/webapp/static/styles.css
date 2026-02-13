@@ -79,6 +79,12 @@ th,td{border-bottom:1px solid #e3e8ee;padding:.55rem;text-align:left;font-size:.
 .input-with-button input{flex:1;min-width:0}
 .browse-button{padding:.5rem .9rem;white-space:nowrap}
 .hidden{display:none}
+.modal-backdrop{position:fixed;inset:0;background:rgba(15,23,42,.45);display:flex;align-items:center;justify-content:center;z-index:1000}
+.modal-box{width:min(520px,92vw);background:#fff;border-radius:12px;box-shadow:0 20px 60px rgba(15,23,42,.35);padding:1rem 1rem .85rem}
+.modal-title{margin:0 0 .5rem;color:#1f2d3d;font-size:1.05rem}
+.modal-message{margin:0 0 .85rem;color:#4a5b70;line-height:1.35;white-space:pre-wrap}
+.modal-input{width:100%;box-sizing:border-box;margin-bottom:.85rem}
+.modal-actions{display:flex;justify-content:flex-end;gap:.5rem}
 .log-card{margin-bottom:2rem}
 .log-header{display:flex;justify-content:space-between;align-items:center;gap:1rem}
 .log-actions{display:flex;gap:.5rem;align-items:center;flex-wrap:wrap}
