@@ -31,6 +31,7 @@ button:hover{background:#0f4ccc}
 button:disabled{background:#9aa4b2;cursor:not-allowed}
 button:disabled:hover{background:#9aa4b2}
 .inline{display:flex;gap:.5rem;align-items:center;flex-wrap:nowrap}
+.admin-limits-form{align-items:flex-end}
 .table-scroll{overflow-x:auto}
 table{min-width:1100px}
 .password-input{width:110px}

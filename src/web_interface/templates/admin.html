@@ -26,7 +26,7 @@
 
     <section class="card">
       <h2>Processing Limits</h2>
-      <form method="post" action="/admin/settings" class="inline">
+      <form method="post" action="/admin/settings" class="inline admin-limits-form">
         <label>Max CPU % <input type="number" name="max_cpu_percent" min="10" max="100" value="{{ admin_settings.max_cpu_percent }}" /></label>
         <label>Max Memory % <input type="number" name="max_memory_percent" min="10" max="100" value="{{ admin_settings.max_memory_percent }}" /></label>
         <label>Max parallel tasks <input type="number" name="max_parallel_tasks" min="1" max="8" value="{{ admin_settings.max_parallel_tasks }}" /></label>
