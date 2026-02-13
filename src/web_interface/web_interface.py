@@ -791,7 +791,14 @@ def detect_task_name_from_input(input_path: str) -> str:
 
 def format_task_status(raw_status: str) -> str:
     normalized = (raw_status or "").strip().lower()
-    mapping = {"queued": "Queued", "running": "Running", "ok": "Success", "error": "Error", "canceled": "Canceled"}
+    mapping = {
+        "queued": "Queued",
+        "running": "Running",
+        "canceling": "Canceling",
+        "ok": "Success",
+        "error": "Error",
+        "canceled": "Canceled",
+    }
     return mapping.get(normalized, raw_status or "Unknown")
 
 
@@ -1061,7 +1068,9 @@ def queue_worker() -> None:
             conn = get_conn()
             admin_settings = get_admin_settings()
             max_parallel = admin_settings["max_parallel_tasks"]
-            running_count = conn.execute("SELECT COUNT(*) AS total FROM task_runs WHERE status = 'running'").fetchone()["total"]
+            running_count = conn.execute(
+                "SELECT COUNT(*) AS total FROM task_runs WHERE status IN ('running', 'canceling')"
+            ).fetchone()["total"]
             if running_count >= max_parallel:
                 conn.close()
                 break
@@ -1289,6 +1298,15 @@ def startup() -> None:
 
 def serialize_run_row(row: dict[str, Any], run_sizes: dict[int, int]) -> dict[str, Any]:
     data = dict(row)
+    started_at_raw = data.get("started_at")
+    data["started_at_raw"] = started_at_raw
+    started_at_epoch = 0
+    if started_at_raw:
+        try:
+            started_at_epoch = int(datetime.fromisoformat(started_at_raw).timestamp())
+        except ValueError:
+            started_at_epoch = 0
+    data["started_at_epoch"] = started_at_epoch
     data["started_at"] = format_timestamp(data.get("started_at"))
     data["finished_at"] = format_timestamp(data.get("finished_at"))
     data["duration_hms"] = format_seconds_hms(data.get("duration_seconds"))
@@ -1600,6 +1618,12 @@ async def stop_runs(request: Request):
             "UPDATE task_runs SET status = 'canceled', finished_at = ?, output_log = TRIM(output_log || '\\nCanceled by user before execution.') WHERE user_id = ? AND id IN (%s)"
             % ",".join("?" for _ in queued_ids),
             (now_value, user["id"], *queued_ids),
+        )
+    if running_ids:
+        conn.execute(
+            "UPDATE task_runs SET status = 'canceling', output_log = TRIM(output_log || '\\nCancellation requested by user.') WHERE user_id = ? AND id IN (%s)"
+            % ",".join("?" for _ in running_ids),
+            (user["id"], *running_ids),
         )
     conn.commit()
     conn.close()

@@ -965,12 +965,13 @@
 
     function pickExecutionLogRunId(items, currentRunId) {
       const runningItems = items
-        .filter((item) => item.status_lower === "running")
+        .filter((item) => item.status_lower === "running" || item.status_lower === "canceling")
         .slice()
         .sort((a, b) => {
-          const startCompare = String(a.started_at || "").localeCompare(String(b.started_at || ""));
-          if (startCompare !== 0) {
-            return startCompare;
+          const aEpoch = Number(itemOrDefault(a.started_at_epoch, 0));
+          const bEpoch = Number(itemOrDefault(b.started_at_epoch, 0));
+          if (aEpoch !== bEpoch) {
+            return aEpoch - bEpoch;
           }
           return Number(a.id) - Number(b.id);
         });
@@ -992,6 +993,13 @@
       }
 
       return items[0] ? String(items[0].id) : "";
+    }
+
+    function itemOrDefault(value, fallback) {
+      if (value === null || value === undefined || Number.isNaN(Number(value))) {
+        return fallback;
+      }
+      return value;
     }
 
     function refreshRunsTable() {
@@ -1044,7 +1052,7 @@
             fetchLogByRun();
           }
 
-          const hasRunning = data.items.some((item) => item.status_lower === "running");
+          const hasRunning = data.items.some((item) => item.status_lower === "running" || item.status_lower === "canceling");
           const hasQueued = data.items.some((item) => item.status_lower === "queued");
           const hasError = data.items.some((item) => item.status_lower === "error");
           const latestStatus = hasRunning ? "running" : (hasQueued ? "queued" : ((data.items[0]?.status_lower || "").toLowerCase()));
@@ -1373,11 +1381,16 @@
       if (!stopRunsAnswer.ok) {
         return;
       }
-      fetch("/runs/stop", {
+      fetch(`/runs/stop?_=${Date.now()}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ids })
-      }).then(() => refreshRunsTable());
+        body: JSON.stringify({ ids }),
+        cache: "no-store"
+      })
+        .then(() => refreshRunsTable())
+        .then(() => new Promise((resolve) => setTimeout(resolve, 1200)))
+        .then(() => refreshRunsTable())
+        .catch(() => {});
     });
 
     deleteSelectedRunsButton.addEventListener("click", async () => {
