@@ -5,7 +5,6 @@ from docx import Document
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from pptx import Presentation
-from pptx.util import Pt
 
 ROOT = Path(__file__).resolve().parents[1]
 HELP_DIR = ROOT / "help"
@@ -49,6 +48,14 @@ def normalize_markdown_inline(text: str) -> str:
     return normalized
 
 
+def clean_heading_text(text: str) -> str:
+    """Remove manual markdown numbering so templates can apply automatic numbering."""
+    cleaned = text.strip()
+    # e.g. "1) Title", "2.3 Subtitle", "4.1.2 Topic"
+    cleaned = re.sub(r"^\d+(?:[.)]|(?:\.\d+)*\.?)[\s]+", "", cleaned)
+    return cleaned.strip()
+
+
 def markdown_segments(text: str) -> list[tuple[str, bool]]:
     """Return [(segment, is_bold)] for markdown strings with **bold** markers."""
     clean = normalize_markdown_inline(text)
@@ -69,6 +76,11 @@ def add_markdown_paragraph(doc: Document, text: str, style: str | None = None) -
     for segment, is_bold in markdown_segments(text):
         run = paragraph.add_run(segment)
         run.bold = is_bold
+
+
+def add_plain_paragraph(doc: Document, text: str, style: str | None = None) -> None:
+    paragraph = doc.add_paragraph(style=style) if style else doc.add_paragraph()
+    paragraph.add_run(normalize_markdown_inline(text))
 
 
 def parse_table_row(line: str) -> list[str]:
@@ -107,12 +119,23 @@ def insert_toc_field(doc: Document) -> None:
     run._r.append(fld_end)
 
 
+def clear_document_body(doc: Document) -> None:
+    """Remove all body content while preserving section properties from the template."""
+    body = doc._body._element
+    for child in list(body):
+        if child.tag != qn("w:sectPr"):
+            body.remove(child)
+
+
 def build_docx_from_markdown(md_file: Path, docx_file: Path) -> None:
     text = md_file.read_text(encoding="utf-8")
     lines = text.splitlines()
 
     template_path = first_existing_path(DOCX_TEMPLATE_CANDIDATES)
     doc = Document(str(template_path)) if template_path else Document()
+    clear_document_body(doc)
+
+    title_written = False
 
     i = 0
     while i < len(lines):
@@ -120,6 +143,10 @@ def build_docx_from_markdown(md_file: Path, docx_file: Path) -> None:
         s = line.rstrip()
         if not s:
             doc.add_paragraph("")
+            i += 1
+            continue
+
+        if s == "---":
             i += 1
             continue
 
@@ -146,18 +173,26 @@ def build_docx_from_markdown(md_file: Path, docx_file: Path) -> None:
             continue
 
         if s.startswith("# "):
-            add_markdown_paragraph(doc, s[2:].strip(), style="Heading 1")
+            # Markdown H1 is the document title (not part of heading numbering hierarchy).
+            add_plain_paragraph(doc, clean_heading_text(s[2:].strip()), style="Title")
+            title_written = True
         elif s.startswith("## "):
-            add_markdown_paragraph(doc, s[3:].strip(), style="Heading 2")
+            add_plain_paragraph(doc, clean_heading_text(s[3:].strip()), style="Heading 1")
         elif s.startswith("### "):
-            add_markdown_paragraph(doc, s[4:].strip(), style="Heading 3")
+            add_plain_paragraph(doc, clean_heading_text(s[4:].strip()), style="Heading 2")
+        elif s.startswith("#### "):
+            add_plain_paragraph(doc, clean_heading_text(s[5:].strip()), style="Heading 3")
         elif s.startswith("- "):
             add_markdown_paragraph(doc, s[2:].strip(), style="List Bullet")
+        elif re.match(r"^\d+\.\s+", s):
+            add_markdown_paragraph(doc, re.sub(r"^\d+\.\s+", "", s), style="List Number")
         else:
             add_markdown_paragraph(doc, s)
 
         i += 1
 
+    if title_written:
+        doc.add_paragraph("")
     insert_toc_field(doc)
 
     doc.save(docx_file)
@@ -165,27 +200,55 @@ def build_docx_from_markdown(md_file: Path, docx_file: Path) -> None:
 
 def build_pptx_summary(md_file: Path, pptx_file: Path, version: str) -> None:
     text = md_file.read_text(encoding="utf-8")
-    lines = [line.strip() for line in text.splitlines()]
+    lines = [line.rstrip() for line in text.splitlines()]
 
-    sections: list[tuple[str, list[str]]] = []
+    sections: list[tuple[str, list[tuple[int, str]]]] = []
     current_title = "Overview"
-    current_bullets: list[str] = []
+    current_points: list[tuple[int, str]] = []
 
-    for line in lines:
+    def flush_section() -> None:
+        if current_points:
+            sections.append((current_title, current_points.copy()))
+
+    for raw_line in lines:
+        line = raw_line.strip()
+        if not line or line == "---":
+            continue
+
+        if line.startswith("# "):
+            continue
+
         if line.startswith("## "):
-            if current_bullets:
-                sections.append((current_title, current_bullets[:6]))
-            current_title = line[3:].strip()
-            current_bullets = []
-        elif line.startswith("- "):
-            bullet = line[2:].strip()
-            current_bullets.append(normalize_markdown_inline(re.sub(r"\*\*(.*?)\*\*", r"\1", bullet)))
+            flush_section()
+            current_title = clean_heading_text(line[3:].strip())
+            current_points = []
+            continue
 
-    if current_bullets:
-        sections.append((current_title, current_bullets[:6]))
+        if line.startswith("### "):
+            current_points.append((0, clean_heading_text(line[4:].strip())))
+            continue
+
+        if line.startswith("#### "):
+            current_points.append((1, clean_heading_text(line[5:].strip())))
+            continue
+
+        if line.startswith("- "):
+            bullet = normalize_markdown_inline(re.sub(r"\*\*(.*?)\*\*", r"\1", line[2:].strip()))
+            current_points.append((1, bullet))
+            continue
+
+        numbered_match = re.match(r"^(\d+)\.\s+(.*)", line)
+        if numbered_match:
+            current_points.append((1, normalize_markdown_inline(numbered_match.group(2).strip())))
+            continue
+
+        # Keep informative narrative lines to enrich the deck.
+        current_points.append((0, normalize_markdown_inline(re.sub(r"\*\*(.*?)\*\*", r"\1", line))))
+
+    flush_section()
 
     if not sections:
-        sections = [("Overview", ["Refer to the markdown guide for full technical details."])]
+        sections = [("Overview", [(0, "Refer to the markdown guide for full technical details.")])]
 
     template_path = first_existing_path(PPTX_TEMPLATE_CANDIDATES)
     prs = Presentation(str(template_path)) if template_path else Presentation()
@@ -194,16 +257,18 @@ def build_pptx_summary(md_file: Path, pptx_file: Path, version: str) -> None:
     slide.shapes.title.text = "SSB Retuning Automations"
     slide.placeholders[1].text = f"Technical User Guide Summary (v{version})"
 
-    for title, bullets in sections[:7]:
-        slide = prs.slides.add_slide(prs.slide_layouts[1])
-        slide.shapes.title.text = title
-        tf = slide.shapes.placeholders[1].text_frame
-        tf.clear()
-        for i, bullet in enumerate(bullets):
-            p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
-            p.text = bullet
-            p.level = 0
-            p.font.size = Pt(20)
+    max_points_per_slide = 6
+    for title, points in sections:
+        chunks = [points[i:i + max_points_per_slide] for i in range(0, len(points), max_points_per_slide)] or [[(0, "Refer to the markdown guide for full details.")]]
+        for idx, chunk in enumerate(chunks):
+            slide = prs.slides.add_slide(prs.slide_layouts[1])
+            slide.shapes.title.text = title if idx == 0 else f"{title} (cont.)"
+            tf = slide.shapes.placeholders[1].text_frame
+            tf.clear()
+            for i, (level, point) in enumerate(chunk):
+                p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
+                p.text = point
+                p.level = level
 
     prs.save(pptx_file)
 
