@@ -36,6 +36,20 @@
     </section>
 
     <section class="card">
+      <h2>Database Backup</h2>
+      <div class="action-row">
+        <form method="get" action="/admin/database/export" class="inline">
+          <button type="submit" class="btn btn-primary">Export DB Backup</button>
+        </form>
+        <form method="post" action="/admin/database/import" enctype="multipart/form-data" class="inline">
+          <input type="file" name="backup_file" accept=".db,.sqlite,.sqlite3" required />
+          <button type="submit" class="btn btn-accent">Import DB Backup</button>
+        </form>
+      </div>
+      <p><small>Import will replace the current database file after basic validation.</small></p>
+    </section>
+
+    <section class="card">
       <h2>Create user</h2>
       <form method="post" action="/admin/users/create" class="inline">
         <input type="text" name="username" placeholder="username" required />
@@ -205,6 +219,18 @@
         </div>
       </div>
       <pre id="admin_log_output" class="log-output">No logs yet.</pre>
+    </section>
+
+    <section class="card">
+      <div class="runs-header">
+        <h2>Documentation</h2>
+      </div>
+      <p>User Guides:</p>
+      <ul>
+        <li><a href="/documentation/user-guide/md" target="_blank" rel="noopener">User Guide (Markdown .md)</a></li>
+        <li><a href="/documentation/user-guide/docx" target="_blank" rel="noopener">User Guide (Word .docx)</a></li>
+        <li><a href="/documentation/user-guide/pptx" target="_blank" rel="noopener">User Guide (PowerPoint .pptx)</a></li>
+      </ul>
     </section>
 
     <section class="card log-card">
