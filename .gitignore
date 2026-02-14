@@ -241,6 +241,5 @@ help/SSB_RetuningAutomations_Technical_User_Guide_Resumen.pptx
 tools/build_info.txt
 tools/RELEASE-NOTES.md
 
-# Generated user guide binaries (generated locally)
-help/SSB-Retuning-Automations-User-Guide-v*.docx
-help/SSB-Retuning-Automations-User-Guide-v*.pptx
+# Temporary files
+help/~*.*

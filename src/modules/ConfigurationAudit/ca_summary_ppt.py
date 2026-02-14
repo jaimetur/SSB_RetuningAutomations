@@ -113,7 +113,7 @@ def generate_ppt_summary(
         except Exception:
             return False
 
-    template_path = get_resource_path("ppt_templates/ConfigurationAuditTemplate.pptx")
+    template_path = get_resource_path("/assets/ppt_templates/ConfigurationAuditTemplate.pptx")
     try:
         prs = Presentation(template_path)
         print(f"{module_name} [INFO] Using PPT template: {template_path}")
