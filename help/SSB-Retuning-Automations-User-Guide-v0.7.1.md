@@ -1,4 +1,4 @@
-# Technical User Guide (Detailed) — SSB_RetuningAutomations
+# Technical User Guide — SSB_RetuningAutomations
 
 ## 1) Tool overview
 

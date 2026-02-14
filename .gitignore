@@ -242,4 +242,4 @@ tools/build_info.txt
 tools/RELEASE-NOTES.md
 
 # Temporary files
-help/~*.*
+~*.*
