@@ -2,7 +2,7 @@
 
 ## 1) Tool overview
 
-SSB_RetuningAutomations is an automation platform for SSB retuning projects that can run in GUI or CLI mode and orchestrates five functional modules:
+**SSB Retuning Automations** is an automation platform for SSB retuning projects that can run in GUI or CLI mode or through a Web Interface (using a server/client infrastructure) and orchestrates five functional modules:
 
 - **Module 0**: Update Network Frequencies.
 - **Module 1**: Configuration Audit & Logs Parser.
@@ -16,17 +16,19 @@ The main execution lives in `src/SSB_RetuningAutomations.py`, where CLI argument
 
 ## 2) Repository technical architecture
 
-### 2.1 Orchestration core
+### 2.1 Main files
+
+#### 2.1.1 Orchestration core
 - `src/SSB_RetuningAutomations.py`: entry point, CLI/GUI parsing, module routing, batch/bulk execution, and versioning.
 
-### 2.2 Business modules
+#### 2.1.2 Main modules files
 - `src/modules/ConfigurationAudit/ConfigurationAudit.py`: log parsing and audit workbook construction (Excel + PPT).
 - `src/modules/ConfigurationAudit/ca_summary_excel.py`: assembly of `SummaryAudit` and discrepancy dataframes.
 - `src/modules/ConsistencyChecks/ConsistencyChecks.py`: PRE/POST loading, relation comparison, discrepancies, and output export.
 - `src/modules/ProfilesAudit/ProfilesAudit.py`: profiles audit (integrated into module 1).
 - `src/modules/CleanUp/FinalCleanUp.py`: final clean-up (base implementation for extension).
 
-### 2.3 Common layer and utilities
+#### 2.1.3 Common layer and utilities
 - `src/modules/Common/*.py`: correction command logic and shared functions.
 - `src/utils/*.py`: IO, parsing, frequency handling, Excel, pivots, sorting, infrastructure, and timing.
 
@@ -41,7 +43,7 @@ The main execution lives in `src/SSB_RetuningAutomations.py`, where CLI argument
 - Logs with an `NRFrequency` table and the `arfcnValueNRDl` column.
 
 #### Process
-1. Walks logs and detects `NRFrequency` blocks.
+1. Scan logs and detects `NRFrequency` blocks.
 2. Extracts numeric values from `arfcnValueNRDl`.
 3. Removes duplicates and sorts frequencies.
 4. Updates the persisted “Network frequencies” configuration for GUI/CLI.
@@ -105,14 +107,14 @@ The main execution lives in `src/SSB_RetuningAutomations.py`, where CLI argument
 #### Process
 1. Loads relation tables (`GUtranCellRelation`, `NRCellRelation`).
 2. Normalizes columns/keys and selects the most recent snapshots by date.
-3. Computes:
+3. Detect:
    - new relations,
    - missing relations,
    - parameter discrepancies,
    - frequency discrepancies,
    - summary by PRE/POST frequency pair.
-4. Enriches with target classification `SSB-Pre`, `SSB-Post`, `Unknown`.
-5. Exports the main excel + discrepancy excel and correction commands.
+4. Classify destination targets as `SSB-Pre`, `SSB-Post` or `Unknown`.
+5. Exports detailed Excel outputs and correction commands.
 
 #### Outputs
 - `CellRelation_<timestamp>_v<version>.xlsx` (end-to-end relations view).
@@ -159,15 +161,25 @@ The main execution lives in `src/SSB_RetuningAutomations.py`, where CLI argument
 ## 4) Module 1 in detail: Summary Audit
 
 ### 4.1 Evaluation philosophy
-`build_summary_audit()` builds a high-level checks table by categories. The flow:
+SummaryAudit sheet contains a high-level checks table by categories. The flow:
 1. Excludes `UNSYNCHRONIZED` nodes based on `MeContext`.
 2. Evaluates NR, LTE, ENDC, Externals, TermPoints, cardinalities, and profiles.
 3. Records each check as a row (`Category/SubCategory/Metric/Value/ExtraInfo`).
 
-### 4.2 SummaryAudit checks catalog
+### 4.2 Operational meaning of SummaryAudit rows
+- **Category**: audited technical domain (NR/LTE/ENDC/MeContext/etc.).
+- **SubCategory**: type of analysis (Audit/Inconsistencies/Profiles).
+- **Metric**: specific rule evaluated.
+- **Value**:
+  - Integer: number of affected nodes/relations/cells.
+  - `N/A`: not evaluable due to missing columns.
+  - Text: captured status or error.
+- **ExtraInfo**: list of nodes or bounded detail for troubleshooting.
+
+### 4.3 SummaryAudit checks catalog
 
 #### A) MeContext Audit
-- Total unique nodes.
+- total unique nodes and unsynchronized node exclusion.
 - `UNSYNCHRONIZED` nodes (excluded from the rest of the audits).
 
 #### B) NR Frequency Audit / NR Frequency Inconsistencies
@@ -218,21 +230,14 @@ Cardinality checks per relation table (per node and/or per cell) to detect overp
 - Detects parameter discrepancies between old/new variants.
 - Adds results to SummaryAudit and auxiliary detail sheets.
 
-### 4.3 Operational meaning of SummaryAudit rows
-- **Category**: audited technical domain (NR/LTE/ENDC/MeContext/etc.).
-- **SubCategory**: type of analysis (Audit/Inconsistencies/Profiles).
-- **Metric**: specific rule evaluated.
-- **Value**:
-  - Integer: number of affected nodes/relations/cells.
-  - `N/A`: not evaluable due to missing columns.
-  - Text: captured status or error.
-- **ExtraInfo**: list of nodes or bounded detail for troubleshooting.
-
 ---
 
 ## 5) Consistency Check module in detail
 
-### 5.1 How it detects parameter discrepancies
+### 5.1 Filtering by non-retuned nodes
+If a POST SummaryAudit exists, the module obtains PRE/POST node lists and can exclude discrepancies whose target points to nodes that did not complete retune, reducing operational noise.
+
+### 5.2 How it detects parameter discrepancies
 1. Selects common PRE and POST relations by composite key:
    - GU: typically `NodeId`, `EUtranCellFDDId`, `GUtranCellRelationId`.
    - NR: typically `NodeId`, `NRCellCUId`, `NRCellRelationId`.
@@ -241,7 +246,7 @@ Cardinality checks per relation table (per node and/or per cell) to detect overp
 4. Sets `ParamDiff=True` if at least one column differs.
 5. In GU it ignores `timeOfCreation` and `mobilityStatusNR` to avoid false positives.
 
-### 5.2 How it detects frequency discrepancies
+### 5.3 How it detects frequency discrepancies
 1. Extracts base frequency from relation references (`extract_gu_freq_base` / `extract_nr_freq_base`).
 2. Discrepancy rule:
    - if PRE had `freq_before` or `freq_after`, and POST does **not** end up in `freq_after`, it marks `FreqDiff=True`.
@@ -249,14 +254,11 @@ Cardinality checks per relation table (per node and/or per cell) to detect overp
    - `FreqDiff_SSBPost` (target identified as SSB-Post),
    - `FreqDiff_Unknown` (cannot be associated to a known target).
 
-### 5.3 How it detects neighborhood discrepancies
+### 5.4 How it detects neighbor discrepancies
 They are split into three groups:
 - **New relations**: keys present in POST and absent in PRE.
 - **Missing relations**: keys present in PRE and absent in POST.
 - **Discrepancies**: same key in PRE/POST but with parametric or frequency differences.
-
-### 5.4 Filtering by non-retuned nodes
-If a POST SummaryAudit exists, the module obtains PRE/POST node lists and can exclude discrepancies whose target points to nodes that did not complete retune, reducing operational noise.
 
 ### 5.5 Content of each ConsistencyChecks output sheet
 - **Summary**: KPIs per table (PRE/POST volume, discrepancies, new/missing, source files).
@@ -276,13 +278,28 @@ If a POST SummaryAudit exists, the module obtains PRE/POST node lists and can ex
 
 - Keep market log exports in a consistent structure (especially for bulk).
 - Validate that PRE/POST have the same table granularity and consistent naming.
+- Validate frequency inputs (`n77_ssb_pre`, `n77_ssb_post`, `n77b_ssb`) before batch execution.
 - Correctly configure allowed SSB/ARFCN lists to minimize false positives.
-- Review `Summary` and `Summary_CellRelation` first, then move to detail sheets.
+- Run **Configuration Audit** before Consistency Checks whenever possible.
+- Use Bulk mode only with a controlled folder naming convention.
+- Review `Summary` and `Summary_CellRelation` first, then then deep-dive into detail sheets (ConfigurationAudit) and discrepancy tabs (ConsistencyCheck).
 - Consume `Correction_Cmd_CA` and `Correction_Cmd_CC` as a remediation proposal, not as blind execution.
 
 ---
 
-## 7) Known limitations and considerations
+## 7) Execution Modes and Versioning
+
+- **GUI mode**: run without CLI arguments.
+- **CLI mode**: run with explicit module and options.
+- **Web Interfacee**: the tool can be run in a server/client infrastructure, accessing the server through a Web Interface where you can unpload your inputs, enqueue different tasks and  export the results when finish..
+
+All Generated artifacts include a versioned suffix: `<timestamp>_v<TOOL_VERSION>`. 
+
+This guarantees traceability and avoids collisions between runs.
+
+---
+
+## 8) Known limitations and considerations
 
 - The engine depends on log quality and structure: missing columns downgrade checks to `N/A`.
 - Some rules depend on naming conventions in references (NR/GU relation refs).

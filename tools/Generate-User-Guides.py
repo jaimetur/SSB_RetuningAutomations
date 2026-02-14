@@ -1,5 +1,6 @@
 import re
-from datetime import datetime
+from datetime import date
+from math import ceil
 from pathlib import Path
 
 from docx import Document
@@ -7,8 +8,9 @@ from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from pptx import Presentation
 from pptx.dml.color import RGBColor
-from pptx.enum.text import PP_ALIGN
 from pptx.util import Pt
+from pptx.enum.dml import MSO_THEME_COLOR
+
 
 ROOT = Path(__file__).resolve().parents[1]
 HELP_DIR = ROOT / "help"
@@ -30,8 +32,31 @@ def get_tool_version() -> str:
     return match.group(1)
 
 
+def update_readme_links(version: str) -> None:
+    md_name = f"User-Guide-SSB-Retuning-Automations-v{version}.md"
+    docx_name = f"User-Guide-SSB-Retuning-Automations-v{version}.docx"
+    pptx_name = f"User-Guide-SSB-Retuning-Automations-v{version}.pptx"
+
+    new_block = (
+        "## 📙 Technical User Guide\n\n"
+        "You can find the technical user guide in these formats:\n"
+        f"- [Markdown](help/{md_name})\n"
+        f"- [Word](help/{docx_name})\n"
+        f"- [PowerPoint](help/{pptx_name})\n"
+    )
+
+    readme = README_PATH.read_text(encoding="utf-8")
+    pattern = r"## 📙 Technical User Guide\n[\s\S]*?\n---"
+    replacement = f"{new_block}\n---"
+    if not re.search(pattern, readme):
+        raise RuntimeError("Unable to find 'Technical User Guide' section in README.md")
+
+    updated = re.sub(pattern, replacement, readme, count=1)
+    README_PATH.write_text(updated, encoding="utf-8")
+
+
 def guide_paths(version: str) -> dict[str, Path]:
-    base_name = f"SSB-Retuning-Automations-User-Guide-v{version}"
+    base_name = f"User-Guide-SSB-Retuning-Automations-v{version}"
     return {
         "md": HELP_DIR / f"{base_name}.md",
         "docx": HELP_DIR / f"{base_name}.docx",
@@ -55,36 +80,14 @@ def normalize_markdown_inline(text: str) -> str:
 def clean_heading_text(text: str) -> str:
     """Remove manual markdown numbering so templates can apply automatic numbering."""
     cleaned = text.strip()
+
     # e.g. "1) Title", "2.3 Subtitle", "4.1.2 Topic"
     cleaned = re.sub(r"^\d+(?:[.)]|(?:\.\d+)*\.?)[\s]+", "", cleaned)
+
+    # e.g. "A) Title", "B) Title", "A.B) Title", "a) Title"
+    cleaned = re.sub(r"^[A-Za-z](?:\.[A-Za-z])*\)\s+", "", cleaned)
+
     return cleaned.strip()
-
-
-def markdown_segments(text: str) -> list[tuple[str, bool]]:
-    """Return [(segment, is_bold)] for markdown strings with **bold** markers."""
-    clean = normalize_markdown_inline(text)
-    parts = re.split(r"(\*\*.*?\*\*)", clean)
-    segments: list[tuple[str, bool]] = []
-    for part in parts:
-        if not part:
-            continue
-        if part.startswith("**") and part.endswith("**") and len(part) > 4:
-            segments.append((part[2:-2], True))
-        else:
-            segments.append((part, False))
-    return segments
-
-
-def add_markdown_paragraph(doc: Document, text: str, style: str | None = None) -> None:
-    paragraph = doc.add_paragraph(style=style) if style else doc.add_paragraph()
-    for segment, is_bold in markdown_segments(text):
-        run = paragraph.add_run(segment)
-        run.bold = is_bold
-
-
-def add_plain_paragraph(doc: Document, text: str, style: str | None = None) -> None:
-    paragraph = doc.add_paragraph(style=style) if style else doc.add_paragraph()
-    paragraph.add_run(normalize_markdown_inline(text))
 
 
 def parse_table_row(line: str) -> list[str]:
@@ -97,130 +100,139 @@ def is_table_separator(line: str) -> bool:
     return bool(re.fullmatch(r"\|?[\s:-]+(\|[\s:-]+)+\|?", stripped))
 
 
-def insert_toc_field(doc: Document) -> None:
-    paragraph = doc.add_paragraph()
-    run = paragraph.add_run()
-    fld_begin = OxmlElement("w:fldChar")
-    fld_begin.set(qn("w:fldCharType"), "begin")
+def build_docx_from_markdown(md_file: Path, docx_file: Path) -> None:
+    # ------------------- Word-only helpers (subfunctions) ------------------- #
+    def markdown_segments(text: str) -> list[tuple[str, bool]]:
+        """Return [(segment, is_bold)] for markdown strings with **bold** markers."""
+        clean = normalize_markdown_inline(text)
+        parts = re.split(r"(\*\*.*?\*\*)", clean)
+        segments: list[tuple[str, bool]] = []
+        for part in parts:
+            if not part:
+                continue
+            if part.startswith("**") and part.endswith("**") and len(part) > 4:
+                segments.append((part[2:-2], True))
+            else:
+                segments.append((part, False))
+        return segments
 
-    instr_text = OxmlElement("w:instrText")
-    instr_text.set(qn("xml:space"), "preserve")
-    instr_text.text = 'TOC \\o "1-3" \\h \\z \\u'
+    def add_markdown_paragraph(doc: Document, text: str, style: str | None = None) -> None:
+        paragraph = doc.add_paragraph(style=style) if style else doc.add_paragraph()
+        for segment, is_bold in markdown_segments(text):
+            run = paragraph.add_run(segment)
+            run.bold = is_bold
 
-    fld_separate = OxmlElement("w:fldChar")
-    fld_separate.set(qn("w:fldCharType"), "separate")
+    def add_plain_paragraph(doc: Document, text: str, style: str | None = None) -> None:
+        paragraph = doc.add_paragraph(style=style) if style else doc.add_paragraph()
+        paragraph.add_run(normalize_markdown_inline(text))
 
-    default_text = OxmlElement("w:t")
-    default_text.text = "Right-click and update this field to generate the Table of Contents."
+    def enable_toc_update_on_open(doc: Document) -> None:
+        settings = doc.settings.element
+        node = settings.find(qn("w:updateFields"))
+        if node is None:
+            node = OxmlElement("w:updateFields")
+            settings.append(node)
+        node.set(qn("w:val"), "true")
 
-    fld_end = OxmlElement("w:fldChar")
-    fld_end.set(qn("w:fldCharType"), "end")
+    def update_header_date(doc: Document) -> None:
+        today = date.today().isoformat()
 
-    run._r.append(fld_begin)
-    run._r.append(instr_text)
-    run._r.append(fld_separate)
-    run._r.append(default_text)
-    run._r.append(fld_end)
+        def local_name(tag: str) -> str:
+            return tag.split("}")[-1]
 
-
-def delete_paragraph(paragraph) -> None:
-    p = paragraph._element
-    p.getparent().remove(p)
-
-
-def find_content_anchor_index(doc: Document) -> int:
-    """Find where generated content must start (template says 'Heading 1' on page 4)."""
-    for idx, paragraph in enumerate(doc.paragraphs):
-        text = paragraph.text.strip().lower()
-        style = (paragraph.style.name or "").strip().lower() if paragraph.style else ""
-        if text == "heading 1" and style == "heading 1":
-            return idx
-    raise RuntimeError("Template content anchor 'Heading 1' (style Heading 1) not found.")
-
-
-def truncate_document_from_anchor(doc: Document, anchor_index: int) -> None:
-    """Keep template pages intact and clear body only from the anchor onwards."""
-    for paragraph in list(doc.paragraphs[anchor_index:]):
-        delete_paragraph(paragraph)
-
-
-def mark_toc_fields_dirty(doc: Document) -> None:
-    """Force Word to refresh TOC fields when opening the generated document."""
-    for fld in doc._element.xpath(".//w:fldSimple"):
-        instr = (fld.get(qn("w:instr")) or "").upper()
-        if "TOC" in instr:
-            fld.set(qn("w:dirty"), "true")
-
-    for instr in doc._element.xpath(".//w:instrText"):
-        text = (instr.text or "").upper()
-        if "TOC" in text:
-            parent = instr.getparent()
-            if parent is not None:
-                parent.set(qn("w:dirty"), "true")
-
-
-def update_header_generation_date(doc: Document) -> None:
-    """Update any header content controls tagged as Date with today's date."""
-
-    def local_name(tag: str) -> str:
-        return tag.rsplit("}", 1)[-1]
-
-    today = datetime.now().strftime("%Y-%m-%d")
-    for section in doc.sections:
-        for header in [section.header, section.first_page_header, section.even_page_header]:
-            for sdt in header._element.iter():
+        for section in doc.sections:
+            header_el = section.header._element
+            for sdt in header_el.iter():
                 if local_name(sdt.tag) != "sdt":
                     continue
 
-                metadata_chunks: list[str] = []
-                text_nodes = []
+                is_date_alias = False
                 for node in sdt.iter():
-                    name = local_name(node.tag)
-                    if name in {"alias", "tag"}:
-                        for attr_key, attr_val in node.attrib.items():
-                            if local_name(attr_key) == "val":
-                                metadata_chunks.append(attr_val)
-                    if name == "t":
-                        text_nodes.append(node)
+                    if local_name(node.tag) == "alias" and node.get(qn("w:val")) == "Date":
+                        is_date_alias = True
+                        break
 
-                if "date" not in " ".join(metadata_chunks).lower():
+                if not is_date_alias:
                     continue
-                if text_nodes:
-                    text_nodes[0].text = today
-                    for extra in text_nodes[1:]:
-                        extra.text = ""
 
+                for node in sdt.iter():
+                    if local_name(node.tag) == "t":
+                        node.text = today
+                        break
 
-def build_docx_from_markdown(md_file: Path, docx_file: Path) -> None:
+    def find_template_anchor(doc: Document):
+        for paragraph in doc.paragraphs:
+            if paragraph.text.strip() == "Heading 1":
+                return paragraph
+        return None
+
+    def remove_from_anchor_to_end(doc: Document, anchor) -> None:
+        body = doc._body._element
+        removing = False
+        for child in list(body):
+            if child == anchor._p:
+                removing = True
+            if removing and child.tag != qn("w:sectPr"):
+                body.remove(child)
+
+    # ------------------------------ Word logic ------------------------------ #
     text = md_file.read_text(encoding="utf-8")
     lines = text.splitlines()
 
     template_path = first_existing_path(DOCX_TEMPLATE_CANDIDATES)
     doc = Document(str(template_path)) if template_path else Document()
 
-    if template_path:
-        anchor_index = find_content_anchor_index(doc)
-        truncate_document_from_anchor(doc, anchor_index)
+    anchor = find_template_anchor(doc)
+    if anchor is not None:
+        remove_from_anchor_to_end(doc, anchor)
 
-    title_written = False
+    seen_heading1 = False  # Track if we've already written the first Heading 1 (## ...)
 
     i = 0
     while i < len(lines):
         line = lines[i]
         s = line.rstrip()
+
         if not s:
+            # Skip blank lines around headings and around horizontal rules (---)
+            def is_heading(line_: str) -> bool:
+                t = (line_ or "").strip()
+                return t.startswith("# ") or t.startswith("## ") or t.startswith("### ") or t.startswith("#### ")
+
+            def is_hr(line_: str) -> bool:
+                return (line_ or "").strip() == "---"
+
+            # Previous non-empty line
+            j = i - 1
+            while j >= 0 and not lines[j].strip():
+                j -= 1
+            prev = lines[j] if j >= 0 else ""
+
+            # Next non-empty line
+            k = i + 1
+            while k < len(lines) and not lines[k].strip():
+                k += 1
+            nxt = lines[k] if k < len(lines) else ""
+
+            # If blank line is before/after a heading or an '---', drop it
+            if is_heading(prev) or is_heading(nxt) or is_hr(prev) or is_hr(nxt):
+                i += 1
+                continue
+
             doc.add_paragraph("")
             i += 1
             continue
 
         if s == "---":
             i += 1
+            # Also skip any blank lines immediately after the horizontal rule
+            while i < len(lines) and not lines[i].strip():
+                i += 1
             continue
 
         if s.startswith("| ") and s.endswith(" |") and i + 1 < len(lines) and is_table_separator(lines[i + 1]):
-            rows: list[list[str]] = []
-            rows.append(parse_table_row(s))
-            i += 2  # skip header + separator
+            rows: list[list[str]] = [parse_table_row(s)]
+            i += 2
             while i < len(lines):
                 candidate = lines[i].rstrip()
                 if not (candidate.startswith("| ") and candidate.endswith(" |")):
@@ -242,246 +254,429 @@ def build_docx_from_markdown(md_file: Path, docx_file: Path) -> None:
         if s.startswith("# "):
             # Markdown H1 is the document title (not part of heading numbering hierarchy).
             add_plain_paragraph(doc, clean_heading_text(s[2:].strip()), style="Title")
-            title_written = True
+
         elif s.startswith("## "):
+            # Each Heading 1 starts on a new page, except the first one (usually right after the Title)
+            if seen_heading1:
+                doc.add_page_break()
             add_plain_paragraph(doc, clean_heading_text(s[3:].strip()), style="Heading 1")
+            seen_heading1 = True
+
         elif s.startswith("### "):
             add_plain_paragraph(doc, clean_heading_text(s[4:].strip()), style="Heading 2")
+
         elif s.startswith("#### "):
             add_plain_paragraph(doc, clean_heading_text(s[5:].strip()), style="Heading 3")
-        elif s.startswith("- "):
-            add_markdown_paragraph(doc, s[2:].strip(), style="List Bullet")
+
+        # Bullets (support sub-bullets by indentation)
+        elif re.match(r"^\s*-\s+", s):
+            m = re.match(r"^(\s*)-\s+(.*)$", s)
+            indent = len(m.group(1).replace("\t", "    "))
+            item_text = m.group(2).strip()
+
+            # 0 spaces => bullet normal; >=2 spaces => sub-bullet
+            style = "List Bullet 2" if indent >= 2 else "List Bullet"
+            add_markdown_paragraph(doc, item_text, style=style)
+
+        elif re.match(r"^[A-Za-z](?:\.[A-Za-z])*\)\s+", s):
+            # Examples: A) , B) , a) , A.B) , a.b)
+            add_markdown_paragraph(doc, re.sub(r"^[A-Za-z](?:\.[A-Za-z])*\)\s+", "", s), style="List Number")
+
         elif re.match(r"^\d+\.\s+", s):
-            add_markdown_paragraph(doc, re.sub(r"^\d+\.\s+", "", s), style="List Number")
+            # Keep Markdown numbering to avoid Word continuing previous lists
+            add_markdown_paragraph(doc, s.strip(), style="List Paragraph")
+
         else:
             add_markdown_paragraph(doc, s)
 
         i += 1
 
-    if title_written:
-        doc.add_paragraph("")
-
-    mark_toc_fields_dirty(doc)
-    update_header_generation_date(doc)
-
+    enable_toc_update_on_open(doc)
+    update_header_date(doc)
     doc.save(docx_file)
 
 
-def estimate_point_weight(point: dict) -> int:
-    text = point["text"]
-    if point["kind"] == "table":
-        rows = len(point["rows"])
-        cols = len(point["rows"][0]) if point["rows"] else 0
-        return 160 + rows * cols * 12
-    return max(40, 30 + len(text))
-
-
-def parse_markdown_sections(md_file: Path) -> list[tuple[str, list[dict]]]:
-    text = md_file.read_text(encoding="utf-8")
-    lines = [line.rstrip() for line in text.splitlines()]
-
-    sections: list[tuple[str, list[dict]]] = []
-    current_title = "Overview"
-    current_points: list[dict] = []
-    group_id = 0
-
-    def flush_section() -> None:
-        if current_points:
-            sections.append((current_title, current_points.copy()))
-
-    i = 0
-    while i < len(lines):
-        raw_line = lines[i]
-        line = raw_line.strip()
-        if not line or line == "---":
-            i += 1
-            continue
-
-        if line.startswith("# "):
-            i += 1
-            continue
-
-        if line.startswith("## "):
-            flush_section()
-            current_title = clean_heading_text(line[3:].strip())
-            current_points = []
-            group_id += 1
-            i += 1
-            continue
-
-        if line.startswith("| ") and line.endswith(" |") and i + 1 < len(lines) and is_table_separator(lines[i + 1]):
-            rows: list[list[str]] = [parse_table_row(line)]
-            i += 2
-            while i < len(lines):
-                candidate = lines[i].strip()
-                if not (candidate.startswith("| ") and candidate.endswith(" |")):
-                    break
-                rows.append(parse_table_row(candidate))
-                i += 1
-            current_points.append({"kind": "table", "rows": rows, "text": "", "level": 0, "group": group_id})
-            group_id += 1
-            continue
-
-        if line.startswith("### "):
-            current_points.append({"kind": "text", "text": clean_heading_text(line[4:].strip()), "level": 0, "group": group_id})
-            group_id += 1
-            i += 1
-            continue
-
-        if line.startswith("#### "):
-            current_points.append({"kind": "text", "text": clean_heading_text(line[5:].strip()), "level": 1, "group": group_id})
-            i += 1
-            continue
-
-        if line.startswith("- "):
-            bullet = normalize_markdown_inline(re.sub(r"\*\*(.*?)\*\*", r"\1", line[2:].strip()))
-            current_points.append({"kind": "text", "text": bullet, "level": 1, "group": group_id})
-            i += 1
-            continue
-
-        numbered_match = re.match(r"^(\d+)\.\s+(.*)", line)
-        if numbered_match:
-            current_points.append({"kind": "text", "text": normalize_markdown_inline(numbered_match.group(2).strip()), "level": 1, "group": group_id})
-            i += 1
-            continue
-
-        current_points.append({"kind": "text", "text": normalize_markdown_inline(re.sub(r"\*\*(.*?)\*\*", r"\1", line)), "level": 0, "group": group_id})
-        group_id += 1
-        i += 1
-
-    flush_section()
-    return sections
-
-
-def paginate_points(points: list[dict], capacity: int = 900) -> list[list[dict]]:
-    if not points:
-        return [[{"kind": "text", "text": "Refer to the markdown guide for full details.", "level": 0, "group": 0}]]
-
-    slides: list[list[dict]] = []
-    current: list[dict] = []
-    used = 0
-    idx = 0
-    while idx < len(points):
-        point = points[idx]
-        weight = estimate_point_weight(point)
-        group = [point]
-        j = idx + 1
-        while j < len(points) and points[j]["group"] == point["group"]:
-            group.append(points[j])
-            j += 1
-        group_weight = sum(estimate_point_weight(item) for item in group)
-
-        if current and used + group_weight > capacity:
-            slides.append(current)
-            current = []
-            used = 0
-
-        if group_weight <= capacity:
-            current.extend(group)
-            used += group_weight
-            idx = j
-            continue
-
-        if current:
-            slides.append(current)
-            current = []
-            used = 0
-        current.append(point)
-        used += weight
-        idx += 1
-
-    if current:
-        slides.append(current)
-
-    return slides
-
-
 def build_pptx_summary(md_file: Path, pptx_file: Path, version: str) -> None:
-    sections = parse_markdown_sections(md_file)
+    # ------------------- PPT-only helpers (subfunctions) ------------------- #
+    def _strip_bold(text: str) -> str:
+        return re.sub(r"\*\*(.*?)\*\*", r"\1", text)
 
-    if not sections:
-        sections = [("Overview", [{"kind": "text", "text": "Refer to the markdown guide for full technical details.", "level": 0, "group": 0}])]
+    def _norm(text: str) -> str:
+        return normalize_markdown_inline(_strip_bold(text))
+
+    def _indent_to_level(indent_spaces: int) -> int:
+        # 0-1 => 0, 2-7 => 1, 8-11 => 2, ...
+        if indent_spaces < 2:
+            return 0
+        lvl = indent_spaces // 4
+        if lvl == 0:
+            lvl = 1
+        return min(lvl, 4)
+
+    def _parse_sections_for_ppt(md_path: Path) -> list[dict]:
+        """
+        Parse markdown into sections (##) and blocks.
+        - ### becomes block type 'h3' (we'll use it as slide subtitle)
+        - #### becomes block type 'h4'
+        - bullets preserve indentation
+        - supports numeric ordered (1.) and alpha ordered (A), A.B))
+        """
+        lines = md_path.read_text(encoding="utf-8").splitlines()
+        sections: list[dict] = []
+        current = {"title": "Overview", "blocks": []}
+
+        bullet_pat = re.compile(r"^(\s*)-\s+(.*)$")
+        num_pat = re.compile(r"^(\s*)(\d+)\.\s+(.*)$")
+        alpha_pat = re.compile(r"^(\s*)([A-Za-z](?:\.[A-Za-z])*)\)\s+(.*)$")
+
+        i = 0
+        while i < len(lines):
+            raw = lines[i].rstrip()
+            line = raw.strip()
+
+            if not line or line == "---":
+                i += 1
+                continue
+
+            if line.startswith("# "):
+                i += 1
+                continue
+
+            if line.startswith("## "):
+                if current["blocks"]:
+                    sections.append(current)
+                current = {"title": clean_heading_text(line[3:].strip()), "blocks": []}
+                i += 1
+                continue
+
+            if line.startswith("### "):
+                current["blocks"].append({"type": "h3", "text": clean_heading_text(line[4:].strip())})
+                i += 1
+                continue
+
+            if line.startswith("#### "):
+                current["blocks"].append({"type": "h4", "text": clean_heading_text(line[5:].strip())})
+                i += 1
+                continue
+
+            if line.startswith("| ") and line.endswith(" |") and i + 1 < len(lines) and is_table_separator(lines[i + 1]):
+                rows = [parse_table_row(line)]
+                i += 2
+                while i < len(lines):
+                    cand_raw = lines[i].rstrip()
+                    cand = cand_raw.strip()
+                    if not (cand.startswith("| ") and cand.endswith(" |")):
+                        break
+                    rows.append(parse_table_row(cand))
+                    i += 1
+                current["blocks"].append({"type": "table", "rows": rows})
+                continue
+
+            mb = bullet_pat.match(raw)
+            mn = num_pat.match(raw)
+            ma = alpha_pat.match(raw)
+
+            if mb or mn or ma:
+                items: list[dict] = []
+                mode = "bullet" if mb else ("num" if mn else "alpha")
+
+                while i < len(lines):
+                    raw_c = lines[i].rstrip("\n")
+                    c = raw_c.strip()
+
+                    if not c or c == "---":
+                        break
+                    if c.startswith("## ") or c.startswith("### ") or c.startswith("#### "):
+                        break
+                    if c.startswith("| "):
+                        break
+
+                    mb2 = bullet_pat.match(raw_c)
+                    mn2 = num_pat.match(raw_c)
+                    ma2 = alpha_pat.match(raw_c)
+
+                    if mode == "bullet" and mb2:
+                        lead = mb2.group(1).replace("\t", "    ")
+                        indent = len(lead)
+                        level = _indent_to_level(indent)
+                        items.append({"text": _norm(mb2.group(2).strip()), "level": level, "marker": None})
+                        i += 1
+                        continue
+
+                    if mode == "num" and mn2:
+                        lead = mn2.group(1).replace("\t", "    ")
+                        indent = len(lead)
+                        level = _indent_to_level(indent)
+                        marker = f"{mn2.group(2)}."
+                        items.append({"text": _norm(mn2.group(3).strip()), "level": level, "marker": marker})
+                        i += 1
+                        continue
+
+                    if mode == "alpha" and ma2:
+                        lead = ma2.group(1).replace("\t", "    ")
+                        indent = len(lead)
+                        level = _indent_to_level(indent)
+                        marker = f"{ma2.group(2)})"
+                        items.append({"text": _norm(ma2.group(3).strip()), "level": level, "marker": marker})
+                        i += 1
+                        continue
+
+                    break
+
+                if items:
+                    current["blocks"].append({"type": "list", "ordered": (mode != "bullet"), "items": items})
+                    continue
+
+            # Paragraph (merge until boundary)
+            paragraph_lines = [_norm(line)]
+            i += 1
+            while i < len(lines):
+                nxt_raw = lines[i].rstrip()
+                nxt = nxt_raw.strip()
+                if not nxt or nxt == "---" or nxt.startswith("## ") or nxt.startswith("### ") or nxt.startswith("#### "):
+                    break
+                if nxt.startswith("| "):
+                    break
+                if bullet_pat.match(nxt_raw) or num_pat.match(nxt_raw) or alpha_pat.match(nxt_raw):
+                    break
+                paragraph_lines.append(_norm(nxt))
+                i += 1
+
+            current["blocks"].append({"type": "paragraph", "text": " ".join(paragraph_lines)})
+
+        if current["blocks"]:
+            sections.append(current)
+
+        if not sections:
+            sections = [{"title": "Overview", "blocks": [{"type": "paragraph", "text": "Refer to the markdown guide for full technical details."}]}]
+        return sections
+
+    def _block_units(block: dict) -> int:
+        # Simple + stable. We will avoid orphan H3 by forcing slide breaks on H3.
+        if block["type"] == "h4":
+            return 1
+        if block["type"] == "paragraph":
+            return max(2, ceil(len(block["text"]) / 90))
+        if block["type"] == "list":
+            # 1 for list header overhead + per item length
+            return 1 + sum(max(1, ceil(len(it["text"]) / 95)) for it in block["items"])
+        if block["type"] == "table":
+            return 6 + len(block["rows"])
+        return 2
+
+    def _style_table(table) -> None:
+        header_fill = RGBColor(31, 78, 121)
+        band_fill = RGBColor(242, 246, 252)
+        text_dark = RGBColor(40, 40, 40)
+
+        for col in range(len(table.columns)):
+            cell = table.cell(0, col)
+            cell.fill.solid()
+            cell.fill.fore_color.rgb = header_fill
+            p = cell.text_frame.paragraphs[0]
+            p.font.bold = True
+            p.font.color.rgb = RGBColor(255, 255, 255)
+            p.font.size = Pt(14)
+
+        for row in range(1, len(table.rows)):
+            for col in range(len(table.columns)):
+                cell = table.cell(row, col)
+                if row % 2 == 0:
+                    cell.fill.solid()
+                    cell.fill.fore_color.rgb = band_fill
+                p = cell.text_frame.paragraphs[0]
+                p.font.color.rgb = text_dark
+                p.font.size = Pt(12)
+
+    def _add_table_slide(prs: Presentation, slide_title: str, subtitle: str | None, rows: list[list[str]], continuation: bool = False) -> None:
+        slide = prs.slides.add_slide(prs.slide_layouts[1])
+        slide.shapes.title.text = slide_title
+
+        tf = slide.shapes.placeholders[1].text_frame
+        tf.clear()
+
+        # Subtitle on table slides too (small)
+        if subtitle:
+            p0 = tf.paragraphs[0]
+            p0.text = subtitle if not continuation else f"{subtitle} (cont.)"
+            p0.level = 0
+            p0.font.bold = True
+            p0.font.size = Pt(18)
+        else:
+            # ensure we have a first paragraph ready even if no subtitle
+            tf.paragraphs[0].text = ""
+
+        content = slide.shapes.placeholders[1]
+        x, y, w, h = content.left, content.top, content.width, content.height
+        tbl_shape = slide.shapes.add_table(len(rows), len(rows[0]), x, y, w, h)
+        table = tbl_shape.table
+
+        for r, row in enumerate(rows):
+            for c, value in enumerate(row):
+                table.cell(r, c).text = _norm(value)
+
+        _style_table(table)
+
+    def _render_content(tf, blocks: list[dict]) -> None:
+        from pptx.oxml.xmlchemy import OxmlElement as PptxOxmlElement
+        from pptx.oxml.ns import qn as pptx_qn
+
+        def _set_bullets(p, enabled: bool) -> None:
+            pPr = p._p.get_or_add_pPr()
+            for tag in ("a:buAutoNum", "a:buChar", "a:buBlip", "a:buFont", "a:buNone"):
+                el = pPr.find(pptx_qn(tag))
+                if el is not None:
+                    pPr.remove(el)
+            if enabled:
+                bu = PptxOxmlElement("a:buChar")
+                bu.set("char", "•")
+                pPr.insert(0, bu)
+            else:
+                pPr.insert(0, PptxOxmlElement("a:buNone"))
+
+        tf.clear()
+        first = True
+
+        for block in blocks:
+            if block["type"] == "h4":
+                p = tf.paragraphs[0] if first else tf.add_paragraph()
+                first = False
+                p.text = block["text"]
+                p.level = 0
+                _set_bullets(p, enabled=False)
+                p.font.bold = True
+                p.font.size = Pt(16)
+                continue
+
+            if block["type"] == "paragraph":
+                p = tf.paragraphs[0] if first else tf.add_paragraph()
+                first = False
+                p.text = block["text"]
+                p.level = 0
+                _set_bullets(p, enabled=False)
+                p.font.size = Pt(15)
+                continue
+
+            if block["type"] == "list":
+                for idx, it in enumerate(block["items"], start=1):
+                    p = tf.paragraphs[0] if first else tf.add_paragraph()
+                    first = False
+
+                    nesting = int(it.get("level", 0))
+                    p.level = 1 + nesting
+                    p.font.size = Pt(15)
+
+                    if block["ordered"]:
+                        marker = it.get("marker") or f"{idx}."
+                        p.text = f"{marker} {it['text']}"
+                        _set_bullets(p, enabled=False)
+                    else:
+                        p.text = it["text"]
+                        _set_bullets(p, enabled=True)
+
+    # ------------------------------ PPT logic ------------------------------ #
+    sections = _parse_sections_for_ppt(md_file)
 
     template_path = first_existing_path(PPTX_TEMPLATE_CANDIDATES)
     prs = Presentation(str(template_path)) if template_path else Presentation()
 
+    # Cover
     slide = prs.slides.add_slide(prs.slide_layouts[0])
-    slide.shapes.title.text = "SSB Retuning Automations"
-    slide.placeholders[1].text = f"Technical User Guide Summary (v{version})"
+    slide.shapes.title.text = "Technical User Guide Summary"
+    slide.placeholders[1].text = f"SSB Retuning Automations (v{version})"
 
-    for title, points in sections:
-        chunks = paginate_points(points)
-        for idx, chunk in enumerate(chunks):
-            slide = prs.slides.add_slide(prs.slide_layouts[1])
-            slide.shapes.title.text = title if idx == 0 else f"{title} (cont.)"
-            tf = slide.shapes.placeholders[1].text_frame
-            tf.clear()
+    max_units = 20
 
-            first_text_written = False
-            for point in chunk:
-                if point["kind"] == "table":
-                    left, top = slide.shapes.placeholders[1].left, slide.shapes.placeholders[1].top
-                    width, height = slide.shapes.placeholders[1].width, slide.shapes.placeholders[1].height
-                    rows = len(point["rows"])
-                    cols = len(point["rows"][0]) if point["rows"] else 0
-                    if rows and cols:
-                        table_shape = slide.shapes.add_table(rows, cols, left, top, width, height)
-                        table = table_shape.table
-                        for r in range(rows):
-                            for c in range(cols):
-                                cell = table.cell(r, c)
-                                cell.text = normalize_markdown_inline(point["rows"][r][c])
-                                para = cell.text_frame.paragraphs[0]
-                                para.alignment = PP_ALIGN.LEFT
-                                para.font.size = Pt(14 if r == 0 else 12)
-                                if r == 0:
-                                    para.font.bold = True
-                                    cell.fill.solid()
-                                    cell.fill.fore_color.rgb = RGBColor(230, 235, 245)
+    for section in sections:
+        slide_title = section["title"]
+        blocks = section["blocks"]
+
+        # Group blocks by ### (h3). Each group becomes one or more slides.
+        groups: list[dict] = []
+        current_subtitle: str | None = None
+        current_blocks: list[dict] = []
+
+        for b in blocks:
+            if b["type"] == "h3":
+                # flush previous group
+                if current_subtitle is not None or current_blocks:
+                    groups.append({"subtitle": current_subtitle, "blocks": current_blocks})
+                current_subtitle = b["text"]
+                current_blocks = []
+            else:
+                current_blocks.append(b)
+
+        if current_subtitle is not None or current_blocks:
+            groups.append({"subtitle": current_subtitle, "blocks": current_blocks})
+
+        for g in groups:
+            subtitle = g["subtitle"]
+            gblocks = g["blocks"]
+
+            # paginate blocks for this group
+            buffer: list[dict] = []
+            used = 0
+            continuation = False
+
+            def flush() -> None:
+                nonlocal buffer, used, continuation
+                slide_local = prs.slides.add_slide(prs.slide_layouts[1])
+
+                # Title = ## (slide title) + ### (subtitle)
+                title_shape = slide_local.shapes.title
+                title_shape.text = slide_title
+                if subtitle:
+                    p = title_shape.text_frame.add_paragraph()
+                    p.text = subtitle if not continuation else f"{subtitle} (cont.)"
+                    p.level = 0
+                    p.font.bold = False
+                    p.font.size = Pt(20)
+                    p.font.color.theme_color = MSO_THEME_COLOR.ACCENT_2
+
+                # Body content (NO subtitle here)
+                _render_content(slide_local.shapes.placeholders[1].text_frame, buffer)
+
+                buffer = []
+                used = 0
+                continuation = True
+
+            i = 0
+            while i < len(gblocks):
+                b = gblocks[i]
+
+                if b["type"] == "table":
+                    if buffer:
+                        flush()
+                    _add_table_slide(prs, slide_title, subtitle, b["rows"], continuation=continuation)
+                    continuation = True
+                    i += 1
                     continue
 
-                p = tf.paragraphs[0] if not first_text_written else tf.add_paragraph()
-                p.text = point["text"]
-                p.level = point["level"]
-                p.font.size = Pt(18 if point["level"] == 0 else 16)
-                first_text_written = True
+                u = _block_units(b)
+                if buffer and used + u > max_units:
+                    flush()
+
+                buffer.append(b)
+                used += u
+                i += 1
+
+            if buffer:
+                flush()
 
     prs.save(pptx_file)
 
 
-def update_readme_links(version: str) -> None:
-    md_name = f"SSB-Retuning-Automations-User-Guide-v{version}.md"
-    docx_name = f"SSB-Retuning-Automations-User-Guide-v{version}.docx"
-    pptx_name = f"SSB-Retuning-Automations-User-Guide-v{version}.pptx"
-
-    new_block = (
-        "## 📙 Technical User Guide\n\n"
-        "You can find the technical user guide in these formats:\n"
-        f"- [Markdown](help/{md_name})\n"
-        f"- [Word](help/{docx_name})\n"
-        f"- [PowerPoint](help/{pptx_name})\n"
-    )
-
-    readme = README_PATH.read_text(encoding="utf-8")
-    pattern = r"## 📙 Technical User Guide\n[\s\S]*?\n---"
-    replacement = f"{new_block}\n---"
-    if not re.search(pattern, readme):
-        raise RuntimeError("Unable to find 'Technical User Guide' section in README.md")
-
-    updated = re.sub(pattern, replacement, readme, count=1)
-    README_PATH.write_text(updated, encoding="utf-8")
-
 
 if __name__ == "__main__":
     version = get_tool_version()
-    paths = guide_paths(version)
+    update_readme_links(version)
 
+    paths = guide_paths(version)
     if not paths["md"].exists():
         raise FileNotFoundError(f"Markdown guide not found: {paths['md']}")
 
     build_docx_from_markdown(paths["md"], paths["docx"])
     build_pptx_summary(paths["md"], paths["pptx"], version)
-    update_readme_links(version)
 
     print(f"Tool version detected: v{version}")
     print(f"Generated: {paths['docx']}")
