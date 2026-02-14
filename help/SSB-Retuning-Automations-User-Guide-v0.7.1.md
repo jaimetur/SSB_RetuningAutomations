@@ -297,5 +297,5 @@ If a POST SummaryAudit exists, the module obtains PRE/POST node lists and can ex
 | 0 Update Network Frequencies | Logs folder              | Persisted config            | Update network frequency list    |
 | 1 Configuration Audit        | Logs/ZIP folder          | Excel + PPT + CA commands   | Audit configuration and profiles |
 | 2 Consistency Check          | PRE and POST folders     | 2 Excel + CC commands       | Compare pre/post relations       |
-| 3 Consistency Bulk           | Multi-market root folder | Module 2 outputs per market | Run bulk comparison              |
+| 3 Consistency Check (Bulk)   | Multi-market root folder | Module 2 outputs per market | Run bulk comparison              |
 | 4 Final Clean-Up             | Final folder             | Clean-up folder             | Operational final clean-up       |
