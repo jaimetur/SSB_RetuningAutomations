@@ -797,6 +797,49 @@ class ConfigurationAudit:
                             except Exception:
                                 return pd.Series(dtype=int)
 
+                        def _format_numeric_like(value) -> str:
+                            if value is None or (isinstance(value, float) and pd.isna(value)):
+                                return ""
+                            txt = str(value).strip()
+                            if not txt:
+                                return ""
+                            try:
+                                num = float(txt)
+                                if num.is_integer():
+                                    return str(int(num))
+                                return str(num)
+                            except Exception:
+                                return txt
+
+                        def _aggregate_by_node(
+                            df: pd.DataFrame,
+                            node_col: str,
+                            relation_col: str,
+                            relation_token: int,
+                            value_builder,
+                        ) -> pd.Series:
+                            if df is None or df.empty or not node_col or not relation_col:
+                                return pd.Series(dtype=object)
+
+                            work = df.copy()
+                            work[node_col] = work[node_col].astype(str)
+                            mask = work[relation_col].astype(str).str.contains(str(relation_token), na=False)
+                            if not mask.any():
+                                return pd.Series(dtype=object)
+
+                            subset = work.loc[mask, [node_col]].copy()
+                            subset["_v"] = work.loc[mask].apply(value_builder, axis=1)
+                            subset["_v"] = subset["_v"].fillna("").astype(str).str.strip()
+                            subset = subset[subset["_v"] != ""]
+                            if subset.empty:
+                                return pd.Series(dtype=object)
+
+                            def _collapse(vals: pd.Series) -> str:
+                                ordered_unique = list(dict.fromkeys(vals.tolist()))
+                                return ", ".join(ordered_unique)
+
+                            return subset.groupby(node_col)["_v"].apply(_collapse)
+
                         if df_mecontext is not None and not df_mecontext.empty:
                             me_node_col = _find_col_ci(df_mecontext, ["NodeId"])
                             me_parent_col = _find_col_ci(df_mecontext, ["ParentId"])
@@ -850,9 +893,162 @@ class ConfigurationAudit:
                                     df_me_out["GUtranFreqRelation to old N77A SSB"] = 0
                                     df_me_out["GUtranFreqRelation to new N77A SSB"] = 0
 
-                                # Placeholders for manual workflow columns (as per slide 3)
-                                df_me_out["Next Step"] = ""
-                                df_me_out["EndcPrio Next Step"] = ""
+                                # NR/GU relation priority details requested for MeContext tab.
+                                nr_prio_col = _find_col_ci(df_nr_freq_rel, ["cellReselectionPriority"])
+                                nr_subprio_col = _find_col_ci(df_nr_freq_rel, ["cellReselectionSubPriority"])
+                                if df_nr_freq_rel is not None and not df_nr_freq_rel.empty and nrfr_node_col and nrfr_id_col and nr_prio_col:
+                                    s_nr_old_cell_resel = _aggregate_by_node(
+                                        df_nr_freq_rel,
+                                        nrfr_node_col,
+                                        nrfr_id_col,
+                                        self.N77_SSB_PRE,
+                                        lambda row: (
+                                            f"{_format_numeric_like(row.get(nr_prio_col))}.{_format_numeric_like(row.get(nr_subprio_col))}"
+                                            if nr_subprio_col and _format_numeric_like(row.get(nr_subprio_col)) != ""
+                                            else _format_numeric_like(row.get(nr_prio_col))
+                                        ),
+                                    )
+                                    s_nr_new_cell_resel = _aggregate_by_node(
+                                        df_nr_freq_rel,
+                                        nrfr_node_col,
+                                        nrfr_id_col,
+                                        self.N77_SSB_POST,
+                                        lambda row: (
+                                            f"{_format_numeric_like(row.get(nr_prio_col))}.{_format_numeric_like(row.get(nr_subprio_col))}"
+                                            if nr_subprio_col and _format_numeric_like(row.get(nr_subprio_col)) != ""
+                                            else _format_numeric_like(row.get(nr_prio_col))
+                                        ),
+                                    )
+                                else:
+                                    s_nr_old_cell_resel = pd.Series(dtype=object)
+                                    s_nr_new_cell_resel = pd.Series(dtype=object)
+
+                                gu_prio_col = _find_col_ci(df_gu_freq_rel, ["cellReselectionPriority"])
+                                gu_subprio_col = _find_col_ci(df_gu_freq_rel, ["cellReselectionSubPriority"])
+                                gu_endc_col = _find_col_ci(df_gu_freq_rel, ["endcB1MeasPriority"])
+
+                                if df_gu_freq_rel is not None and not df_gu_freq_rel.empty and gufr_node_col and gufr_id_col:
+                                    s_gu_old_cell_resel = _aggregate_by_node(
+                                        df_gu_freq_rel,
+                                        gufr_node_col,
+                                        gufr_id_col,
+                                        self.N77_SSB_PRE,
+                                        lambda row: (
+                                            f"{_format_numeric_like(row.get(gu_prio_col))}.{_format_numeric_like(row.get(gu_subprio_col))}"
+                                            if gu_prio_col and gu_subprio_col and _format_numeric_like(row.get(gu_subprio_col)) != ""
+                                            else _format_numeric_like(row.get(gu_prio_col))
+                                        ),
+                                    ) if gu_prio_col else pd.Series(dtype=object)
+
+                                    s_gu_new_cell_resel = _aggregate_by_node(
+                                        df_gu_freq_rel,
+                                        gufr_node_col,
+                                        gufr_id_col,
+                                        self.N77_SSB_POST,
+                                        lambda row: (
+                                            f"{_format_numeric_like(row.get(gu_prio_col))}.{_format_numeric_like(row.get(gu_subprio_col))}"
+                                            if gu_prio_col and gu_subprio_col and _format_numeric_like(row.get(gu_subprio_col)) != ""
+                                            else _format_numeric_like(row.get(gu_prio_col))
+                                        ),
+                                    ) if gu_prio_col else pd.Series(dtype=object)
+
+                                    s_gu_old_endc = _aggregate_by_node(
+                                        df_gu_freq_rel,
+                                        gufr_node_col,
+                                        gufr_id_col,
+                                        self.N77_SSB_PRE,
+                                        lambda row: _format_numeric_like(row.get(gu_endc_col)),
+                                    ) if gu_endc_col else pd.Series(dtype=object)
+
+                                    s_gu_new_endc = _aggregate_by_node(
+                                        df_gu_freq_rel,
+                                        gufr_node_col,
+                                        gufr_id_col,
+                                        self.N77_SSB_POST,
+                                        lambda row: _format_numeric_like(row.get(gu_endc_col)),
+                                    ) if gu_endc_col else pd.Series(dtype=object)
+                                else:
+                                    s_gu_old_cell_resel = pd.Series(dtype=object)
+                                    s_gu_new_cell_resel = pd.Series(dtype=object)
+                                    s_gu_old_endc = pd.Series(dtype=object)
+                                    s_gu_new_endc = pd.Series(dtype=object)
+
+                                df_me_out["NRFreqRelation to old N77A SSB cellReselPrio"] = df_me_out[me_node_col].map(s_nr_old_cell_resel).fillna("")
+                                df_me_out["NRFreqRelation to new N77A SSB cellReselPrio"] = df_me_out[me_node_col].map(s_nr_new_cell_resel).fillna("")
+                                df_me_out["GUtranFreqRelation to old N77A SSB cellReselPrio"] = df_me_out[me_node_col].map(s_gu_old_cell_resel).fillna("")
+                                df_me_out["GUtranFreqRelation to new N77A SSB cellReselPrio"] = df_me_out[me_node_col].map(s_gu_new_cell_resel).fillna("")
+                                df_me_out["GUtranFreqRelation to old N77A SSB EndcPrio"] = df_me_out[me_node_col].map(s_gu_old_endc).fillna("")
+                                df_me_out["GUtranFreqRelation to new N77A SSB EndcPrio"] = df_me_out[me_node_col].map(s_gu_new_endc).fillna("")
+
+                                sync_col = _find_col_ci(df_me_out, ["syncStatus"])
+
+                                def _split_unique_values(cell_value: str) -> set[str]:
+                                    txt = str(cell_value or "").strip()
+                                    if not txt:
+                                        return set()
+                                    return {v.strip() for v in txt.split(",") if v.strip()}
+
+                                def _build_step1(row: pd.Series) -> str:
+                                    sync_val = str(row.get(sync_col, "")).strip().upper() if sync_col else ""
+                                    if sync_val == "UNSYNCHRONIZED":
+                                        return "SkipUnsynch"
+
+                                    old_cells = int(row.get("N77A old SSB cells", 0) or 0)
+                                    old_gu_rel = int(row.get("GUtranFreqRelation to old N77A SSB", 0) or 0)
+                                    old_nr_rel = int(row.get("NRFreqRelation to old N77A SSB", 0) or 0)
+                                    if old_cells == 0 and old_gu_rel == 0 and old_nr_rel == 0:
+                                        return "SkipNoRels"
+
+                                    old_cell_resel = str(row.get("NRFreqRelation to old N77A SSB cellReselPrio", "")).strip()
+                                    new_cell_resel = str(row.get("NRFreqRelation to new N77A SSB cellReselPrio", "")).strip()
+                                    if old_cell_resel and new_cell_resel and _split_unique_values(old_cell_resel) == _split_unique_values(new_cell_resel):
+                                        return "Step1Done"
+
+                                    old_gu = int(row.get("GUtranFreqRelation to old N77A SSB", 0) or 0)
+                                    new_gu = int(row.get("GUtranFreqRelation to new N77A SSB", 0) or 0)
+                                    old_nr = int(row.get("NRFreqRelation to old N77A SSB", 0) or 0)
+                                    new_nr = int(row.get("NRFreqRelation to new N77A SSB", 0) or 0)
+                                    if old_gu > new_gu or old_nr > new_nr:
+                                        return "Step1"
+                                    return ""
+
+                                def _build_step2b(row: pd.Series) -> str:
+                                    old_cells = int(row.get("N77A old SSB cells", 0) or 0)
+                                    new_cells = int(row.get("N77A new SSB cells", 0) or 0)
+                                    if old_cells > 0:
+                                        return "Step2b"
+                                    if old_cells == 0 and new_cells > 0:
+                                        return "Step2bDone"
+                                    if old_cells == 0 and new_cells == 0:
+                                        return "Step2bNA"
+                                    return "Step2bReview"
+
+                                def _build_step2ac(row: pd.Series) -> str:
+                                    old_cells = int(row.get("N77A old SSB cells", 0) or 0)
+                                    old_gu_rel = int(row.get("GUtranFreqRelation to old N77A SSB", 0) or 0)
+                                    old_nr_rel = int(row.get("NRFreqRelation to old N77A SSB", 0) or 0)
+                                    if old_cells == 0 and old_gu_rel == 0 and old_nr_rel == 0:
+                                        return "SkipNoRels"
+
+                                    old_endc = _split_unique_values(row.get("GUtranFreqRelation to old N77A SSB EndcPrio", ""))
+                                    new_endc = _split_unique_values(row.get("GUtranFreqRelation to new N77A SSB EndcPrio", ""))
+                                    if old_endc == {"2"} and new_endc == {"1"}:
+                                        return "Step2ac"
+                                    if old_endc == {"1"} and new_endc == {"2"}:
+                                        return "Step2cDone"
+                                    return "Step2cReview"
+
+                                df_me_out["Step1"] = df_me_out.apply(_build_step1, axis=1)
+                                df_me_out["Step2b"] = df_me_out.apply(_build_step2b, axis=1)
+                                df_me_out["Step2ac"] = df_me_out.apply(_build_step2ac, axis=1)
+
+                                df_me_out["Next Step"] = (
+                                    df_me_out[["Step1", "Step2b", "Step2ac"]]
+                                    .astype(str)
+                                    .apply(lambda r: "".join(v for v in r.tolist() if v), axis=1)
+                                )
+
+                                df_me_out["EndcPrio Next Step"] = df_me_out["Step2ac"]
 
                                 # Ensure MeContext is exported with enriched columns
                                 for entry in table_entries:
