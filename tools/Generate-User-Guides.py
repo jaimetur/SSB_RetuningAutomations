@@ -41,8 +41,8 @@ def update_readme_links(version: str) -> None:
         "## 📙 Technical User Guide\n\n"
         "You can find the technical user guide in these formats:\n"
         f"- [Markdown](help/{md_name})\n"
-        f"- [Word](help/{docx_name})\n"
-        f"- [PowerPoint](help/{pptx_name})\n"
+        f"- [Word](help/{docx_name}?raw=true)\n"
+        f"- [PowerPoint](help/{pptx_name}?raw=true)\n"
     )
 
     readme = README_PATH.read_text(encoding="utf-8")

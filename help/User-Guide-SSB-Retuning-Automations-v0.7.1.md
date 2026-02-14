@@ -158,9 +158,9 @@ The main execution lives in `src/SSB_RetuningAutomations.py`, where CLI argument
 
 ---
 
-## 4) Module 1 in detail: Summary Audit
+## 4) Configuration Audit module in detail
 
-### 4.1 Evaluation philosophy
+### 4.1 SummaryAudit checks philosophy
 SummaryAudit sheet contains a high-level checks table by categories. The flow:
 1. Excludes `UNSYNCHRONIZED` nodes based on `MeContext`.
 2. Evaluates NR, LTE, ENDC, Externals, TermPoints, cardinalities, and profiles.
