@@ -20,6 +20,7 @@
   - Added log delete and panel toggles for user/admin dashboards.
   - Reset input paths to empty by default and after each run.
   - Split API and web access logs with admin-only access audit view.
+  - User Guide Automatically generated from Markdown files.
 
 - #### 🚀 Enhancements:
   - Reworked Web Interface UX with improved collapsible panels and modal dialogs (including explicit accept actions) for clearer user flows.
