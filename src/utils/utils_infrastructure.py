@@ -139,7 +139,7 @@ def get_resource_path(relative_path: str) -> str:
         or the executable folder (Nuitka / PyInstaller onefolder).
     """
     if getattr(sys, 'frozen', False):
-        # First, try next to the executable (your external ppt_templates folder)
+        # First, try next to the executable (your external templates_pptx folder)
         exe_dir = os.path.dirname(sys.executable)
         external_candidate = os.path.join(exe_dir, relative_path)
         if os.path.exists(external_candidate):

@@ -17,10 +17,10 @@ HELP_DIR = ROOT / "help"
 README_PATH = ROOT / "README.md"
 TOOL_MAIN_PATH = ROOT / "src" / "SSB_RetuningAutomations.py"
 DOCX_TEMPLATE_CANDIDATES = [
-    ROOT / "assets" / "docx_templates" / "UserGuideTemplate.docx",
+    ROOT / "assets" / "templates_docx" / "UserGuideTemplate.docx",
 ]
 PPTX_TEMPLATE_CANDIDATES = [
-    ROOT / "assets" / "ppt_templates" / "UserGuideTemplate.pptx",
+    ROOT / "assets" / "templates_pptx" / "UserGuideTemplate.pptx",
 ]
 
 

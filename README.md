@@ -420,9 +420,8 @@ A new web interface was added to run the same launcher modules using CLI under t
 
 
 
-### Two deployment modes are available:
+### Web Server Deployment:
 
-#### Mode A: Standalone / static code image (port 7878)
 Use the main compose in `/docker` when you want a self-contained runtime image (code baked inside image).
 
 ```bash
@@ -432,17 +431,6 @@ docker compose -f docker/docker-compose.yml up --build -d
 Expected URL:
 - `http://localhost:7878`
 
-#### Mode B: Development / repo-linked web interface (port 7979)
-Use the development compose (docker-compose-dev) when you want hot-reload and latest local source code mounted from your repository.
-
-```bash
-docker compose -f src/web_interface/docker-compose-dev.yml up --build -d
-# or
-bash src/web_interface/run-docker-dev.sh
-```
-
-Expected URL:
-- `http://localhost:7979`
 
 Initial credentials:
 - user: `admin`
