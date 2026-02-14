@@ -1,10 +1,14 @@
 import re
+from datetime import datetime
 from pathlib import Path
 
 from docx import Document
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from pptx import Presentation
+from pptx.dml.color import RGBColor
+from pptx.enum.text import PP_ALIGN
+from pptx.util import Pt
 
 ROOT = Path(__file__).resolve().parents[1]
 HELP_DIR = ROOT / "help"
@@ -119,12 +123,72 @@ def insert_toc_field(doc: Document) -> None:
     run._r.append(fld_end)
 
 
-def clear_document_body(doc: Document) -> None:
-    """Remove all body content while preserving section properties from the template."""
-    body = doc._body._element
-    for child in list(body):
-        if child.tag != qn("w:sectPr"):
-            body.remove(child)
+def delete_paragraph(paragraph) -> None:
+    p = paragraph._element
+    p.getparent().remove(p)
+
+
+def find_content_anchor_index(doc: Document) -> int:
+    """Find where generated content must start (template says 'Heading 1' on page 4)."""
+    for idx, paragraph in enumerate(doc.paragraphs):
+        text = paragraph.text.strip().lower()
+        style = (paragraph.style.name or "").strip().lower() if paragraph.style else ""
+        if text == "heading 1" and style == "heading 1":
+            return idx
+    raise RuntimeError("Template content anchor 'Heading 1' (style Heading 1) not found.")
+
+
+def truncate_document_from_anchor(doc: Document, anchor_index: int) -> None:
+    """Keep template pages intact and clear body only from the anchor onwards."""
+    for paragraph in list(doc.paragraphs[anchor_index:]):
+        delete_paragraph(paragraph)
+
+
+def mark_toc_fields_dirty(doc: Document) -> None:
+    """Force Word to refresh TOC fields when opening the generated document."""
+    for fld in doc._element.xpath(".//w:fldSimple"):
+        instr = (fld.get(qn("w:instr")) or "").upper()
+        if "TOC" in instr:
+            fld.set(qn("w:dirty"), "true")
+
+    for instr in doc._element.xpath(".//w:instrText"):
+        text = (instr.text or "").upper()
+        if "TOC" in text:
+            parent = instr.getparent()
+            if parent is not None:
+                parent.set(qn("w:dirty"), "true")
+
+
+def update_header_generation_date(doc: Document) -> None:
+    """Update any header content controls tagged as Date with today's date."""
+
+    def local_name(tag: str) -> str:
+        return tag.rsplit("}", 1)[-1]
+
+    today = datetime.now().strftime("%Y-%m-%d")
+    for section in doc.sections:
+        for header in [section.header, section.first_page_header, section.even_page_header]:
+            for sdt in header._element.iter():
+                if local_name(sdt.tag) != "sdt":
+                    continue
+
+                metadata_chunks: list[str] = []
+                text_nodes = []
+                for node in sdt.iter():
+                    name = local_name(node.tag)
+                    if name in {"alias", "tag"}:
+                        for attr_key, attr_val in node.attrib.items():
+                            if local_name(attr_key) == "val":
+                                metadata_chunks.append(attr_val)
+                    if name == "t":
+                        text_nodes.append(node)
+
+                if "date" not in " ".join(metadata_chunks).lower():
+                    continue
+                if text_nodes:
+                    text_nodes[0].text = today
+                    for extra in text_nodes[1:]:
+                        extra.text = ""
 
 
 def build_docx_from_markdown(md_file: Path, docx_file: Path) -> None:
@@ -133,7 +197,10 @@ def build_docx_from_markdown(md_file: Path, docx_file: Path) -> None:
 
     template_path = first_existing_path(DOCX_TEMPLATE_CANDIDATES)
     doc = Document(str(template_path)) if template_path else Document()
-    clear_document_body(doc)
+
+    if template_path:
+        anchor_index = find_content_anchor_index(doc)
+        truncate_document_from_anchor(doc, anchor_index)
 
     title_written = False
 
@@ -193,62 +260,147 @@ def build_docx_from_markdown(md_file: Path, docx_file: Path) -> None:
 
     if title_written:
         doc.add_paragraph("")
-    insert_toc_field(doc)
+
+    mark_toc_fields_dirty(doc)
+    update_header_generation_date(doc)
 
     doc.save(docx_file)
 
 
-def build_pptx_summary(md_file: Path, pptx_file: Path, version: str) -> None:
+def estimate_point_weight(point: dict) -> int:
+    text = point["text"]
+    if point["kind"] == "table":
+        rows = len(point["rows"])
+        cols = len(point["rows"][0]) if point["rows"] else 0
+        return 160 + rows * cols * 12
+    return max(40, 30 + len(text))
+
+
+def parse_markdown_sections(md_file: Path) -> list[tuple[str, list[dict]]]:
     text = md_file.read_text(encoding="utf-8")
     lines = [line.rstrip() for line in text.splitlines()]
 
-    sections: list[tuple[str, list[tuple[int, str]]]] = []
+    sections: list[tuple[str, list[dict]]] = []
     current_title = "Overview"
-    current_points: list[tuple[int, str]] = []
+    current_points: list[dict] = []
+    group_id = 0
 
     def flush_section() -> None:
         if current_points:
             sections.append((current_title, current_points.copy()))
 
-    for raw_line in lines:
+    i = 0
+    while i < len(lines):
+        raw_line = lines[i]
         line = raw_line.strip()
         if not line or line == "---":
+            i += 1
             continue
 
         if line.startswith("# "):
+            i += 1
             continue
 
         if line.startswith("## "):
             flush_section()
             current_title = clean_heading_text(line[3:].strip())
             current_points = []
+            group_id += 1
+            i += 1
+            continue
+
+        if line.startswith("| ") and line.endswith(" |") and i + 1 < len(lines) and is_table_separator(lines[i + 1]):
+            rows: list[list[str]] = [parse_table_row(line)]
+            i += 2
+            while i < len(lines):
+                candidate = lines[i].strip()
+                if not (candidate.startswith("| ") and candidate.endswith(" |")):
+                    break
+                rows.append(parse_table_row(candidate))
+                i += 1
+            current_points.append({"kind": "table", "rows": rows, "text": "", "level": 0, "group": group_id})
+            group_id += 1
             continue
 
         if line.startswith("### "):
-            current_points.append((0, clean_heading_text(line[4:].strip())))
+            current_points.append({"kind": "text", "text": clean_heading_text(line[4:].strip()), "level": 0, "group": group_id})
+            group_id += 1
+            i += 1
             continue
 
         if line.startswith("#### "):
-            current_points.append((1, clean_heading_text(line[5:].strip())))
+            current_points.append({"kind": "text", "text": clean_heading_text(line[5:].strip()), "level": 1, "group": group_id})
+            i += 1
             continue
 
         if line.startswith("- "):
             bullet = normalize_markdown_inline(re.sub(r"\*\*(.*?)\*\*", r"\1", line[2:].strip()))
-            current_points.append((1, bullet))
+            current_points.append({"kind": "text", "text": bullet, "level": 1, "group": group_id})
+            i += 1
             continue
 
         numbered_match = re.match(r"^(\d+)\.\s+(.*)", line)
         if numbered_match:
-            current_points.append((1, normalize_markdown_inline(numbered_match.group(2).strip())))
+            current_points.append({"kind": "text", "text": normalize_markdown_inline(numbered_match.group(2).strip()), "level": 1, "group": group_id})
+            i += 1
             continue
 
-        # Keep informative narrative lines to enrich the deck.
-        current_points.append((0, normalize_markdown_inline(re.sub(r"\*\*(.*?)\*\*", r"\1", line))))
+        current_points.append({"kind": "text", "text": normalize_markdown_inline(re.sub(r"\*\*(.*?)\*\*", r"\1", line)), "level": 0, "group": group_id})
+        group_id += 1
+        i += 1
 
     flush_section()
+    return sections
+
+
+def paginate_points(points: list[dict], capacity: int = 900) -> list[list[dict]]:
+    if not points:
+        return [[{"kind": "text", "text": "Refer to the markdown guide for full details.", "level": 0, "group": 0}]]
+
+    slides: list[list[dict]] = []
+    current: list[dict] = []
+    used = 0
+    idx = 0
+    while idx < len(points):
+        point = points[idx]
+        weight = estimate_point_weight(point)
+        group = [point]
+        j = idx + 1
+        while j < len(points) and points[j]["group"] == point["group"]:
+            group.append(points[j])
+            j += 1
+        group_weight = sum(estimate_point_weight(item) for item in group)
+
+        if current and used + group_weight > capacity:
+            slides.append(current)
+            current = []
+            used = 0
+
+        if group_weight <= capacity:
+            current.extend(group)
+            used += group_weight
+            idx = j
+            continue
+
+        if current:
+            slides.append(current)
+            current = []
+            used = 0
+        current.append(point)
+        used += weight
+        idx += 1
+
+    if current:
+        slides.append(current)
+
+    return slides
+
+
+def build_pptx_summary(md_file: Path, pptx_file: Path, version: str) -> None:
+    sections = parse_markdown_sections(md_file)
 
     if not sections:
-        sections = [("Overview", [(0, "Refer to the markdown guide for full technical details.")])]
+        sections = [("Overview", [{"kind": "text", "text": "Refer to the markdown guide for full technical details.", "level": 0, "group": 0}])]
 
     template_path = first_existing_path(PPTX_TEMPLATE_CANDIDATES)
     prs = Presentation(str(template_path)) if template_path else Presentation()
@@ -257,18 +409,42 @@ def build_pptx_summary(md_file: Path, pptx_file: Path, version: str) -> None:
     slide.shapes.title.text = "SSB Retuning Automations"
     slide.placeholders[1].text = f"Technical User Guide Summary (v{version})"
 
-    max_points_per_slide = 6
     for title, points in sections:
-        chunks = [points[i:i + max_points_per_slide] for i in range(0, len(points), max_points_per_slide)] or [[(0, "Refer to the markdown guide for full details.")]]
+        chunks = paginate_points(points)
         for idx, chunk in enumerate(chunks):
             slide = prs.slides.add_slide(prs.slide_layouts[1])
             slide.shapes.title.text = title if idx == 0 else f"{title} (cont.)"
             tf = slide.shapes.placeholders[1].text_frame
             tf.clear()
-            for i, (level, point) in enumerate(chunk):
-                p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
-                p.text = point
-                p.level = level
+
+            first_text_written = False
+            for point in chunk:
+                if point["kind"] == "table":
+                    left, top = slide.shapes.placeholders[1].left, slide.shapes.placeholders[1].top
+                    width, height = slide.shapes.placeholders[1].width, slide.shapes.placeholders[1].height
+                    rows = len(point["rows"])
+                    cols = len(point["rows"][0]) if point["rows"] else 0
+                    if rows and cols:
+                        table_shape = slide.shapes.add_table(rows, cols, left, top, width, height)
+                        table = table_shape.table
+                        for r in range(rows):
+                            for c in range(cols):
+                                cell = table.cell(r, c)
+                                cell.text = normalize_markdown_inline(point["rows"][r][c])
+                                para = cell.text_frame.paragraphs[0]
+                                para.alignment = PP_ALIGN.LEFT
+                                para.font.size = Pt(14 if r == 0 else 12)
+                                if r == 0:
+                                    para.font.bold = True
+                                    cell.fill.solid()
+                                    cell.fill.fore_color.rgb = RGBColor(230, 235, 245)
+                    continue
+
+                p = tf.paragraphs[0] if not first_text_written else tf.add_paragraph()
+                p.text = point["text"]
+                p.level = point["level"]
+                p.font.size = Pt(18 if point["level"] == 0 else 16)
+                first_text_written = True
 
     prs.save(pptx_file)
 
