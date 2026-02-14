@@ -21,6 +21,8 @@
   - Reset input paths to empty by default and after each run.
   - Split API and web access logs with admin-only access audit view.
   - User Guide Automatically generated from Markdown files.
+  - Added Documentation panels in user and admin web dashboards with direct links to User Guides in `.md`, `.docx`, and `.pptx`.
+  - Added administrator database backup controls to export and import the Web Interface SQLite database from the Admin panel.
 
 - #### 🚀 Enhancements:
   - Reworked Web Interface UX with improved collapsible panels and modal dialogs (including explicit accept actions) for clearer user flows.
@@ -35,6 +37,7 @@
   - Style invalid target modal as error.
   - Highlight canceled runs with a dedicated background color.
   - Show execution start time in admin execution log selector.
+  - Standardized log timestamp formatting in Web Interface logs to omit milliseconds for better readability and audit consistency.
 
 - #### 🐛 Bug fixes:
   - Fixed missing login routes in the Web Interface.
@@ -48,6 +51,7 @@
   - Fixed queued run output finalization and live log selection.
   - Ensure queue_task folders are always promoted to final output.
   - Fixed active run tracking in executions logs panel.
+  - Added explicit Web Access audit events for manual logout and inactivity logout, including inactivity duration details.
     
 - #### 📚 Documentation: 
   - Added FastAPI API discovery documentation for the Web Interface backend.

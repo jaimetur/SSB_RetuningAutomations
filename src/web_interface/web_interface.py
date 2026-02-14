@@ -14,6 +14,7 @@ import subprocess
 import sys
 import threading
 import time
+import tempfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -38,6 +39,9 @@ WEB_ACCESS_LOG_PATH = DATA_DIR / "web-access.log"
 APP_LOG_PATH = DATA_DIR / "web-interface.log"
 LEGACY_ACCESS_LOG_PATH = DATA_DIR / "access.log"
 LEGACY_APP_LOG_PATH = DATA_DIR / "app.log"
+HELP_DIR = PROJECT_ROOT / "help"
+
+LOG_DATETIME_FORMAT = "%Y-%m-%d %H:%M:%S"
 
 NO_CACHE_HEADERS = {
     "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
@@ -96,7 +100,7 @@ def setup_logging() -> logging.Logger:
     if not logger.handlers:
         # Persist application logs across restarts.
         app_handler = RotatingFileHandler(APP_LOG_PATH, maxBytes=2_000_000, backupCount=3)
-        app_handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
+        app_handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s", datefmt=LOG_DATETIME_FORMAT))
         logger.addHandler(app_handler)
 
         for name in ("uvicorn", "uvicorn.error"):
@@ -113,7 +117,7 @@ def setup_api_logger() -> logging.Logger:
     if not logger.handlers:
         # Keep API request logs separate from application logs.
         api_handler = RotatingFileHandler(API_LOG_PATH, maxBytes=2_000_000, backupCount=3)
-        api_handler.setFormatter(logging.Formatter("%(asctime)s %(message)s"))
+        api_handler.setFormatter(logging.Formatter("%(asctime)s %(message)s", datefmt=LOG_DATETIME_FORMAT))
         logger.addHandler(api_handler)
     return logger
 
@@ -124,7 +128,7 @@ def setup_web_access_logger() -> logging.Logger:
     if not logger.handlers:
         # Keep web access/authentication logs separate from API call logs.
         access_handler = RotatingFileHandler(WEB_ACCESS_LOG_PATH, maxBytes=2_000_000, backupCount=3)
-        access_handler.setFormatter(logging.Formatter("%(asctime)s %(message)s"))
+        access_handler.setFormatter(logging.Formatter("%(asctime)s %(message)s", datefmt=LOG_DATETIME_FORMAT))
         logger.addHandler(access_handler)
     return logger
 
@@ -663,7 +667,9 @@ def parse_iso_datetime(value: str | None) -> datetime | None:
     return parsed.astimezone()
 
 
-def apply_session_idle_timeout(conn: sqlite3.Connection, session_row: sqlite3.Row, now: datetime) -> bool:
+def apply_session_idle_timeout(
+    conn: sqlite3.Connection, session_row: sqlite3.Row, now: datetime, client_ip: str
+) -> bool:
     if session_row["active"] == 0:
         return False
     last_seen = parse_iso_datetime(session_row["last_seen_at"])
@@ -678,6 +684,16 @@ def apply_session_idle_timeout(conn: sqlite3.Connection, session_row: sqlite3.Ro
         (cutoff.isoformat(), session_row["token"]),
     )
     conn.commit()
+    username = session_row["username"] if "username" in session_row.keys() and session_row["username"] else "unknown"
+    idle_seconds_int = max(int(idle_seconds), 0)
+    web_access_logger.info(
+        "logout user=%s ip=%s reason=inactivity idle_seconds=%s idle_hms=%s timeout_seconds=%s",
+        username,
+        client_ip or "unknown",
+        idle_seconds_int,
+        format_seconds_hms(idle_seconds_int),
+        SESSION_IDLE_TIMEOUT_SECONDS,
+    )
     return True
 
 
@@ -687,12 +703,18 @@ def get_current_user(request: Request) -> sqlite3.Row | None:
         return None
     conn = get_conn()
     session = conn.execute(
-        "SELECT token, user_id, active, last_seen_at FROM sessions WHERE token = ?", (token,)
+        """
+        SELECT s.token, s.user_id, s.active, s.last_seen_at, u.username
+        FROM sessions s
+        LEFT JOIN users u ON u.id = s.user_id
+        WHERE s.token = ?
+        """,
+        (token,),
     ).fetchone()
     if not session or session["active"] == 0:
         conn.close()
         return None
-    if apply_session_idle_timeout(conn, session, datetime.now().astimezone()):
+    if apply_session_idle_timeout(conn, session, datetime.now().astimezone(), get_client_ip(request)):
         conn.close()
         return None
 
@@ -1458,12 +1480,48 @@ def logout(request: Request):
     token = request.cookies.get("session_token")
     if token:
         conn = get_conn()
+        session = conn.execute(
+            """
+            SELECT u.username
+            FROM sessions s
+            LEFT JOIN users u ON u.id = s.user_id
+            WHERE s.token = ?
+            """,
+            (token,),
+        ).fetchone()
         conn.execute("UPDATE sessions SET active = 0 WHERE token = ?", (token,))
         conn.commit()
         conn.close()
+        web_access_logger.info(
+            "logout user=%s ip=%s reason=manual",
+            session["username"] if session and session["username"] else "unknown",
+            get_client_ip(request),
+        )
     response = RedirectResponse("/login", status_code=302)
     response.delete_cookie("session_token")
     return response
+
+
+def get_latest_user_guide_file(extension: str) -> Path | None:
+    normalized_ext = extension.strip().lstrip(".").lower()
+    if normalized_ext not in {"md", "docx", "pptx"}:
+        return None
+    pattern = f"User-Guide-*.{normalized_ext}"
+    candidates = sorted((path for path in HELP_DIR.glob(pattern) if path.is_file()), key=lambda path: path.stat().st_mtime, reverse=True)
+    return candidates[0] if candidates else None
+
+
+@app.get("/documentation/user-guide/{file_format}", tags=["Configuration"])
+def download_user_guide(request: Request, file_format: str):
+    try:
+        require_user(request)
+    except PermissionError:
+        return RedirectResponse("/login", status_code=302)
+
+    guide_path = get_latest_user_guide_file(file_format)
+    if not guide_path or not guide_path.exists():
+        return PlainTextResponse("User guide not found.", status_code=404)
+    return FileResponse(guide_path, filename=guide_path.name)
 
 
 @app.post("/run", tags=["Execution"])
@@ -2233,6 +2291,78 @@ def admin_settings_update(
         return RedirectResponse("/login", status_code=302)
     save_admin_settings(max_cpu_percent, max_memory_percent, max_parallel_tasks)
     queue_event.set()
+    return RedirectResponse("/admin", status_code=302)
+
+
+@app.get("/admin/database/export", tags=["Administration"])
+def admin_export_database(request: Request):
+    try:
+        require_admin(request)
+    except PermissionError:
+        return RedirectResponse("/login", status_code=302)
+
+    if not DB_PATH.exists():
+        return PlainTextResponse("Database file not found.", status_code=404)
+    return FileResponse(DB_PATH, filename=f"web_interface_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db")
+
+
+@app.post("/admin/database/import", tags=["Administration"])
+async def admin_import_database(request: Request, backup_file: UploadFile = File(...)):
+    try:
+        require_admin(request)
+    except PermissionError:
+        return RedirectResponse("/login", status_code=302)
+
+    suffix = Path(backup_file.filename or "backup.db").suffix or ".db"
+    candidate_path: Path | None = None
+    try:
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        with tempfile.NamedTemporaryFile(delete=False, dir=str(DATA_DIR), prefix="db_import_", suffix=suffix) as tmp:
+            candidate_path = Path(tmp.name)
+            while True:
+                chunk = await backup_file.read(1024 * 1024)
+                if not chunk:
+                    break
+                tmp.write(chunk)
+
+        if not candidate_path.exists() or candidate_path.stat().st_size == 0:
+            if candidate_path and candidate_path.exists():
+                candidate_path.unlink(missing_ok=True)
+            return PlainTextResponse("Uploaded backup is empty.", status_code=400)
+
+        conn = sqlite3.connect(candidate_path)
+        try:
+            tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
+            required_tables = {"users", "sessions", "task_runs", "inputs_repository"}
+            if not required_tables.issubset(tables):
+                missing_tables = ", ".join(sorted(required_tables - tables))
+                raise ValueError(f"Invalid backup: missing tables: {missing_tables}")
+            conn.execute("PRAGMA quick_check")
+        finally:
+            conn.close()
+
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        previous_backup_path = DATA_DIR / f"web_interface.db.pre_import_{timestamp}.bak"
+        if DB_PATH.exists():
+            shutil.copy2(DB_PATH, previous_backup_path)
+
+        candidate_path.replace(DB_PATH)
+        web_access_logger.info(
+            "database import executed by admin ip=%s backup=%s",
+            get_client_ip(request),
+            backup_file.filename or candidate_path.name,
+        )
+    except ValueError as exc:
+        if candidate_path and candidate_path.exists():
+            candidate_path.unlink(missing_ok=True)
+        return PlainTextResponse(str(exc), status_code=400)
+    except OSError:
+        if candidate_path and candidate_path.exists():
+            candidate_path.unlink(missing_ok=True)
+        return PlainTextResponse("Failed to import database backup.", status_code=500)
+    finally:
+        await backup_file.close()
+
     return RedirectResponse("/admin", status_code=302)
 
 
