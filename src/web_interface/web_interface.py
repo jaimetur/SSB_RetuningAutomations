@@ -1318,7 +1318,7 @@ def custom_openapi():
 
 app.openapi = custom_openapi
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
-templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
+templates = Jinja2Templates(directory=str(BASE_DIR / "html"))
 
 
 @app.middleware("http")
