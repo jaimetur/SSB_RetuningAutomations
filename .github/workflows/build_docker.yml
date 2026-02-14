@@ -72,7 +72,7 @@ jobs:
 
       # Generate the Docker version
       # ===========================
-      - name: Check DockerHub secrets
+      - name: 🔐 Check DockerHub secrets
         shell: bash
         run: |
           if [ -z "${{ secrets.DOCKERHUB_USER }}" ]; then

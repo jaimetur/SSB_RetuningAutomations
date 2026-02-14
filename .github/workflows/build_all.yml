@@ -206,7 +206,7 @@ jobs:
     name: 🔐 Check DockerHub secrets
     runs-on: ubuntu-latest
     steps:
-      - name: Check DockerHub secrets (caller)
+      - name: 🔐 Check DockerHub secrets (caller)
         shell: bash
         run: |
           if [ -z "${{ secrets.DOCKERHUB_USER }}" ]; then
@@ -367,10 +367,10 @@ jobs:
         shell: bash
         run: |
           # Read TOOL_VERSION from the first line
-          TOOL_VERSION=$(grep '^TOOL_VERSION=' tools/build_info.txt | cut -d'=' -f2-)
+          TOOL_VERSION=$(grep '^TOOL_VERSION=' build_info.txt | cut -d'=' -f2-)
 
           # Read ARCHIVE_PATH from the second line
-          ARCHIVE_PATH=$(grep '^ARCHIVE_PATH=' tools/build_info.txt | cut -d'=' -f2-)
+          ARCHIVE_PATH=$(grep '^ARCHIVE_PATH=' build_info.txt | cut -d'=' -f2-)
           
           # Save both variables on GitHub Actions environment
           echo "TOOL_VERSION=${TOOL_VERSION}" >> $GITHUB_ENV
@@ -439,7 +439,7 @@ jobs:
         continue-on-error: true
         with:
           name: RELEASE-NOTES.md
-          path: tools/RELEASE-NOTES.md
+          path: RELEASE-NOTES.md
           overwrite: true
 
       - name: 🧹 Cleanup
@@ -622,7 +622,7 @@ jobs:
           prerelease: false
           make_latest: true
           generate_release_notes: true
-          body_path: tools/RELEASE-NOTES.md
+          body_path: RELEASE-NOTES.md
           files: |
             ./release_files/*
         env:
@@ -640,7 +640,7 @@ jobs:
           draft: false
           prerelease: true
           generate_release_notes: true
-          body_path: tools/RELEASE-NOTES.md
+          body_path: RELEASE-NOTES.md
           files: |
             ./release_files/*
         env:
