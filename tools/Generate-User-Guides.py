@@ -16,7 +16,6 @@ DOCX_TEMPLATE_CANDIDATES = [
 ]
 PPTX_TEMPLATE_CANDIDATES = [
     ROOT / "assets" / "ppt_templates" / "UserGuideTemplate.pptx",
-    ROOT / "assets" / "ppt_templatess" / "UserGuideTemplate.pptx",  # backward-compatible typo path
 ]
 
 
