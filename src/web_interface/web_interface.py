@@ -1549,6 +1549,13 @@ def download_user_guide(request: Request, file_format: str, mode: str = "downloa
 """
         return HTMLResponse(html_doc)
 
+    if normalized_mode == "view" and normalized_format == "pdf":
+        return FileResponse(
+            guide_path,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f'inline; filename="{guide_path.name}"'},
+        )
+
     return FileResponse(guide_path, filename=guide_path.name)
 
 

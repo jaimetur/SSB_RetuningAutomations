@@ -955,7 +955,7 @@ def run_configuration_audit(
     allowed_n77_arfcn_post = parse_arfcn_csv_to_set(csv_text=allowed_n77_arfcn_post_csv, default_values=default_n77_post_list, label="Allowed N77 ARFCN (Post)")
 
     exec_timestamp = datetime.now().strftime("%Y%m%d_%H%M")
-    folder_versioned_suffix = f"v{TOOL_VERSION}_{exec_timestamp}"
+    folder_versioned_suffix = f"{exec_timestamp}_v{TOOL_VERSION}"
 
     def _find_existing_ca_excel_same_version(folder_fs: str) -> Optional[str]:
         """
@@ -1337,7 +1337,7 @@ def run_consistency_checks(
     print(f"{module_name} [INFO] Running Consistency Check ({'bulk mode' if is_bulk else 'manual mode'})…")
 
     exec_timestamp = datetime.now().strftime("%Y%m%d_%H%M")
-    folder_versioned_suffix = f"v{TOOL_VERSION}_{exec_timestamp}"
+    folder_versioned_suffix = f"{exec_timestamp}_v{TOOL_VERSION}"
 
     # Normalize filters once here so they are reused for all markets
     ca_freq_filters_csv = normalize_csv_list(ca_freq_filters_csv or "")
@@ -1908,7 +1908,7 @@ def run_final_cleanup(input_dir: str, *_args, output_root_dir: Optional[str] = N
     print(f"{module_name} [INFO] Input folder: '{pretty_path(input_dir_fs)}'")
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M")
-    versioned_suffix = f"v{TOOL_VERSION}_{timestamp}"
+    versioned_suffix = f"{timestamp}_v{TOOL_VERSION}"
 
     app = FinalCleanUp()
     out = app.run(input_dir_fs, module_name=module_name, versioned_suffix=versioned_suffix, output_root_dir=output_root_dir)
