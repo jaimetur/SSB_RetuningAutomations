@@ -1,7 +1,7 @@
 import os, sys
 import platform
 import zipfile
-from typing import Optional
+from typing import Optional, Union
 
 from colorama import Fore
 from datetime import datetime
@@ -123,21 +123,18 @@ def zip_folder(temp_dir, output_file):
                     zipf.write(dir_path, dir_path.relative_to(temp_dir))
     print(f"File successfully packed: {output_file}")
 
-def get_resource_path(relative_path: str) -> str:
+
+def get_resource_path(relative_path: str, base_dir: Optional[Union[str, os.PathLike]] = None) -> str:
     """
     Return absolute path to resource, working for:
     - Source execution (normal Python)
     - PyInstaller / Nuitka executables
-
-    When running from source:
-        this file is src/utils/utils_infrastructure.py
-        project 'src' folder   = parent of this file's directory
-        resources are addressed relative to 'src'.
-
-    When frozen:
-        base path is the temp extraction folder (PyInstaller onefile)
-        or the executable folder (Nuitka / PyInstaller onefolder).
     """
+    # If caller provides base_dir, it overrides the default base path resolution
+    if base_dir is not None:
+        base_path = os.fspath(base_dir)
+        return os.path.join(base_path, relative_path)
+
     if getattr(sys, 'frozen', False):
         # First, try next to the executable (your external templates_pptx folder)
         exe_dir = os.path.dirname(sys.executable)
@@ -153,6 +150,7 @@ def get_resource_path(relative_path: str) -> str:
         base_path = os.path.dirname(utils_dir)                    # .../src
 
     return os.path.join(base_path, relative_path)
+
 
 # ============================== LOGGING SYSTEM ============================== #
 
