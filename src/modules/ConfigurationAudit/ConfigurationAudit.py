@@ -1045,7 +1045,7 @@ class ConfigurationAudit:
                                 df_me_out["Next Step"] = (
                                     df_me_out[["Step1", "Step2b", "Step2ac"]]
                                     .astype(str)
-                                    .apply(lambda r: "".join(v for v in r.tolist() if v), axis=1)
+                                    .apply(lambda r: " + ".join(v for v in r.tolist() if v), axis=1)
                                 )
 
                                 df_me_out["EndcPrio Next Step"] = df_me_out["Step2ac"]

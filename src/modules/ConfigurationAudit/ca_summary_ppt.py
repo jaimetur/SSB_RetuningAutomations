@@ -1,8 +1,9 @@
 # -*- coding: utf-8 -*-
 
 import os
-from typing import Dict, List, Optional
+from pathlib import Path
 import pandas as pd
+from typing import Dict, List, Optional
 
 from src.utils.utils_infrastructure import get_resource_path
 from src.utils.utils_io import to_long_path

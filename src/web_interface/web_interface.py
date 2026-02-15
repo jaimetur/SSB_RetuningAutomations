@@ -2044,7 +2044,7 @@ def logs_system(request: Request, source: str = "app"):
 @app.post("/logs/system/delete", tags=["Runs & Logs"])
 def delete_system_logs(request: Request, source: str = "app"):
     try:
-        user = require_user(request)
+        user = require_admin(request)
     except PermissionError:
         return {"ok": False}
 

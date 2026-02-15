@@ -197,7 +197,6 @@
           <select id="select_user_inputs_combo"><option value="__none__" selected>None</option><option value="__all__">All</option></select>
           <button type="button" id="select_older_inputs">Select Older</button>
           <button type="button" id="send_selected_inputs" class="btn btn-success">Send to Input</button>
-          <span class="actions-row-break"></span>
           <button type="button" id="delete_selected_inputs" class="btn btn-danger danger-anchor">Delete Selected</button>
           <button type="button" id="toggle_inputs_panel" class="panel-toggle" aria-label="Collapse inputs panel" title="Collapse/Expand">▾</button>
         </div>
@@ -231,7 +230,6 @@
           <select id="select_user_runs_combo"><option value="__none__" selected>None</option><option value="__all__">All</option></select>
           <button type="button" id="select_older_runs">Select Older</button>
           <button type="button" id="select_error_runs">Select Error</button>
-          <span class="actions-row-break"></span>
           <button type="button" id="stop_selected_runs" class="btn btn-danger danger-anchor">Stop Selected</button>
           <button type="button" id="delete_selected_runs" class="btn btn-danger">Delete Selected</button>
           <button type="button" id="toggle_runs_panel" class="panel-toggle" aria-label="Collapse runs panel" title="Collapse/Expand">▾</button>
@@ -291,7 +289,6 @@
             Auto refresh
           </label>
           <button type="button" id="refresh_log">Refresh</button>
-          <button type="button" id="clear_log">Clear</button>
           <button type="button" id="copy_log">Copy all</button>
           <button type="button" id="copy_selection">Copy selection</button>
           <button type="button" id="toggle_execution_log_panel" class="panel-toggle" aria-label="Collapse execution log panel" title="Collapse/Expand">▾</button>
@@ -313,10 +310,8 @@
             Auto refresh
           </label>
           <button type="button" id="refresh_system_log">Refresh</button>
-          <button type="button" id="clear_system_log">Clear</button>
           <button type="button" id="copy_system_log">Copy all</button>
           <button type="button" id="copy_system_selection">Copy selection</button>
-          <button type="button" id="delete_system_log" class="btn btn-danger">Delete</button>
           <button type="button" id="toggle_system_log_panel" class="panel-toggle" aria-label="Collapse system log panel" title="Collapse/Expand">▾</button>
         </div>
       </div>
@@ -1329,11 +1324,6 @@
       });
     });
 
-    refreshLogButton.addEventListener("click", fetchLogByRun);
-    clearLogButton.addEventListener("click", () => {
-      logOutput.textContent = "";
-    });
-
     function copyToClipboard(text) {
       if (!text) {
         return;
@@ -1363,11 +1353,6 @@
 
     if (refreshSystemLogButton) {
       refreshSystemLogButton.addEventListener("click", fetchSystemLog);
-    }
-    if (clearSystemLogButton) {
-      clearSystemLogButton.addEventListener("click", () => {
-        systemLogOutput.textContent = "";
-      });
     }
     if (deleteSystemLogButton) {
       deleteSystemLogButton.addEventListener("click", async () => {

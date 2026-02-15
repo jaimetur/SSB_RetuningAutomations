@@ -14,14 +14,15 @@
   - Added MeContext workflow and priority columns for ConfigurationAudit.
 
 - #### 🚀 Enhancements:
-  - Moved documentation panels to end and update label text.
+  - Moved documentation panels to the end and update label text.
   - Improved guide version migration and add version updater GUI.
   - Refined panel scroll and replace selection buttons with scope combos.
   - Polished documentation panel behavior and add PDF user guide output.
   - Improved get_resource_path() function to accept a base_dr parameter.
+  - Refined header meta-spacing/color and reorder documentation links.
 
 - #### 🐛 Bug fixes:
-  - Fixed templates_pptx folder.
+  - Fixed the templates_pptx folder.
   - Fixed panel scrolling and selection size metadata in user/admin menus
 
 - #### 📚 Documentation: 
