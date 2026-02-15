@@ -195,13 +195,16 @@
           <button type="button" id="select_all_inputs">Select All</button>
           <button type="button" id="unselect_all_inputs">Un-Select All</button>
           <button type="button" id="select_older_inputs" class="btn btn-accent">Select Older</button>
+          <button type="button" id="select_user_inputs" class="btn btn-accent">Select User</button>
+          <select id="select_user_inputs_combo" class="hidden"><option value="">Select user…</option></select>
           <button type="button" id="send_selected_inputs" class="btn btn-success">Send to Input</button>
-          <button type="button" id="delete_selected_inputs" class="btn btn-danger">Delete Selected</button>
+          <span class="actions-row-break"></span>
+          <button type="button" id="delete_selected_inputs" class="btn btn-danger danger-anchor">Delete Selected</button>
           <button type="button" id="toggle_inputs_panel" class="panel-toggle" aria-label="Collapse inputs panel" title="Collapse/Expand">▾</button>
         </div>
       </div>
       <input type="date" id="older_input_date_picker" class="hidden" />
-      <div class="table-scroll" id="inputs_panel_table">
+      <div class="table-scroll history-scroll" id="inputs_panel_table">
       <table>
         <thead><tr><th></th><th class="sortable" data-sort-key="text">Input</th><th class="sortable" data-sort-key="text">Uploaded by</th><th class="sortable" data-sort-key="datetime" data-default-sort="desc">Uploaded at</th><th class="sortable" data-sort-key="size">Size</th><th class="sortable" data-sort-key="text">Target</th></tr></thead>
         <tbody>
@@ -228,13 +231,14 @@
           <button type="button" id="unselect_all_runs">Un-Select All</button>
           <button type="button" id="select_older_runs" class="btn btn-accent">Select Older</button>
           <button type="button" id="select_error_runs" class="btn btn-accent">Select Error</button>
-          <button type="button" id="stop_selected_runs" class="btn btn-danger">Stop Selected</button>
+          <span class="actions-row-break"></span>
+          <button type="button" id="stop_selected_runs" class="btn btn-danger danger-anchor">Stop Selected</button>
           <button type="button" id="delete_selected_runs" class="btn btn-danger">Delete Selected</button>
           <button type="button" id="toggle_runs_panel" class="panel-toggle" aria-label="Collapse runs panel" title="Collapse/Expand">▾</button>
         </div>
       </div>
       <input type="date" id="older_date_picker" class="hidden" />
-      <div class="latest-runs-scroll" id="runs_panel_table">
+      <div class="latest-runs-scroll history-scroll" id="runs_panel_table">
       <table>
         <thead><tr><th></th><th class="sortable" data-sort-key="number">ID</th><th class="sortable" data-sort-key="text">Module</th><th class="sortable" data-sort-key="text">Version</th><th class="sortable" data-sort-key="text">Input</th><th class="sortable" data-sort-key="text">Status</th><th class="sortable" data-sort-key="datetime" data-default-sort="desc">Start</th><th class="sortable" data-sort-key="datetime">End</th><th class="sortable" data-sort-key="duration">Duration</th><th class="sortable" data-sort-key="text">Output</th><th class="sortable" data-sort-key="text">Log</th><th class="sortable" data-sort-key="size">Size</th></tr></thead>
         <tbody>
@@ -323,11 +327,11 @@
       <div class="runs-header">
         <h2>Documentation</h2>
       </div>
-      <p>Download Technical User Guides:</p>
+      <p>User Guides (open in browser when supported, or download):</p>
       <ul>
-        <li><a href="/documentation/user-guide/md" target="_blank" rel="noopener">User Guide (Markdown .md)</a></li>
-        <li><a href="/documentation/user-guide/docx" target="_blank" rel="noopener">User Guide (Word .docx)</a></li>
-        <li><a href="/documentation/user-guide/pptx" target="_blank" rel="noopener">User Guide (PowerPoint .pptx)</a></li>
+        <li>Markdown (.md): <a href="/documentation/user-guide/md?mode=view" target="_blank" rel="noopener">Open</a> · <a href="/documentation/user-guide/md?mode=download" target="_blank" rel="noopener">Download</a></li>
+        <li>Word (.docx): <a href="/documentation/user-guide/docx?mode=view" target="_blank" rel="noopener">Open</a> · <a href="/documentation/user-guide/docx?mode=download" target="_blank" rel="noopener">Download</a></li>
+        <li>PowerPoint (.pptx): <a href="/documentation/user-guide/pptx?mode=view" target="_blank" rel="noopener">Open</a> · <a href="/documentation/user-guide/pptx?mode=download" target="_blank" rel="noopener">Download</a></li>
       </ul>
     </section>
   </main>
@@ -374,6 +378,8 @@
     const selectAllInputsButton = document.getElementById("select_all_inputs");
     const unselectAllInputsButton = document.getElementById("unselect_all_inputs");
     const selectOlderInputsButton = document.getElementById("select_older_inputs");
+    const selectUserInputsButton = document.getElementById("select_user_inputs");
+    const selectUserInputsCombo = document.getElementById("select_user_inputs_combo");
     const sendSelectedInputsButton = document.getElementById("send_selected_inputs");
     const deleteSelectedInputsButton = document.getElementById("delete_selected_inputs");
     const olderInputDatePicker = document.getElementById("older_input_date_picker");
@@ -570,6 +576,7 @@
           if (!data.items || data.items.length === 0) {
             tbody.innerHTML = '<tr><td colspan="6">No inputs in repository.</td></tr>';
             applyCurrentOrDefaultSort("#inputs_panel_table table");
+            populateInputUserSelector();
             return;
           }
           tbody.innerHTML = data.items.map((item) => `
@@ -583,8 +590,37 @@
             </tr>
           `).join("");
           applyCurrentOrDefaultSort("#inputs_panel_table table");
+          populateInputUserSelector();
         })
         .catch(() => {});
+    }
+
+    function populateInputUserSelector() {
+      if (!selectUserInputsCombo) {
+        return;
+      }
+      const previous = selectUserInputsCombo.value;
+      const users = Array.from(document.querySelectorAll("#inputs_panel_table tbody tr"))
+        .map((row) => row.cells?.[2]?.textContent?.trim() || "")
+        .filter((value) => value && value !== "—");
+      const uniqueUsers = Array.from(new Set(users)).sort((a, b) => a.localeCompare(b));
+      selectUserInputsCombo.innerHTML = '<option value="">Select user…</option>' + uniqueUsers.map((user) => `<option value="${escapeHtml(user)}">${escapeHtml(user)}</option>`).join("");
+      if (previous && uniqueUsers.includes(previous)) {
+        selectUserInputsCombo.value = previous;
+      }
+    }
+
+    function selectInputsByUser(username) {
+      if (!username) {
+        return;
+      }
+      document.querySelectorAll("#inputs_panel_table tbody .input-checkbox").forEach((box) => {
+        const row = box.closest("tr");
+        const rowUser = row?.cells?.[2]?.textContent?.trim() || "";
+        if (rowUser === username) {
+          box.checked = true;
+        }
+      });
     }
 
     function collectSelectedInputsByTarget() {
@@ -1507,6 +1543,15 @@
       document.querySelectorAll(".input-checkbox").forEach((box) => { box.checked = false; });
     });
     selectOlderInputsButton?.addEventListener("click", () => olderInputDatePicker?.showPicker());
+    selectUserInputsButton?.addEventListener("click", () => {
+      selectUserInputsCombo?.classList.toggle("hidden");
+      if (selectUserInputsCombo && !selectUserInputsCombo.classList.contains("hidden")) {
+        populateInputUserSelector();
+      }
+    });
+    selectUserInputsCombo?.addEventListener("change", () => {
+      selectInputsByUser(selectUserInputsCombo.value);
+    });
     olderInputDatePicker?.addEventListener("change", () => {
       const selected = olderInputDatePicker.value;
       if (!selected) return;
@@ -1687,6 +1732,7 @@
     fetchSystemLog();
     refreshInputsRepository();
     refreshRunsTable();
+    populateInputUserSelector();
 
     let executionPanelsRefreshTimer = null;
     const refreshExecutionPanels = () => {

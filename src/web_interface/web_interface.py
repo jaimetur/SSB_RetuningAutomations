@@ -1512,7 +1512,7 @@ def get_latest_user_guide_file(extension: str) -> Path | None:
 
 
 @app.get("/documentation/user-guide/{file_format}", tags=["Configuration"])
-def download_user_guide(request: Request, file_format: str):
+def download_user_guide(request: Request, file_format: str, mode: str = "download"):
     try:
         require_user(request)
     except PermissionError:
@@ -1521,6 +1521,15 @@ def download_user_guide(request: Request, file_format: str):
     guide_path = get_latest_user_guide_file(file_format)
     if not guide_path or not guide_path.exists():
         return PlainTextResponse("User guide not found.", status_code=404)
+    normalized_mode = (mode or "download").strip().lower()
+    if normalized_mode == "view":
+        media_type_map = {
+            "md": "text/markdown; charset=utf-8",
+            "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        }
+        media_type = media_type_map.get(file_format.strip().lower())
+        return FileResponse(guide_path, media_type=media_type)
     return FileResponse(guide_path, filename=guide_path.name)
 
 
@@ -2093,6 +2102,27 @@ def download_run_output(request: Request, run_id: int):
     return FileResponse(output_zip, filename=output_zip.name)
 
 
+@app.get("/admin/runs/{run_id}/download", tags=["Administration"])
+def admin_download_run_output(request: Request, run_id: int):
+    try:
+        require_admin(request)
+    except PermissionError:
+        return PlainTextResponse("", status_code=403)
+
+    conn = get_conn()
+    row = conn.execute("SELECT output_zip FROM task_runs WHERE id = ?", (run_id,)).fetchone()
+    conn.close()
+
+    if not row or not row["output_zip"]:
+        return PlainTextResponse("", status_code=404)
+
+    output_zip = Path(row["output_zip"])
+    if not output_zip.exists():
+        return PlainTextResponse("", status_code=404)
+
+    return FileResponse(output_zip, filename=output_zip.name)
+
+
 @app.get("/runs/{run_id}/log", tags=["Runs & Logs"])
 def download_run_log(request: Request, run_id: int):
     try:
@@ -2105,6 +2135,27 @@ def download_run_log(request: Request, run_id: int):
         "SELECT output_log_file FROM task_runs WHERE id = ? AND user_id = ?",
         (run_id, user["id"]),
     ).fetchone()
+    conn.close()
+
+    if not row or not row["output_log_file"]:
+        return PlainTextResponse("", status_code=404)
+
+    log_path = Path(row["output_log_file"])
+    if not log_path.exists():
+        return PlainTextResponse("", status_code=404)
+
+    return FileResponse(log_path, filename=log_path.name)
+
+
+@app.get("/admin/runs/{run_id}/log", tags=["Administration"])
+def admin_download_run_log(request: Request, run_id: int):
+    try:
+        require_admin(request)
+    except PermissionError:
+        return PlainTextResponse("", status_code=403)
+
+    conn = get_conn()
+    row = conn.execute("SELECT output_log_file FROM task_runs WHERE id = ?", (run_id,)).fetchone()
     conn.close()
 
     if not row or not row["output_log_file"]:
