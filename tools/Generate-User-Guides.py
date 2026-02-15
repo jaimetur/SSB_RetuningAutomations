@@ -10,6 +10,7 @@ from pptx import Presentation
 from pptx.dml.color import RGBColor
 from pptx.enum.dml import MSO_THEME_COLOR
 from pptx.util import Pt
+import importlib
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -37,6 +38,7 @@ def update_readme_links(version: str) -> None:
     md_name = f"User-Guide-SSB-Retuning-Automations-v{version}.md"
     docx_name = f"User-Guide-SSB-Retuning-Automations-v{version}.docx"
     pptx_name = f"User-Guide-SSB-Retuning-Automations-v{version}.pptx"
+    pdf_name = f"User-Guide-SSB-Retuning-Automations-v{version}.pdf"
 
     new_block = (
         "## 📙 Technical User Guide\n\n"
@@ -44,6 +46,7 @@ def update_readme_links(version: str) -> None:
         f"- [Markdown](help/{md_name})\n"
         f"- [Word](help/{docx_name}?raw=true)\n"
         f"- [PowerPoint](help/{pptx_name}?raw=true)\n"
+        f"- [PDF](help/{pdf_name}?raw=true)\n"
     )
 
     readme = README_PATH.read_text(encoding="utf-8")
@@ -62,6 +65,7 @@ def guide_paths(version: str) -> dict[str, Path]:
         "md": HELP_DIR / f"{base_name}.md",
         "docx": HELP_DIR / f"{base_name}.docx",
         "pptx": HELP_DIR / f"{base_name}.pptx",
+        "pdf": HELP_DIR / f"{base_name}.pdf",
     }
 
 
@@ -88,7 +92,7 @@ def align_help_guides_to_version(version: str) -> dict[str, Path]:
         paths["md"].unlink(missing_ok=True)
         source_md.rename(paths["md"])
 
-    for ext in ("docx", "pptx"):
+    for ext in ("docx", "pptx", "pdf"):
         target = paths[ext]
         if target.exists():
             continue
@@ -100,7 +104,7 @@ def align_help_guides_to_version(version: str) -> dict[str, Path]:
 
 
 def cleanup_old_versioned_guides(paths: dict[str, Path]) -> None:
-    for ext in ("md", "docx", "pptx"):
+    for ext in ("md", "docx", "pptx", "pdf"):
         for candidate in list_versioned_guides(ext):
             if candidate != paths[ext]:
                 candidate.unlink(missing_ok=True)
@@ -698,6 +702,91 @@ def build_pptx_summary(md_file: Path, pptx_file: Path, version: str) -> None:
     prs.save(pptx_file)
 
 
+def build_pdf_from_markdown(md_file: Path, pdf_file: Path) -> None:
+    if importlib.util.find_spec("reportlab") is None:
+        raise RuntimeError("Missing dependency 'reportlab'. Install requirements.txt to generate PDF guides.")
+
+    colors = importlib.import_module("reportlab.lib.colors")
+    pagesizes = importlib.import_module("reportlab.lib.pagesizes")
+    styles_mod = importlib.import_module("reportlab.lib.styles")
+    units = importlib.import_module("reportlab.lib.units")
+    platypus = importlib.import_module("reportlab.platypus")
+
+    A4 = pagesizes.A4
+    ParagraphStyle = styles_mod.ParagraphStyle
+    getSampleStyleSheet = styles_mod.getSampleStyleSheet
+    cm = units.cm
+    Paragraph = platypus.Paragraph
+    SimpleDocTemplate = platypus.SimpleDocTemplate
+    Spacer = platypus.Spacer
+    Table = platypus.Table
+    TableStyle = platypus.TableStyle
+
+    styles = getSampleStyleSheet()
+    body_style = ParagraphStyle("Body", parent=styles["BodyText"], leading=14, spaceAfter=6)
+    h1_style = ParagraphStyle("H1", parent=styles["Heading1"], spaceBefore=8, spaceAfter=6)
+    h2_style = ParagraphStyle("H2", parent=styles["Heading2"], spaceBefore=6, spaceAfter=4)
+    h3_style = ParagraphStyle("H3", parent=styles["Heading3"], spaceBefore=4, spaceAfter=3)
+
+    def inline_html(text: str) -> str:
+        text = normalize_markdown_inline(text)
+        text = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+        return re.sub(r"\*\*(.*?)\*\*", r"<b>\1</b>", text)
+
+    doc = SimpleDocTemplate(str(pdf_file), pagesize=A4, leftMargin=1.8 * cm, rightMargin=1.8 * cm, topMargin=1.8 * cm, bottomMargin=1.8 * cm)
+    story = []
+    lines = md_file.read_text(encoding="utf-8").splitlines()
+
+    i = 0
+    while i < len(lines):
+        raw = lines[i].rstrip()
+        line = raw.strip()
+
+        if not line or line == "---":
+            story.append(Spacer(1, 0.2 * cm))
+            i += 1
+            continue
+
+        if line.startswith("| ") and line.endswith(" |") and i + 1 < len(lines) and is_table_separator(lines[i + 1]):
+            rows = [parse_table_row(line)]
+            i += 2
+            while i < len(lines):
+                candidate = lines[i].strip()
+                if not (candidate.startswith("| ") and candidate.endswith(" |")):
+                    break
+                rows.append(parse_table_row(candidate))
+                i += 1
+            table_data = [[Paragraph(inline_html(cell), body_style) for cell in row] for row in rows]
+            table = Table(table_data, repeatRows=1)
+            table.setStyle(TableStyle([
+                ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#cbd5e1")),
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#e2e8f0")),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ]))
+            story.append(table)
+            story.append(Spacer(1, 0.2 * cm))
+            continue
+
+        if line.startswith("# "):
+            story.append(Paragraph(inline_html(clean_heading_text(line[2:].strip())), h1_style))
+        elif line.startswith("## "):
+            story.append(Paragraph(inline_html(clean_heading_text(line[3:].strip())), h1_style))
+        elif line.startswith("### "):
+            story.append(Paragraph(inline_html(clean_heading_text(line[4:].strip())), h2_style))
+        elif line.startswith("#### "):
+            story.append(Paragraph(inline_html(clean_heading_text(line[5:].strip())), h3_style))
+        elif re.match(r"^\s*-\s+", raw):
+            bullet = re.sub(r"^\s*-\s+", "", raw)
+            story.append(Paragraph(inline_html(f"• {bullet}"), body_style))
+        else:
+            story.append(Paragraph(inline_html(line), body_style))
+
+        i += 1
+
+    doc.build(story)
+
+
+
 if __name__ == "__main__":
     version = get_tool_version()
     update_readme_links(version)
@@ -705,11 +794,13 @@ if __name__ == "__main__":
     paths = align_help_guides_to_version(version)
     build_docx_from_markdown(paths["md"], paths["docx"])
     build_pptx_summary(paths["md"], paths["pptx"], version)
+    build_pdf_from_markdown(paths["md"], paths["pdf"])
     cleanup_old_versioned_guides(paths)
 
     print(f"Tool version detected: v{version}")
     print(f"Using markdown: {paths['md']}")
     print(f"Generated: {paths['docx']}")
     print(f"Generated: {paths['pptx']}")
+    print(f"Generated: {paths['pdf']}")
     print("README technical guide links updated.")
     print("Old versioned guides cleaned from help/.")
