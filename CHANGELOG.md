@@ -10,12 +10,20 @@
 - #### 🚨 Breaking Changes:
 
 - #### 🌟 New Features:
+  - Added admin DB backup import/export panel and update changelog.
+  - Added MeContext workflow and priority columns for ConfigurationAudit.
 
 - #### 🚀 Enhancements:
+  - Moved documentation panels to end and update label text.
+  - Improved guide version migration and add version updater GUI.
+  - Refined panel scroll and replace selection buttons with scope combos.
+  - Polished documentation panel behavior and add PDF user guide output.
 
 - #### 🐛 Bug fixes:
+  - Fixed templates_pptx folder.
 
 - #### 📚 Documentation: 
+  - Improved docs links and admin/user history panel actions.
   - Updated README and related docs with all the latest changes.
 
 ---
