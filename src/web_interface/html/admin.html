@@ -121,15 +121,15 @@
         <h2>Inputs Repository</h2>
         <div class="runs-actions">
           <span class="runs-total" id="inputs_total_size">Total size: {{ inputs_total_size }}</span>
-          <button type="button" id="select_all_inputs">Select All</button>
-          <button type="button" id="unselect_all_inputs">Un-Select All</button>
-          <button type="button" id="select_older_inputs" class="btn btn-accent">Select Older</button>
-          <button type="button" id="delete_selected_inputs" class="btn btn-danger">Delete Selected</button>
+          <select id="select_user_inputs_combo"><option value="__all__">All</option><option value="__none__">None</option></select>
+          <button type="button" id="select_older_inputs">Select Older</button>
+          <span class="actions-row-break"></span>
+          <button type="button" id="delete_selected_inputs" class="btn btn-danger danger-anchor">Delete Selected</button>
           <button type="button" id="toggle_inputs_panel" class="panel-toggle" aria-label="Collapse inputs panel" title="Collapse/Expand">▾</button>
         </div>
       </div>
       <input type="date" id="older_input_date_picker" class="hidden" />
-      <div class="table-scroll" id="inputs_panel_table">
+      <div class="table-scroll history-scroll" id="inputs_panel_table">
       <table>
         <thead><tr><th></th><th>Input</th><th>Uploaded by</th><th>Uploaded at</th><th>Size</th></tr></thead>
         <tbody>
@@ -153,16 +153,16 @@
         </div>
         <div class="runs-actions">
           <span class="runs-total">Total size: {{ global_runs_size }}</span>
-          <button type="button" id="select_all_runs">Select All</button>
-          <button type="button" id="unselect_all_runs">Un-Select All</button>
-          <button type="button" id="select_older_runs" class="btn btn-accent">Select Older</button>
-          <button type="button" id="select_error_runs" class="btn btn-accent">Select Error</button>
-          <button type="button" id="delete_selected_runs" class="btn btn-danger">Delete Selected</button>
+          <select id="select_user_runs_combo"><option value="__all__">All</option><option value="__none__">None</option></select>
+          <button type="button" id="select_older_runs">Select Older</button>
+          <button type="button" id="select_error_runs">Select Error</button>
+          <span class="actions-row-break"></span>
+          <button type="button" id="delete_selected_runs" class="btn btn-danger danger-anchor">Delete Selected</button>
           <button type="button" id="toggle_runs_panel" class="panel-toggle" aria-label="Collapse runs panel" title="Collapse/Expand">▾</button>
         </div>
       </div>
       <input type="date" id="older_date_picker" class="hidden" />
-      <div class="table-scroll" id="runs_panel_table">
+      <div class="table-scroll history-scroll" id="runs_panel_table">
       <table>
         <thead><tr><th></th><th>ID</th><th>User</th><th>Module</th><th>Version</th><th>Input</th><th>Status</th><th>Start</th><th>End</th><th>Duration</th><th>Output</th><th>Log</th><th>Size</th></tr></thead>
         <tbody>
@@ -179,14 +179,14 @@
             <td>{{ r.duration_hms }}</td>
             <td>
               {% if r.output_zip %}
-                <a href="/runs/{{ r.id }}/download">Download zip</a>
+                <a href="/admin/runs/{{ r.id }}/download">Download zip</a>
               {% else %}
                 —
               {% endif %}
             </td>
             <td>
               {% if r.output_log_file %}
-                <a href="/runs/{{ r.id }}/log">Download log</a>
+                <a href="/admin/runs/{{ r.id }}/log">Download log</a>
               {% else %}
                 —
               {% endif %}
@@ -245,11 +245,12 @@
       <div class="runs-header">
         <h2>Documentation</h2>
       </div>
-      <p>Download Technical User Guides:</p>
+      <p>User Guides:</p>
       <ul>
-        <li><a href="/documentation/user-guide/md" target="_blank" rel="noopener">User Guide (Markdown .md)</a></li>
-        <li><a href="/documentation/user-guide/docx" target="_blank" rel="noopener">User Guide (Word .docx)</a></li>
-        <li><a href="/documentation/user-guide/pptx" target="_blank" rel="noopener">User Guide (PowerPoint .pptx)</a></li>
+        <li>Markdown (.md): <a href="/documentation/user-guide/md?mode=view" target="_blank" rel="noopener">Open</a> · <a href="/documentation/user-guide/md?mode=download" target="_blank" rel="noopener">Download</a></li>
+        <li>Word (.docx): <a href="/documentation/user-guide/docx?mode=download" target="_blank" rel="noopener">Download</a></li>
+        <li>PowerPoint (.pptx): <a href="/documentation/user-guide/pptx?mode=download" target="_blank" rel="noopener">Download</a></li>
+        <li>PDF (.pdf): <a href="/documentation/user-guide/pdf?mode=view" target="_blank" rel="noopener">Open</a> · <a href="/documentation/user-guide/pdf?mode=download" target="_blank" rel="noopener">Download</a></li>
       </ul>
     </section>
 
@@ -312,16 +313,14 @@
       });
     });
 
-    const selectAllRunsButton = document.getElementById("select_all_runs");
-    const unselectAllRunsButton = document.getElementById("unselect_all_runs");
     const selectOlderRunsButton = document.getElementById("select_older_runs");
+    const selectUserRunsCombo = document.getElementById("select_user_runs_combo");
     const selectErrorRunsButton = document.getElementById("select_error_runs");
     const deleteSelectedRunsButton = document.getElementById("delete_selected_runs");
     const toggleRunsPanelButton = document.getElementById("toggle_runs_panel");
     const runsTable = document.getElementById("runs_panel_table");
-    const selectAllInputsButton = document.getElementById("select_all_inputs");
-    const unselectAllInputsButton = document.getElementById("unselect_all_inputs");
     const selectOlderInputsButton = document.getElementById("select_older_inputs");
+    const selectUserInputsCombo = document.getElementById("select_user_inputs_combo");
     const deleteSelectedInputsButton = document.getElementById("delete_selected_inputs");
     const olderInputDatePicker = document.getElementById("older_input_date_picker");
     const toggleInputsPanelButton = document.getElementById("toggle_inputs_panel");
@@ -344,28 +343,40 @@
     const toggleAdminSystemLogPanelButton = document.getElementById("toggle_admin_system_log_panel");
     const adminSystemLogOutput = document.getElementById("admin_system_log_output");
 
+    function populateScopeCombo(combo, tableSelector, columnIndex) {
+      if (!combo) return;
+      const previous = combo.value;
+      const users = Array.from(document.querySelectorAll(`${tableSelector} tbody tr`))
+        .map((row) => row.cells?.[columnIndex]?.textContent?.trim() || "")
+        .filter((value) => value && value !== "—");
+      const uniqueUsers = Array.from(new Set(users)).sort((a, b) => a.localeCompare(b));
+      combo.innerHTML = '<option value="__all__">All</option><option value="__none__">None</option>' + uniqueUsers.map((user) => `<option value="${user}">${user}</option>`).join("");
+      combo.value = uniqueUsers.includes(previous) || ["__all__", "__none__"].includes(previous) ? previous : "__none__";
+    }
+
+    function applyScopeSelection(combo, tableSelector, checkboxSelector, columnIndex) {
+      const mode = combo?.value || "__none__";
+      document.querySelectorAll(`${tableSelector} tbody ${checkboxSelector}`).forEach((box) => {
+        if (mode === "__all__") {
+          box.checked = true;
+          return;
+        }
+        if (mode === "__none__") {
+          box.checked = false;
+          return;
+        }
+        const row = box.closest("tr");
+        const rowUser = row?.cells?.[columnIndex]?.textContent?.trim() || "";
+        box.checked = rowUser === mode;
+      });
+    }
+
     function getSelectedRunIds() {
       return Array.from(document.querySelectorAll(".run-checkbox:checked")).map((box) => Number(box.value));
     }
 
-    if (selectAllRunsButton) {
-      selectAllRunsButton.addEventListener("click", () => {
-        document.querySelectorAll(".run-checkbox").forEach((box) => {
-          box.checked = true;
-        });
-      });
-    }
-
-    if (unselectAllRunsButton) {
-      unselectAllRunsButton.addEventListener("click", () => {
-        document.querySelectorAll(".run-checkbox").forEach((box) => {
-          box.checked = false;
-        });
-      });
-    }
-
     function selectErrorRuns() {
-      const table = document.querySelector(".latest-global-scroll table");
+      const table = document.querySelector("#runs_panel_table table");
       const headerCells = table ? table.querySelectorAll("thead th") : [];
       let statusIndex = -1;
       headerCells.forEach((cell, index) => {
@@ -413,6 +424,8 @@
         }
       });
     }
+
+    selectUserRunsCombo?.addEventListener("change", () => applyScopeSelection(selectUserRunsCombo, "#runs_panel_table", ".run-checkbox", 2));
 
     const olderDatePicker = document.getElementById("older_date_picker");
     if (olderDatePicker) {
@@ -475,9 +488,8 @@
         toggleInputsPanelButton.textContent = inputsPanelTable?.classList.contains("hidden") ? "▸" : "▾";
       }
     });
-    selectAllInputsButton?.addEventListener("click", () => document.querySelectorAll(".input-checkbox").forEach((b) => { b.checked = true; }));
-    unselectAllInputsButton?.addEventListener("click", () => document.querySelectorAll(".input-checkbox").forEach((b) => { b.checked = false; }));
     selectOlderInputsButton?.addEventListener("click", () => olderInputDatePicker?.showPicker());
+    selectUserInputsCombo?.addEventListener("change", () => applyScopeSelection(selectUserInputsCombo, "#inputs_panel_table", ".input-checkbox", 2));
     olderInputDatePicker?.addEventListener("change", () => {
       const selected = olderInputDatePicker.value;
       if (!selected) return;
@@ -589,6 +601,8 @@
       }
     });
 
+    populateScopeCombo(selectUserInputsCombo, "#inputs_panel_table", 2);
+    populateScopeCombo(selectUserRunsCombo, "#runs_panel_table", 2);
     fetchAdminRunLog();
     fetchAdminSystemLog();
 

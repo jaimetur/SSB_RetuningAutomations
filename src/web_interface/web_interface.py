@@ -15,6 +15,7 @@ import sys
 import threading
 import time
 import tempfile
+import importlib
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -1504,7 +1505,7 @@ def logout(request: Request):
 
 def get_latest_user_guide_file(extension: str) -> Path | None:
     normalized_ext = extension.strip().lstrip(".").lower()
-    if normalized_ext not in {"md", "docx", "pptx"}:
+    if normalized_ext not in {"md", "docx", "pptx", "pdf"}:
         return None
     pattern = f"User-Guide-*.{normalized_ext}"
     candidates = sorted((path for path in HELP_DIR.glob(pattern) if path.is_file()), key=lambda path: path.stat().st_mtime, reverse=True)
@@ -1512,7 +1513,7 @@ def get_latest_user_guide_file(extension: str) -> Path | None:
 
 
 @app.get("/documentation/user-guide/{file_format}", tags=["Configuration"])
-def download_user_guide(request: Request, file_format: str):
+def download_user_guide(request: Request, file_format: str, mode: str = "download"):
     try:
         require_user(request)
     except PermissionError:
@@ -1521,6 +1522,40 @@ def download_user_guide(request: Request, file_format: str):
     guide_path = get_latest_user_guide_file(file_format)
     if not guide_path or not guide_path.exists():
         return PlainTextResponse("User guide not found.", status_code=404)
+    normalized_format = file_format.strip().lower()
+    normalized_mode = (mode or "download").strip().lower()
+
+    if normalized_mode == "view" and normalized_format == "md":
+        md_text = guide_path.read_text(encoding="utf-8", errors="ignore")
+        if importlib.util.find_spec("markdown") is None:
+            return FileResponse(guide_path, filename=guide_path.name)
+        markdown_module = importlib.import_module("markdown")
+        html_body = markdown_module.markdown(md_text, extensions=["tables", "fenced_code"])
+        html_doc = f"""
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{guide_path.name}</title>
+  <style>
+    body {{ font-family: Arial, sans-serif; margin: 2rem auto; max-width: 980px; line-height: 1.5; color: #1f2937; padding: 0 1rem; }}
+    h1,h2,h3,h4 {{ color: #0f172a; }}
+    code {{ background: #f1f5f9; padding: .12rem .35rem; border-radius: 4px; }}
+    pre {{ background: #0f172a; color: #f8fafc; padding: .8rem; border-radius: 8px; overflow-x: auto; }}
+    table {{ border-collapse: collapse; width: 100%; margin: .75rem 0; }}
+    th, td {{ border: 1px solid #cbd5e1; padding: .45rem; text-align: left; vertical-align: top; }}
+    th {{ background: #e2e8f0; }}
+    a {{ color: #1d4ed8; }}
+  </style>
+</head>
+<body>
+{html_body}
+</body>
+</html>
+"""
+        return HTMLResponse(html_doc)
+
     return FileResponse(guide_path, filename=guide_path.name)
 
 
@@ -2093,6 +2128,27 @@ def download_run_output(request: Request, run_id: int):
     return FileResponse(output_zip, filename=output_zip.name)
 
 
+@app.get("/admin/runs/{run_id}/download", tags=["Administration"])
+def admin_download_run_output(request: Request, run_id: int):
+    try:
+        require_admin(request)
+    except PermissionError:
+        return PlainTextResponse("", status_code=403)
+
+    conn = get_conn()
+    row = conn.execute("SELECT output_zip FROM task_runs WHERE id = ?", (run_id,)).fetchone()
+    conn.close()
+
+    if not row or not row["output_zip"]:
+        return PlainTextResponse("", status_code=404)
+
+    output_zip = Path(row["output_zip"])
+    if not output_zip.exists():
+        return PlainTextResponse("", status_code=404)
+
+    return FileResponse(output_zip, filename=output_zip.name)
+
+
 @app.get("/runs/{run_id}/log", tags=["Runs & Logs"])
 def download_run_log(request: Request, run_id: int):
     try:
@@ -2105,6 +2161,27 @@ def download_run_log(request: Request, run_id: int):
         "SELECT output_log_file FROM task_runs WHERE id = ? AND user_id = ?",
         (run_id, user["id"]),
     ).fetchone()
+    conn.close()
+
+    if not row or not row["output_log_file"]:
+        return PlainTextResponse("", status_code=404)
+
+    log_path = Path(row["output_log_file"])
+    if not log_path.exists():
+        return PlainTextResponse("", status_code=404)
+
+    return FileResponse(log_path, filename=log_path.name)
+
+
+@app.get("/admin/runs/{run_id}/log", tags=["Administration"])
+def admin_download_run_log(request: Request, run_id: int):
+    try:
+        require_admin(request)
+    except PermissionError:
+        return PlainTextResponse("", status_code=403)
+
+    conn = get_conn()
+    row = conn.execute("SELECT output_log_file FROM task_runs WHERE id = ?", (run_id,)).fetchone()
     conn.close()
 
     if not row or not row["output_log_file"]:
