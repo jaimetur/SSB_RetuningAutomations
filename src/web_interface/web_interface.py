@@ -512,15 +512,6 @@ def find_task_output_dir(candidates: list[Path], prefixes: tuple[str, ...], star
 
     return max(all_dirs, key=lambda p: p.stat().st_mtime)
 
-def find_latest_output_dir(base_dir: Path, prefixes: tuple[str, ...]) -> Path | None:
-    if not base_dir.exists():
-        return None
-    candidates = [p for p in base_dir.iterdir() if p.is_dir() and p.name.startswith(prefixes)]
-    if not candidates:
-        return None
-    return max(candidates, key=lambda p: p.stat().st_mtime)
-
-
 def build_output_prefixes(module_value: str) -> tuple[str, ...]:
     if module_value == "consistency-check":
         return ("ConsistencyChecks_", "ConcistencyChecks_")
@@ -933,6 +924,8 @@ def run_queued_task(task_row: sqlite3.Row) -> None:
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             bufsize=1,
             env={**os.environ, "TERM": "xterm", "SSB_RA_NO_CLEAR": "1"},
         )
@@ -1027,7 +1020,7 @@ def run_queued_task(task_row: sqlite3.Row) -> None:
         outputs_dir.mkdir(parents=True, exist_ok=True)
         task_name_component = sanitize_component(detect_task_name_from_input(input_dir_value))
         module_prefix = sanitize_component(module)
-        dest_name = f"{module_prefix}_{task_name_component}_{timestamp}"
+        dest_name = f"{module_prefix}_v{sanitize_component(tool_version)}_{task_name_component}_{timestamp}"
         persisted_output_dir = outputs_dir / sanitize_component(dest_name)
         suffix = 1
         while persisted_output_dir.exists():
@@ -2215,7 +2208,6 @@ async def delete_runs(request: Request):
     ).fetchall()
 
     for row in rows:
-        input_dir = Path(row["input_dir"]) if row["input_dir"] else None
         output_dir = Path(row["output_dir"]) if row["output_dir"] else None
         output_zip = Path(row["output_zip"]) if row["output_zip"] else None
         output_log = Path(row["output_log_file"]) if row["output_log_file"] else None
@@ -2258,7 +2250,6 @@ async def admin_delete_runs(request: Request):
     ).fetchall()
 
     for row in rows:
-        input_dir = Path(row["input_dir"]) if row["input_dir"] else None
         output_dir = Path(row["output_dir"]) if row["output_dir"] else None
         output_zip = Path(row["output_zip"]) if row["output_zip"] else None
         output_log = Path(row["output_log_file"]) if row["output_log_file"] else None
@@ -2577,7 +2568,6 @@ def admin_clear_storage(request: Request, user_id: int):
     ).fetchall()
 
     for row in rows:
-        input_dir = Path(row["input_dir"]) if row["input_dir"] else None
         output_dir = Path(row["output_dir"]) if row["output_dir"] else None
         output_zip = Path(row["output_zip"]) if row["output_zip"] else None
         output_log = Path(row["output_log_file"]) if row["output_log_file"] else None

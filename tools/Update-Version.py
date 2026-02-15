@@ -10,7 +10,7 @@ from tkinter import messagebox
 
 ROOT = Path(__file__).resolve().parents[1]
 TOOL_MAIN_PATH = ROOT / "src" / "SSB_RetuningAutomations.py"
-DOWNLOAD_SCRIPT = ROOT / "tools" / "Update-Download-Version.py"
+DOWNLOAD_SCRIPT = ROOT / "tools" / "Update-Download-Links.py"
 GUIDES_SCRIPT = ROOT / "tools" / "Generate-User-Guides.py"
 
 
@@ -41,7 +41,14 @@ def write_version_date(content: str, new_version: str, new_date: str) -> str:
 
 
 def run_script(path: Path) -> None:
-    result = subprocess.run([sys.executable, str(path)], cwd=str(ROOT), capture_output=True, text=True)
+    result = subprocess.run(
+        [sys.executable, str(path)],
+        cwd=str(ROOT),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
     if result.returncode != 0:
         raise RuntimeError(f"{path.name} failed:\n{result.stdout}\n{result.stderr}")
 
@@ -68,38 +75,67 @@ def main() -> None:
     date_var = tk.StringVar(value=current_date)
     tk.Entry(frame, textvariable=date_var).pack(fill="x", pady=(0, 12))
 
-    def on_save() -> None:
+    def validate_inputs() -> tuple[str, str] | None:
         new_version = version_var.get().strip()
         new_date = date_var.get().strip()
 
         if not re.fullmatch(r"\d+\.\d+\.\d+", new_version):
             messagebox.showerror("Invalid version", "TOOL_VERSION must match X.Y.Z")
-            return
+            return None
         if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", new_date):
             messagebox.showerror("Invalid date", "TOOL_DATE must match YYYY-MM-DD")
+            return None
+        return new_version, new_date
+
+    def on_update_all() -> None:
+        validated = validate_inputs()
+        if not validated:
             return
+        new_version, new_date = validated
 
         write_version_date(content, new_version, new_date)
 
         try:
-            if new_version != current_version:
-                run_script(DOWNLOAD_SCRIPT)
-                run_script(GUIDES_SCRIPT)
+            run_script(DOWNLOAD_SCRIPT)
+            run_script(GUIDES_SCRIPT)
         except Exception as exc:
             messagebox.showerror("Script execution error", str(exc))
             return
 
         version_msg = "TOOL_VERSION unchanged."
         if new_version != current_version:
-            version_msg = "TOOL_VERSION changed. Update-Download-Version.py and Generate-User-Guides.py executed."
+            version_msg = "TOOL_VERSION changed."
 
-        messagebox.showinfo("Done", f"Updated values successfully.\n\n{version_msg}")
+        messagebox.showinfo(
+            "Done",
+            "Updated values successfully.\n\n"
+            f"{version_msg}\n"
+            "Update-Download-Links.py and Generate-User-Guides.py executed.",
+        )
         root.destroy()
+
+    def on_generate_guides() -> None:
+        try:
+            run_script(GUIDES_SCRIPT)
+        except Exception as exc:
+            messagebox.showerror("Script execution error", str(exc))
+            return
+        messagebox.showinfo("Done", "Generate-User-Guides.py executed successfully.")
+
+    def on_update_download_links() -> None:
+        try:
+            run_script(DOWNLOAD_SCRIPT)
+        except Exception as exc:
+            messagebox.showerror("Script execution error", str(exc))
+            return
+        messagebox.showinfo("Done", "Update-Download-Links.py executed successfully.")
 
     buttons = tk.Frame(frame)
     buttons.pack(fill="x")
     tk.Button(buttons, text="Cancel", command=root.destroy).pack(side="right", padx=(8, 0))
-    tk.Button(buttons, text="Save", command=on_save).pack(side="right")
+    tk.Button(buttons, text="Update Download Links", command=on_update_download_links).pack(side="left")
+    tk.Button(buttons, text="Generate User Guides", command=on_generate_guides).pack(side="left", padx=(8, 0))
+    tk.Button(buttons, text="Update All", command=on_update_all).pack(side="right")
 
     root.mainloop()
 

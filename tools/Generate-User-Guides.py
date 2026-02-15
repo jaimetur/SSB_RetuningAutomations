@@ -11,6 +11,8 @@ from pptx.dml.color import RGBColor
 from pptx.enum.dml import MSO_THEME_COLOR
 from pptx.util import Pt
 import importlib
+import os
+import subprocess
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -337,6 +339,45 @@ def build_docx_from_markdown(md_file: Path, docx_file: Path) -> None:
     enable_toc_update_on_open(doc)
     update_header_date(doc)
     doc.save(docx_file)
+
+
+def try_update_docx_fields_and_export_pdf(docx_file: Path, pdf_file: Path) -> bool:
+    """Best effort on Windows: update TOC/fields via Word automation and export PDF."""
+    if os.name != "nt":
+        return False
+
+    ps_script = f"""
+$ErrorActionPreference = 'Stop'
+$word = $null
+try {{
+    $docPath = '{str(docx_file)}'
+    $pdfPath = '{str(pdf_file)}'
+    $word = New-Object -ComObject Word.Application
+    $word.Visible = $false
+    $word.DisplayAlerts = 0
+    $doc = $word.Documents.Open($docPath)
+    $doc.Fields.Update() | Out-Null
+    foreach ($toc in $doc.TablesOfContents) {{ $toc.Update() | Out-Null }}
+    $doc.Save()
+    $doc.ExportAsFixedFormat($pdfPath, 17)
+    $doc.Close()
+    exit 0
+}} catch {{
+    if ($doc) {{ $doc.Close() }}
+    exit 1
+}} finally {{
+    if ($word) {{ $word.Quit() }}
+}}
+"""
+
+    result = subprocess.run(
+        ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps_script],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="ignore",
+    )
+    return result.returncode == 0 and pdf_file.exists()
 
 
 def build_pptx_summary(md_file: Path, pptx_file: Path, version: str) -> None:
@@ -794,7 +835,8 @@ if __name__ == "__main__":
     paths = align_help_guides_to_version(version)
     build_docx_from_markdown(paths["md"], paths["docx"])
     build_pptx_summary(paths["md"], paths["pptx"], version)
-    build_pdf_from_markdown(paths["md"], paths["pdf"])
+    if not try_update_docx_fields_and_export_pdf(paths["docx"], paths["pdf"]):
+        build_pdf_from_markdown(paths["md"], paths["pdf"])
     cleanup_old_versioned_guides(paths)
 
     print(f"Tool version detected: v{version}")
