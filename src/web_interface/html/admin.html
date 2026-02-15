@@ -118,10 +118,12 @@
 
     <section class="card">
       <div class="runs-header">
-        <h2>Inputs Repository</h2>
+        <div>
+          <h2>Inputs Repository</h2>
+          <span class="runs-total" id="inputs_total_size">Total size: {{ inputs_total_size }} · Selected size: 0.00 MB</span>
+        </div>
         <div class="runs-actions">
-          <span class="runs-total" id="inputs_total_size">Total size: {{ inputs_total_size }}</span>
-          <select id="select_user_inputs_combo"><option value="__all__">All</option><option value="__none__">None</option></select>
+          <select id="select_user_inputs_combo"><option value="__none__" selected>None</option><option value="__all__">All</option></select>
           <button type="button" id="select_older_inputs">Select Older</button>
           <span class="actions-row-break"></span>
           <button type="button" id="delete_selected_inputs" class="btn btn-danger danger-anchor">Delete Selected</button>
@@ -129,7 +131,7 @@
         </div>
       </div>
       <input type="date" id="older_input_date_picker" class="hidden" />
-      <div class="table-scroll history-scroll" id="inputs_panel_table">
+      <div class="table-scroll history-scroll inputs-scroll" id="inputs_panel_table">
       <table>
         <thead><tr><th></th><th>Input</th><th>Uploaded by</th><th>Uploaded at</th><th>Size</th></tr></thead>
         <tbody>
@@ -149,11 +151,13 @@
     <section class="card">
       <div class="runs-header">
         <div class="runs-title-row">
-          <h2>Global Executions History</h2>
+          <div>
+            <h2>Global Executions History</h2>
+            <span class="runs-total" id="runs_total_size">Total size: {{ global_runs_size }} · Selected size: 0.00 MB</span>
+          </div>
         </div>
         <div class="runs-actions">
-          <span class="runs-total">Total size: {{ global_runs_size }}</span>
-          <select id="select_user_runs_combo"><option value="__all__">All</option><option value="__none__">None</option></select>
+          <select id="select_user_runs_combo"><option value="__none__" selected>None</option><option value="__all__">All</option></select>
           <button type="button" id="select_older_runs">Select Older</button>
           <button type="button" id="select_error_runs">Select Error</button>
           <span class="actions-row-break"></span>
@@ -162,7 +166,7 @@
         </div>
       </div>
       <input type="date" id="older_date_picker" class="hidden" />
-      <div class="table-scroll history-scroll" id="runs_panel_table">
+      <div class="table-scroll history-scroll runs-scroll" id="runs_panel_table">
       <table>
         <thead><tr><th></th><th>ID</th><th>User</th><th>Module</th><th>Version</th><th>Input</th><th>Status</th><th>Start</th><th>End</th><th>Duration</th><th>Output</th><th>Log</th><th>Size</th></tr></thead>
         <tbody>
@@ -342,6 +346,8 @@
     const adminDeleteSystemLogButton = document.getElementById("admin_delete_system_log");
     const toggleAdminSystemLogPanelButton = document.getElementById("toggle_admin_system_log_panel");
     const adminSystemLogOutput = document.getElementById("admin_system_log_output");
+    const inputsTotalSizeLabel = document.getElementById("inputs_total_size");
+    const runsTotalSizeLabel = document.getElementById("runs_total_size");
 
     function populateScopeCombo(combo, tableSelector, columnIndex) {
       if (!combo) return;
@@ -350,7 +356,7 @@
         .map((row) => row.cells?.[columnIndex]?.textContent?.trim() || "")
         .filter((value) => value && value !== "—");
       const uniqueUsers = Array.from(new Set(users)).sort((a, b) => a.localeCompare(b));
-      combo.innerHTML = '<option value="__all__">All</option><option value="__none__">None</option>' + uniqueUsers.map((user) => `<option value="${user}">${user}</option>`).join("");
+      combo.innerHTML = '<option value="__none__">None</option><option value="__all__">All</option>' + uniqueUsers.map((user) => `<option value="${user}">${user}</option>`).join("");
       combo.value = uniqueUsers.includes(previous) || ["__all__", "__none__"].includes(previous) ? previous : "__none__";
     }
 
@@ -369,6 +375,41 @@
         const rowUser = row?.cells?.[columnIndex]?.textContent?.trim() || "";
         box.checked = rowUser === mode;
       });
+    }
+
+
+    function parseSizeMb(value) {
+      if (!value) {
+        return 0;
+      }
+      const cleaned = String(value).replace(',', '.');
+      const match = cleaned.match(/([\d.]+)/);
+      return match ? Number(match[1]) || 0 : 0;
+    }
+
+    function formatSizeMb(valueMb) {
+      return `${valueMb.toFixed(2)} MB`;
+    }
+
+    function updateSelectionSizeLabels() {
+      if (inputsTotalSizeLabel) {
+        const totalText = (inputsTotalSizeLabel.dataset.totalSize || '').trim();
+        let selectedMb = 0;
+        document.querySelectorAll('.input-checkbox:checked').forEach((box) => {
+          const row = box.closest('tr');
+          selectedMb += parseSizeMb(row?.cells?.[4]?.textContent || '0 MB');
+        });
+        inputsTotalSizeLabel.textContent = `Total size: ${totalText || '0.00 MB'} · Selected size: ${formatSizeMb(selectedMb)}`;
+      }
+      if (runsTotalSizeLabel) {
+        const totalText = (runsTotalSizeLabel.dataset.totalSize || '').trim();
+        let selectedMb = 0;
+        document.querySelectorAll('.run-checkbox:checked').forEach((box) => {
+          const row = box.closest('tr');
+          selectedMb += parseSizeMb(row?.cells?.[12]?.textContent || '0 MB');
+        });
+        runsTotalSizeLabel.textContent = `Total size: ${totalText || '0.00 MB'} · Selected size: ${formatSizeMb(selectedMb)}`;
+      }
     }
 
     function getSelectedRunIds() {
@@ -425,7 +466,7 @@
       });
     }
 
-    selectUserRunsCombo?.addEventListener("change", () => applyScopeSelection(selectUserRunsCombo, "#runs_panel_table", ".run-checkbox", 2));
+    selectUserRunsCombo?.addEventListener("change", () => { applyScopeSelection(selectUserRunsCombo, "#runs_panel_table", ".run-checkbox", 2); updateSelectionSizeLabels(); });
 
     const olderDatePicker = document.getElementById("older_date_picker");
     if (olderDatePicker) {
@@ -451,6 +492,7 @@
           }
         });
         olderDatePicker.value = "";
+        updateSelectionSizeLabels();
       });
     }
 
@@ -489,7 +531,7 @@
       }
     });
     selectOlderInputsButton?.addEventListener("click", () => olderInputDatePicker?.showPicker());
-    selectUserInputsCombo?.addEventListener("change", () => applyScopeSelection(selectUserInputsCombo, "#inputs_panel_table", ".input-checkbox", 2));
+    selectUserInputsCombo?.addEventListener("change", () => { applyScopeSelection(selectUserInputsCombo, "#inputs_panel_table", ".input-checkbox", 2); updateSelectionSizeLabels(); });
     olderInputDatePicker?.addEventListener("change", () => {
       const selected = olderInputDatePicker.value;
       if (!selected) return;
@@ -500,6 +542,7 @@
         if (!Number.isNaN(d.getTime()) && d < threshold) box.checked = true;
       });
       olderInputDatePicker.value = "";
+      updateSelectionSizeLabels();
     });
     deleteSelectedInputsButton?.addEventListener("click", async () => {
       const ids = getSelectedInputIds();
@@ -603,6 +646,21 @@
 
     populateScopeCombo(selectUserInputsCombo, "#inputs_panel_table", 2);
     populateScopeCombo(selectUserRunsCombo, "#runs_panel_table", 2);
+    if (inputsTotalSizeLabel) {
+      inputsTotalSizeLabel.dataset.totalSize = "{{ inputs_total_size }}";
+    }
+    if (runsTotalSizeLabel) {
+      runsTotalSizeLabel.dataset.totalSize = "{{ global_runs_size }}";
+    }
+    applyScopeSelection(selectUserRunsCombo, "#runs_panel_table", ".run-checkbox", 2);
+    applyScopeSelection(selectUserInputsCombo, "#inputs_panel_table", ".input-checkbox", 2);
+    document.addEventListener("change", (event) => {
+      const target = event.target;
+      if (target && (target.classList?.contains("input-checkbox") || target.classList?.contains("run-checkbox"))) {
+        updateSelectionSizeLabels();
+      }
+    });
+    updateSelectionSizeLabels();
     fetchAdminRunLog();
     fetchAdminSystemLog();
 
