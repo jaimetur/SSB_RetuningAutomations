@@ -13,9 +13,9 @@
     <header class="topbar">
       <div>
         <h1>SSB Retuning Automations - Web Interface</h1>
+        <div class="header-meta">v{{ tool_meta.version }} - {{ tool_meta.date }}</div>
       </div>
       <nav>
-        <div class="header-meta">v{{ tool_meta.version }} - {{ tool_meta.date }}</div>
         <div class="user-meta">User: <b>{{ user.username }}</b> ({{ user.role }})</div>
         <div class="nav-links">
           {% if user.role == 'admin' %}<a href="/admin">Admin panel</a>{% endif %}
@@ -330,9 +330,9 @@
       <p>User Guides:</p>
       <ul>
         <li>Markdown (.md): <a href="/documentation/user-guide/md?mode=view" target="_blank" rel="noopener">Open</a> · <a href="/documentation/user-guide/md?mode=download" target="_blank" rel="noopener">Download</a></li>
+        <li>PDF (.pdf): <a href="/documentation/user-guide/pdf?mode=view" target="_blank" rel="noopener">Open</a> · <a href="/documentation/user-guide/pdf?mode=download" target="_blank" rel="noopener">Download</a></li>
         <li>Word (.docx): <a href="/documentation/user-guide/docx?mode=download" target="_blank" rel="noopener">Download</a></li>
         <li>PowerPoint (.pptx): <a href="/documentation/user-guide/pptx?mode=download" target="_blank" rel="noopener">Download</a></li>
-        <li>PDF (.pdf): <a href="/documentation/user-guide/pdf?mode=view" target="_blank" rel="noopener">Open</a> · <a href="/documentation/user-guide/pdf?mode=download" target="_blank" rel="noopener">Download</a></li>
       </ul>
     </section>
   </main>
