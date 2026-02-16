@@ -212,7 +212,7 @@
           <span class="runs-total" id="inputs_total_size">Total size: {{ inputs_total_size }} · Selected size: 0.00 MB</span>
         </div>
         <div class="runs-actions">
-          <select id="select_user_inputs_combo"><option value="__all__" selected>All Users</option></select>
+          <select id="select_user_inputs_combo"><option value="__all__" selected>All Users</option>{% for uploader in input_uploaders %}<option value="{{ uploader }}">{{ uploader }}</option>{% endfor %}</select>
           <select id="inputs_bulk_select_action" aria-label="Bulk input selection">
             <option value="" selected>Select</option>
             <option value="all">Select All</option>
@@ -280,7 +280,7 @@
             <option value="canceled">Select Cancelled</option>
             <option value="older">Select Older</option>
           </select>
-          <button type="button" id="stop_selected_runs" class="btn btn-danger">Stop Selected</button>
+          <button type="button" id="stop_selected_runs" class="btn btn-success">Stop Selected</button>
           <button type="button" id="delete_selected_runs" class="btn btn-danger">Delete Selected</button>
           <button type="button" id="toggle_runs_panel" class="panel-toggle" aria-label="Collapse runs panel" title="Collapse/Expand">▾</button>
         </div>

@@ -1429,6 +1429,7 @@ def index(request: Request):
 
     total_size_mb = format_mb(total_bytes)
     input_items = list_inputs_repository()
+    input_uploaders = list_inputs_uploaders()
     inputs_total_size = get_inputs_repository_total_size()
 
     return templates.TemplateResponse(
@@ -1443,6 +1444,7 @@ def index(request: Request):
             "network_frequencies": network_frequencies,
             "total_runs_size": total_size_mb,
             "input_items": input_items,
+            "input_uploaders": input_uploaders,
             "inputs_total_size": inputs_total_size,
         },
     )
