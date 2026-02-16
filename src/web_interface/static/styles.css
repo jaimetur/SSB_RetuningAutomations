@@ -139,10 +139,16 @@ th,td{border-bottom:1px solid #e3e8ee;padding:.55rem;text-align:left;font-size:.
   .checkbox{width:100%;justify-content:flex-start}
   .danger-anchor{margin-left:0}
   .db-backup-import-form{align-items:stretch;width:100%}
-  .db-backup-import-form button,.db-backup-import-form input{width:100%}
+  .db-backup-import-form button{width:100%}
+  .db-backup-file-picker{width:100%}
+  .db-backup-file-picker #db_backup_pick_file{width:100%}
 }
 
 
 .db-backup-actions{display:flex;flex-direction:column;gap:.55rem;align-items:flex-start}
-.db-backup-import-form{display:flex;align-items:flex-end;gap:.6rem;flex-wrap:wrap}
-.db-backup-file-label{display:flex;flex-direction:column;gap:.25rem;font-size:.9rem;color:#4a5b70}
+.db-backup-import-form{display:flex;align-items:center;gap:.6rem;flex-wrap:wrap}
+.db-backup-file-picker{display:flex;align-items:center;gap:.55rem;flex-wrap:wrap}
+.db-backup-file-picker input[type="file"]{display:none}
+.db-backup-file-name{font-size:.9rem;color:#4a5b70;word-break:break-word}
+.db-backup-file-help{display:block;color:#4a5b70;font-size:.82rem}
+.db-backup-warning{margin:.25rem 0 0;color:#c0302b}
