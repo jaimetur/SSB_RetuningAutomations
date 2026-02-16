@@ -287,18 +287,20 @@ def build_docx_from_markdown(md_file: Path, docx_file: Path, version: str) -> No
                     if local_name(sdt.tag) != "sdt":
                         continue
 
-                    is_date_alias = False
+                    alias_name = None
                     for node in sdt.iter():
-                        if local_name(node.tag) == "alias" and node.get(qn("w:val")) == "Date":
-                            is_date_alias = True
+                        if local_name(node.tag) == "alias":
+                            alias_name = node.get(qn("w:val"))
                             break
 
-                    if not is_date_alias:
+                    if alias_name not in {"Date", "Revision"}:
                         continue
+
+                    alias_value = today if alias_name == "Date" else tool_version
 
                     for node in sdt.iter():
                         if local_name(node.tag) == "t":
-                            node.text = today
+                            node.text = alias_value
                             break
 
     def find_template_anchor(doc: Document):
