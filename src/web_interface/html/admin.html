@@ -671,10 +671,12 @@
       }
     });
 
-    function renderAdminLog(text, target) {
+    function renderAdminLog(text, target, options = {}) {
       if (!target) return;
+      const shouldScrollToBottom = Boolean(options.scrollToBottom);
       if (!text) {
         target.textContent = "No logs yet.";
+        if (shouldScrollToBottom) target.scrollTop = target.scrollHeight;
         return;
       }
       const lines = text.split(/\r?\n/);
@@ -685,6 +687,7 @@
         else if (line.includes("[DEBUG]")) cls = "log-debug";
         return `<span class="${cls}">${line.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")}</span>`;
       }).join("\n");
+      if (shouldScrollToBottom) target.scrollTop = target.scrollHeight;
     }
 
     function copyToClipboard(text) {
@@ -715,9 +718,11 @@
 
     function updateAdminExecutionAutoRefreshAvailability(hasActive) {
       if (!adminExecutionLogAuto) return;
+      const becameActive = Boolean(hasActive && !adminHadActiveTasks);
+      adminHadActiveTasks = Boolean(hasActive);
       adminExecutionLogAuto.disabled = !hasActive;
       if (!hasActive) adminExecutionLogAuto.checked = false;
-      if (hasActive && !adminExecutionLogAuto.checked) {
+      if (becameActive && !adminExecutionLogAuto.checked) {
         adminExecutionLogAuto.checked = true;
         fetchAdminRunLog();
       }
@@ -743,7 +748,7 @@
       const source = adminSystemLogSource?.value || "app";
       fetch(`/logs/system?source=${encodeURIComponent(source)}`)
         .then((res) => res.json())
-        .then((data) => renderAdminLog(data.log || "", adminSystemLogOutput))
+        .then((data) => renderAdminLog(data.log || "", adminSystemLogOutput, { scrollToBottom: adminSystemLogAuto?.checked }))
         .catch(() => renderAdminLog("", adminSystemLogOutput));
     }
 
@@ -773,6 +778,7 @@
     let adminBackgroundRefreshTimer = null;
     let adminSystemLogRefreshTimer = null;
     let adminHasActiveTasks = false;
+    let adminHadActiveTasks = false;
 
     function normalizeDbCellValue(value) {
       if (value === null || value === undefined) return "";
