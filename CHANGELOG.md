@@ -10,7 +10,7 @@
 - #### 🚨 Breaking Changes:
 
 - #### 🌟 New Features:
-  - Added `Update Network Frequencies` module to update network frequencies from any Step0 folder..
+  - Added `Update Network Frequencies` module to update network frequencies from any Step0 folder.
 
 - #### 🚀 Enhancements:
   - Ensure active tasks only remove their dedicated queue_task_* working folder and keep admin and user deletion behavior consistent.
