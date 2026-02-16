@@ -1,6 +1,4 @@
 # 🗓️ CHANGELOG
-[Planned Roadmap](ROADMAP.md) for the following releases
-[Changelog](CHANGELOG.md) for the past releases
 
 ---
 
