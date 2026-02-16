@@ -431,6 +431,9 @@
     let runsRefreshPromise = null;
     let hasActiveTasks = false;
     let backgroundRefreshTimer = null;
+    const updateNetworkFrequenciesModule = "update-network-frequencies";
+    let lastAppliedNetworkFrequenciesRunMarker = "";
+    let networkFrequenciesRefreshInFlight = null;
     const EXECUTION_AUTO_ENABLE_PENDING_KEY = "execution_log_auto_enable_pending";
     const EXECUTION_AUTO_CHECKED_KEY = "execution_log_auto_checked";
     let pendingExecutionAutoEnable = false;
@@ -963,10 +966,41 @@
       return normalized;
     }
 
+    function refreshNetworkFrequenciesFromConfig() {
+      if (networkFrequenciesRefreshInFlight) return networkFrequenciesRefreshInFlight;
+      networkFrequenciesRefreshInFlight = fetch(buildNoCacheUrl("/config/load"), { cache: "no-store" })
+        .then((res) => res.json())
+        .then((data) => {
+          const general = normalizeConfig(data);
+          if (!general.network_frequencies) return;
+          updateNetworkFrequencies(parseCsv(general.network_frequencies));
+        })
+        .catch(() => {})
+        .finally(() => {
+          networkFrequenciesRefreshInFlight = null;
+        });
+      return networkFrequenciesRefreshInFlight;
+    }
+
+    function syncNetworkFrequenciesAfterModule0Run(items) {
+      if (!Array.isArray(items) || items.length === 0) return;
+      const latestSuccessfulModule0 = items.find((item) => {
+        const moduleName = (item.module || "").toLowerCase();
+        const status = (item.status_lower || "").toLowerCase();
+        return moduleName === updateNetworkFrequenciesModule && status === "success" && item.finished_at;
+      });
+      if (!latestSuccessfulModule0) return;
+      const marker = `${latestSuccessfulModule0.id}:${latestSuccessfulModule0.finished_at}`;
+      if (marker === lastAppliedNetworkFrequenciesRunMarker) return;
+      lastAppliedNetworkFrequenciesRunMarker = marker;
+      refreshNetworkFrequenciesFromConfig();
+    }
+
     function applyConfigValues(config) {
       const general = normalizeConfig(config);
       const moduleValue = moduleSelect.value;
       const inputMappings = {
+        "update-network-frequencies": general.last_input || "",
         "configuration-audit": general.last_input_audit || general.last_input || "",
         "consistency-check-bulk": general.last_input_cc_bulk || general.last_input || "",
         "final-cleanup": general.last_input_final_cleanup || general.last_input || ""
@@ -1262,6 +1296,7 @@
           activeTasksFound = hasRunning || hasQueued;
           hasActiveTasks = activeTasksFound;
           applyRunStatusSummary(data.items);
+          syncNetworkFrequenciesAfterModule0Run(data.items);
 
           applyCurrentOrDefaultSort("#runs_panel_table table");
           populateRunScopeSelector();

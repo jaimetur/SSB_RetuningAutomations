@@ -140,6 +140,7 @@ web_access_logger = setup_web_access_logger()
 
 
 MODULE_OPTIONS = [
+    ("update-network-frequencies", "0. Update Network Frequencies"),
     ("configuration-audit", "1. Configuration Audit & Logs Parser"),
     ("consistency-check", "2. Consistency Check (Pre/Post Comparison)"),
     ("consistency-check-bulk", "3. Consistency Check (Bulk mode Pre/Post auto-detection)"),
@@ -472,6 +473,8 @@ def parse_output_candidates(payload: dict[str, Any], input_dir_value: str) -> li
 
 
 def snapshot_output_dirs(candidates: list[Path], prefixes: tuple[str, ...]) -> dict[str, float]:
+    if not prefixes:
+        return {}
     snapshot: dict[str, float] = {}
     for base in candidates:
         try:
@@ -488,6 +491,8 @@ def snapshot_output_dirs(candidates: list[Path], prefixes: tuple[str, ...]) -> d
 
 
 def find_task_output_dir(candidates: list[Path], prefixes: tuple[str, ...], started_at_raw: str | None) -> Path | None:
+    if not prefixes:
+        return None
     started_at_dt = parse_iso_datetime(started_at_raw)
     all_dirs: list[Path] = []
     for base in candidates:
@@ -513,6 +518,8 @@ def find_task_output_dir(candidates: list[Path], prefixes: tuple[str, ...], star
     return max(all_dirs, key=lambda p: p.stat().st_mtime)
 
 def build_output_prefixes(module_value: str) -> tuple[str, ...]:
+    if module_value == "update-network-frequencies":
+        return tuple()
     if module_value == "consistency-check":
         return ("ConsistencyChecks_", "ConcistencyChecks_")
     if module_value == "consistency-check-bulk":
@@ -1199,6 +1206,9 @@ def build_settings_defaults(module_value: str, config_values: dict[str, str]) ->
 
 
 def persist_settings_to_config(module_value: str, payload: dict[str, Any]) -> None:
+    # Keep network frequencies global and stable across users/sessions.
+    # They are persisted by Module 0 itself (launcher logic), not by per-user web form autosave.
+    current_cfg = load_persistent_config()
     persist_kwargs: dict[str, str] = {
         "n77_ssb_pre": payload.get("n77_ssb_pre", ""),
         "n77_ssb_post": payload.get("n77_ssb_post", ""),
@@ -1213,7 +1223,7 @@ def persist_settings_to_config(module_value: str, payload: dict[str, Any]) -> No
         "frequency_audit": "1" if parse_bool(payload.get("frequency_audit")) else "0",
         "export_correction_cmd": "1" if parse_bool(payload.get("export_correction_cmd")) else "0",
         "fast_excel_export": "1" if parse_bool(payload.get("fast_excel_export")) else "0",
-        "network_frequencies": payload.get("network_frequencies", ""),
+        "network_frequencies": current_cfg.get("network_frequencies", ""),
     }
 
     # Input paths are intentionally not persisted so every execution starts with empty input fields.
@@ -2275,6 +2285,33 @@ def resolve_run_log_path(conn: sqlite3.Connection, user_id: int, username: str, 
     return best
 
 
+def resolve_queue_task_output_dir(stored_output_dir: str | None, payload_json: str | None) -> Path | None:
+    """Resolve queue output folder safely for queued/running tasks.
+
+    For non-finished tasks we should only delete their dedicated queue_task_* folder,
+    never fallback-scan by module/version because that can match completed runs.
+    """
+    candidate = Path(stored_output_dir) if stored_output_dir else None
+    if not (candidate and candidate.name.startswith("queue_task_")):
+        try:
+            payload = json.loads(payload_json or "{}")
+        except json.JSONDecodeError:
+            payload = {}
+        output_value = str(payload.get("output") or "").strip()
+        if output_value:
+            candidate = Path(output_value)
+
+    if not candidate:
+        return None
+    if not candidate.name.startswith("queue_task_"):
+        return None
+    if not (candidate.exists() and candidate.is_dir()):
+        return None
+    if not is_safe_path(OUTPUTS_DIR, candidate):
+        return None
+    return candidate
+
+
 def resolve_run_output_dir_path(conn: sqlite3.Connection, user_id: int, username: str, run_id: int, stored_output_dir: str | None, stored_output_zip: str | None, stored_output_log_file: str | None, module: str | None, tool_version: str | None, finished_at_raw: str | None) -> Path | None:
     """Best-effort locate the output directory for a run even if output folders were renamed manually."""
     out_dir = Path(stored_output_dir) if stored_output_dir else None
@@ -2407,12 +2444,20 @@ async def delete_runs(request: Request):
 
     conn = get_conn()
     rows = conn.execute(
-        "SELECT id, module, tool_version, finished_at, output_dir, output_zip, output_log_file FROM task_runs WHERE user_id = ? AND id IN (%s)" % ",".join("?" for _ in run_ids),
+        "SELECT id, status, module, tool_version, finished_at, output_dir, output_zip, output_log_file, payload_json FROM task_runs WHERE user_id = ? AND id IN (%s)" % ",".join("?" for _ in run_ids),
         (user["id"], *run_ids),
     ).fetchall()
 
     for row in rows:
         run_id = int(row["id"])
+        run_status = (row["status"] or "").strip().lower()
+
+        if run_status in {"queued", "running", "canceling"}:
+            queue_output_dir = resolve_queue_task_output_dir(row["output_dir"], row["payload_json"])
+            if queue_output_dir:
+                shutil.rmtree(queue_output_dir, ignore_errors=True)
+            continue
+
         output_dir = resolve_run_output_dir_path(conn, user["id"], user["username"], run_id, row["output_dir"], row["output_zip"], row["output_log_file"], row["module"], row["tool_version"], row["finished_at"])
 
         if output_dir and is_safe_path(OUTPUTS_DIR, output_dir):
@@ -2449,7 +2494,7 @@ async def admin_delete_runs(request: Request):
 
     conn = get_conn()
     rows = conn.execute(
-        "SELECT tr.id, tr.user_id, u.username, tr.module, tr.tool_version, tr.finished_at, tr.output_dir, tr.output_zip, tr.output_log_file FROM task_runs tr JOIN users u ON u.id = tr.user_id WHERE tr.id IN (%s)" % ",".join("?" for _ in run_ids),
+        "SELECT tr.id, tr.user_id, u.username, tr.status, tr.module, tr.tool_version, tr.finished_at, tr.output_dir, tr.output_zip, tr.output_log_file, tr.payload_json FROM task_runs tr JOIN users u ON u.id = tr.user_id WHERE tr.id IN (%s)" % ",".join("?" for _ in run_ids),
         tuple(run_ids),
     ).fetchall()
 
@@ -2457,6 +2502,14 @@ async def admin_delete_runs(request: Request):
         run_id = int(row["id"])
         user_id = int(row["user_id"])
         username = row["username"] or "unknown"
+        run_status = (row["status"] or "").strip().lower()
+
+        if run_status in {"queued", "running", "canceling"}:
+            queue_output_dir = resolve_queue_task_output_dir(row["output_dir"], row["payload_json"])
+            if queue_output_dir:
+                shutil.rmtree(queue_output_dir, ignore_errors=True)
+            continue
+
         output_dir = resolve_run_output_dir_path(conn, user_id, username, run_id, row["output_dir"], row["output_zip"], row["output_log_file"], row["module"], row["tool_version"], row["finished_at"])
 
         if output_dir and is_safe_path(OUTPUTS_DIR, output_dir):
@@ -2913,7 +2966,6 @@ async def release_notes(request: Request, user=Depends(get_current_user)):
     changelog_md = changelog_path.read_text(encoding="utf-8", errors="replace") if changelog_path.exists() else "CHANGELOG.md not found at /app/CHANGELOG.md"
     tool_meta = load_tool_metadata()
     return templates.TemplateResponse("release_notes.html", {"request": request, "tool_meta": tool_meta, "user": user, "changelog_md": changelog_md})
-
 
 
 
