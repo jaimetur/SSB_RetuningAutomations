@@ -161,6 +161,8 @@
           <select id="select_user_runs_combo"><option value="__all__" selected>All Users</option></select>
           <button type="button" id="select_all_runs">Select All</button>
           <button type="button" id="select_none_runs">Select None</button>
+          <button type="button" id="select_running_queued_runs">Select Running/Queued</button>
+          <button type="button" id="select_cancelled_runs">Select Cancelled</button>
           <button type="button" id="select_older_runs">Select Older</button>
           <button type="button" id="select_error_runs">Select Error</button>
           <button type="button" id="delete_selected_runs" class="btn btn-danger danger-anchor">Delete Selected</button>
@@ -210,6 +212,30 @@
 
     <section class="card log-card">
       <div class="log-header">
+        <h2>Database Editor</h2>
+        <div class="log-actions">
+          <label class="inline">
+            <select id="admin_db_table_selector">
+              <option value="" selected>Select Table</option>
+              {% for table_name in editable_tables %}
+                <option value="{{ table_name }}">{{ table_name }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <button type="button" id="admin_db_reload_table" class="btn btn-primary">Refresh table</button>
+          <button type="button" id="admin_db_cancel_changes" class="btn btn-primary">Cancel</button>
+          <button type="button" id="admin_db_update_changes" class="btn btn-danger">Update</button>
+        </div>
+      </div>
+      <div class="table-scroll history-scroll" id="admin_db_editor_wrapper">
+        <table id="admin_db_editor_table">
+          <thead><tr><th>Select Table</th></tr></thead>
+          <tbody><tr><td>Select a table to edit.</td></tr></tbody>
+        </table>
+      </div>
+    </section>
+    <section class="card log-card">
+      <div class="log-header">
         <h2>Executions Logs</h2>
         <div class="log-actions">
           <select id="admin_log_run_selector">
@@ -217,11 +243,11 @@
               <option value="{{ r.id }}" {% if loop.first %}selected{% endif %}>#{{ r.id }} - {{ r.module }} - {{ r.started_at or '—' }}</option>
             {% endfor %}
           </select>
-          <button type="button" id="admin_refresh_log">Refresh</button>
           <label class="checkbox">
             <input type="checkbox" id="admin_execution_log_auto" disabled />
             Auto refresh
           </label>
+          <button type="button" id="admin_refresh_log">Refresh</button>
           <button type="button" id="admin_copy_log">Copy all</button>
           <button type="button" id="admin_copy_selection">Copy selection</button>
           <button type="button" id="toggle_admin_execution_log_panel" class="panel-toggle" aria-label="Collapse execution log panel" title="Collapse/Expand">▾</button>
@@ -239,11 +265,11 @@
             <option value="api">API</option>
             <option value="web-access">Web Access</option>
           </select>
-          <button type="button" id="admin_refresh_system_log">Refresh</button>
           <label class="checkbox">
-            <input type="checkbox" id="admin_system_log_auto" disabled />
+            <input type="checkbox" id="admin_system_log_auto" />
             Auto refresh
           </label>
+          <button type="button" id="admin_refresh_system_log">Refresh</button>
           <button type="button" id="admin_copy_system_log">Copy all</button>
           <button type="button" id="admin_copy_system_selection">Copy selection</button>
           <button type="button" id="admin_delete_system_log" class="btn btn-danger">Delete</button>
@@ -253,29 +279,6 @@
       <pre id="admin_system_log_output" class="log-output">No logs yet.</pre>
     </section>
 
-    <section class="card log-card">
-      <div class="log-header">
-        <h2>Database Editor</h2>
-        <div class="log-actions">
-          <label class="inline">
-            <select id="admin_db_table_selector">
-              {% for table_name in editable_tables %}
-                <option value="{{ table_name }}">{{ table_name }}</option>
-              {% endfor %}
-            </select>
-          </label>
-          <button type="button" id="admin_db_reload_table" class="btn btn-primary">Refresh table</button>
-          <button type="button" id="admin_db_cancel_changes" class="btn btn-primary">Cancel</button>
-          <button type="button" id="admin_db_update_changes" class="btn btn-danger">Update</button>
-        </div>
-      </div>
-      <div class="table-scroll history-scroll" id="admin_db_editor_wrapper">
-        <table id="admin_db_editor_table">
-          <thead><tr><th>Loading…</th></tr></thead>
-          <tbody><tr><td>Select a table to edit.</td></tr></tbody>
-        </table>
-      </div>
-    </section>
 
   </main>
   <script>
@@ -339,6 +342,8 @@
     const selectUserRunsCombo = document.getElementById("select_user_runs_combo");
     const selectAllRunsButton = document.getElementById("select_all_runs");
     const selectNoneRunsButton = document.getElementById("select_none_runs");
+    const selectRunningQueuedRunsButton = document.getElementById("select_running_queued_runs");
+    const selectCancelledRunsButton = document.getElementById("select_cancelled_runs");
     const selectErrorRunsButton = document.getElementById("select_error_runs");
     const deleteSelectedRunsButton = document.getElementById("delete_selected_runs");
     const toggleRunsPanelButton = document.getElementById("toggle_runs_panel");
@@ -475,6 +480,25 @@
     if (selectErrorRunsButton) {
       selectErrorRunsButton.addEventListener("click", selectErrorRuns);
     }
+
+    function selectRunsByStatuses(statuses) {
+      const normalizedStatuses = (statuses || []).map((status) => String(status).toLowerCase());
+      document.querySelectorAll(".run-checkbox").forEach((box) => {
+        const row = box.closest("tr");
+        if (row?.classList.contains("hidden")) return;
+        const statusAttr = (row?.dataset.status || box.dataset.status || "").trim().toLowerCase();
+        if (normalizedStatuses.includes(statusAttr)) box.checked = true;
+      });
+      updateSelectionSizeLabels();
+    }
+
+    selectRunningQueuedRunsButton?.addEventListener("click", () => {
+      selectRunsByStatuses(["running", "queued"]);
+    });
+
+    selectCancelledRunsButton?.addEventListener("click", () => {
+      selectRunsByStatuses(["canceled"]);
+    });
 
     let lastChecked = null;
     document.querySelectorAll(".run-checkbox").forEach((box) => {
@@ -681,7 +705,9 @@
     adminCopyLogButton?.addEventListener("click", () => copyToClipboard(adminLogOutput?.textContent || ""));
     adminCopySelectionButton?.addEventListener("click", () => copyToClipboard(window.getSelection()?.toString() || ""));
 
-    adminSystemLogSource?.addEventListener("change", fetchAdminSystemLog);
+    adminSystemLogSource?.addEventListener("change", () => {
+      fetchAdminSystemLog();
+    });
     adminRefreshSystemLogButton?.addEventListener("click", fetchAdminSystemLog);
     adminCopySystemLogButton?.addEventListener("click", () => copyToClipboard(adminSystemLogOutput?.textContent || ""));
     adminCopySystemSelectionButton?.addEventListener("click", () => copyToClipboard(window.getSelection()?.toString() || ""));
@@ -698,6 +724,7 @@
     let adminDbSnapshot = [];
     let adminDbCurrentPrimaryKeys = [];
     let adminBackgroundRefreshTimer = null;
+    let adminSystemLogRefreshTimer = null;
     let adminHasActiveTasks = false;
 
     function normalizeDbCellValue(value) {
@@ -720,7 +747,7 @@
       adminDbSnapshot = rows.map((row) => ({ ...row }));
 
       if (!columns || columns.length === 0) {
-        adminDbEditorTable.innerHTML = "<thead><tr><th>No columns</th></tr></thead><tbody><tr><td>Table has no columns.</td></tr></tbody>";
+        adminDbEditorTable.innerHTML = "<thead><tr><th>Select Table</th></tr></thead><tbody><tr><td>Select a table to edit.</td></tr></tbody>";
         return;
       }
 
@@ -741,7 +768,10 @@
 
     function loadAdminDbTable() {
       const table = adminDbTableSelector?.value;
-      if (!table) return;
+      if (!table) {
+        renderAdminDbTable([], [], []);
+        return;
+      }
       fetch(`/admin/database/table_data?table=${encodeURIComponent(table)}&_=${Date.now()}`)
         .then((res) => res.json())
         .then((data) => {
@@ -801,8 +831,23 @@
       }
     };
 
+    const clearAdminSystemLogRefreshTimer = () => {
+      if (adminSystemLogRefreshTimer) {
+        clearInterval(adminSystemLogRefreshTimer);
+        adminSystemLogRefreshTimer = null;
+      }
+    };
+
+    const scheduleAdminSystemLogRefresh = () => {
+      clearAdminSystemLogRefreshTimer();
+      if (!adminSystemLogAuto?.checked) return;
+      adminSystemLogRefreshTimer = setInterval(() => {
+        fetchAdminSystemLog();
+      }, 60000);
+    };
+
     const shouldAdminPollBackground = () => {
-      return Boolean(adminExecutionLogAuto?.checked || adminSystemLogAuto?.checked || adminHasActiveTasks);
+      return Boolean(adminExecutionLogAuto?.checked || adminHasActiveTasks);
     };
 
     const scheduleAdminBackgroundRefresh = () => {
@@ -816,7 +861,6 @@
         .then((hasActiveTasks) => {
           adminHasActiveTasks = hasActiveTasks;
           if (adminExecutionLogAuto?.checked) fetchAdminRunLog();
-          if (adminSystemLogAuto?.checked) fetchAdminSystemLog();
         })
         .finally(scheduleAdminBackgroundRefresh);
     }
@@ -828,6 +872,7 @@
 
     adminSystemLogAuto?.addEventListener("change", () => {
       if (adminSystemLogAuto.checked) fetchAdminSystemLog();
+      scheduleAdminSystemLogRefresh();
       scheduleAdminBackgroundRefresh();
     });
 
@@ -869,6 +914,7 @@
     fetchAdminRunLog();
     fetchAdminSystemLog();
     loadAdminDbTable();
+    scheduleAdminSystemLogRefresh();
     runAdminBackgroundRefreshCycle();
 
 

@@ -269,6 +269,8 @@
           <select id="select_user_runs_combo"><option value="{{ user.username }}" selected>{{ user.username }}</option></select>
           <button type="button" id="select_all_runs">Select All</button>
           <button type="button" id="select_none_runs">Select None</button>
+          <button type="button" id="select_running_queued_runs">Select Running/Queued</button>
+          <button type="button" id="select_cancelled_runs">Select Cancelled</button>
           <button type="button" id="select_older_runs">Select Older</button>
           <button type="button" id="select_error_runs">Select Error</button>
           <button type="button" id="stop_selected_runs" class="btn btn-danger danger-anchor">Stop Selected</button>
@@ -366,7 +368,7 @@
             <option value="api">API</option>
           </select>
           <label class="checkbox">
-            <input type="checkbox" id="system_log_auto" disabled />
+            <input type="checkbox" id="system_log_auto" />
             Auto refresh
           </label>
           <button type="button" id="refresh_system_log">Refresh</button>
@@ -405,6 +407,8 @@
     const selectOlderRunsButton = document.getElementById("select_older_runs");
     const selectAllRunsButton = document.getElementById("select_all_runs");
     const selectNoneRunsButton = document.getElementById("select_none_runs");
+    const selectRunningQueuedRunsButton = document.getElementById("select_running_queued_runs");
+    const selectCancelledRunsButton = document.getElementById("select_cancelled_runs");
     const selectErrorRunsButton = document.getElementById("select_error_runs");
     const stopSelectedRunsButton = document.getElementById("stop_selected_runs");
     const deleteSelectedRunsButton = document.getElementById("delete_selected_runs");
@@ -431,6 +435,7 @@
     let runsRefreshPromise = null;
     let hasActiveTasks = false;
     let backgroundRefreshTimer = null;
+    let systemLogRefreshTimer = null;
     const updateNetworkFrequenciesModule = "update-network-frequencies";
     let lastAppliedNetworkFrequenciesRunMarker = "";
     let networkFrequenciesRefreshInFlight = null;
@@ -1433,7 +1438,9 @@
       const selection = window.getSelection();
       if (selection) copyToClipboard(selection.toString());
     });
-    systemLogSource?.addEventListener("change", fetchSystemLog);
+    systemLogSource?.addEventListener("change", () => {
+      fetchSystemLog();
+    });
 
     function getTargetFiltersInput() {
       return freqTargetSelect.value === "cc" ? ccFiltersInput : caFiltersInput;
@@ -1464,6 +1471,25 @@
       });
     }
     selectErrorRunsButton?.addEventListener("click", selectErrorRuns);
+
+    function selectRunsByStatuses(statuses) {
+      const normalizedStatuses = (statuses || []).map((status) => String(status).toLowerCase());
+      document.querySelectorAll(".run-checkbox").forEach((box) => {
+        const row = box.closest("tr");
+        if (row?.classList.contains("hidden")) return;
+        const statusAttr = (row?.dataset.status || box.dataset.status || "").trim().toLowerCase();
+        if (normalizedStatuses.includes(statusAttr)) box.checked = true;
+      });
+      updateSelectionSizeLabels();
+    }
+
+    selectRunningQueuedRunsButton?.addEventListener("click", () => {
+      selectRunsByStatuses(["running", "queued"]);
+    });
+
+    selectCancelledRunsButton?.addEventListener("click", () => {
+      selectRunsByStatuses(["canceled"]);
+    });
 
     let lastChecked = null;
     document.querySelectorAll(".run-checkbox").forEach((box) => {
@@ -1779,6 +1805,7 @@
     refreshLogButton?.addEventListener("click", manualRefreshExecutionLogPanel);
     fetchLogByRun();
     fetchSystemLog();
+    scheduleSystemLogRefresh();
     refreshInputsRepository();
     refreshRunsTable({ updateExecutionLogPanel: false }).finally(() => {
       scheduleBackgroundRefresh();
@@ -1805,8 +1832,23 @@
       }
     };
 
+    const clearSystemLogRefreshTimer = () => {
+      if (systemLogRefreshTimer) {
+        clearInterval(systemLogRefreshTimer);
+        systemLogRefreshTimer = null;
+      }
+    };
+
+    const scheduleSystemLogRefresh = () => {
+      clearSystemLogRefreshTimer();
+      if (!systemLogAuto?.checked) return;
+      systemLogRefreshTimer = setInterval(() => {
+        fetchSystemLog();
+      }, 60000);
+    };
+
     const shouldPollBackground = () => {
-      return Boolean(executionLogAuto?.checked || systemLogAuto?.checked || hasActiveTasks);
+      return Boolean(executionLogAuto?.checked || hasActiveTasks);
     };
 
     const scheduleBackgroundRefresh = () => {
@@ -1817,12 +1859,7 @@
 
     function runBackgroundRefreshCycle() {
       const updateExecutionLogPanel = Boolean(executionLogAuto?.checked);
-      const shouldRefreshSystemLog = Boolean(systemLogAuto?.checked);
-
       refreshRunsTable({ updateExecutionLogPanel })
-        .then(() => {
-          if (shouldRefreshSystemLog) fetchSystemLog();
-        })
         .finally(scheduleBackgroundRefresh);
     }
 
@@ -1854,6 +1891,7 @@
 
     systemLogAuto?.addEventListener("change", () => {
       if (systemLogAuto.checked) fetchSystemLog();
+      scheduleSystemLogRefresh();
       scheduleBackgroundRefresh();
     });
 

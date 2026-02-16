@@ -130,3 +130,12 @@ th,td{border-bottom:1px solid #e3e8ee;padding:.55rem;text-align:left;font-size:.
 .doc-links{display:flex;flex-direction:row;gap:0;flex-wrap:wrap;justify-content:flex-start;margin-top:.25rem}
 .doc-link{flex:0 0 auto;display:flex;align-items:center;gap:.55rem;padding:.65rem .85rem;border-radius:10px;border:1px solid #e3e8ee;background:#ffffff;color:#1b2430;text-decoration:none;font-weight:600}
 .doc-link:hover{background:#f6f9ff}
+
+@media (max-width: 760px){
+  .runs-header,.log-header{align-items:flex-start;flex-direction:column}
+  .runs-actions,.log-actions,.action-row,.inline{width:100%;align-items:stretch;gap:.45rem;flex-wrap:wrap}
+  .runs-actions select,.log-actions select,.action-row select,.inline select{width:100%}
+  .runs-actions button,.log-actions button,.action-row button,.inline button{width:100%;margin:0}
+  .checkbox{width:100%;justify-content:flex-start}
+  .danger-anchor{margin-left:0}
+}
