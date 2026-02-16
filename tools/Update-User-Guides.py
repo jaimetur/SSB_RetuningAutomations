@@ -212,7 +212,7 @@ try {{
     return result.returncode == 0 and pdf_file.exists()
 
 
-def build_docx_from_markdown(md_file: Path, docx_file: Path) -> None:
+def build_docx_from_markdown(md_file: Path, docx_file: Path, version: str) -> None:
     # ------------------- Word-only helpers (subfunctions) ------------------- #
     def markdown_segments(text: str) -> list[tuple[str, bool]]:
         """Return [(segment, is_bold)] for markdown strings with **bold** markers."""
@@ -246,31 +246,60 @@ def build_docx_from_markdown(md_file: Path, docx_file: Path) -> None:
             settings.append(node)
         node.set(qn("w:val"), "true")
 
-    def update_header_date(doc: Document) -> None:
+    def update_header_fields(doc: Document, tool_version: str) -> None:
         today = date.today().isoformat()
 
         def local_name(tag: str) -> str:
             return tag.split("}")[-1]
 
         for section in doc.sections:
-            header_el = section.header._element
-            for sdt in header_el.iter():
-                if local_name(sdt.tag) != "sdt":
-                    continue
+            headers = [section.header, section.first_page_header, section.even_page_header]
+            for header in headers:
+                header_el = header._element
 
-                is_date_alias = False
-                for node in sdt.iter():
-                    if local_name(node.tag) == "alias" and node.get(qn("w:val")) == "Date":
-                        is_date_alias = True
-                        break
+                # Update "Document Number" value (default template value: "PA")
+                for table in header_el.iter():
+                    if local_name(table.tag) != "tbl":
+                        continue
 
-                if not is_date_alias:
-                    continue
+                    rows = [node for node in table if local_name(node.tag) == "tr"]
+                    for row_idx, row in enumerate(rows):
+                        cells = [node for node in row if local_name(node.tag) == "tc"]
+                        for col_idx, cell in enumerate(cells):
+                            cell_text = "".join(node.text or "" for node in cell.iter() if local_name(node.tag) == "t")
+                            if "Document Number" not in cell_text:
+                                continue
 
-                for node in sdt.iter():
-                    if local_name(node.tag) == "t":
-                        node.text = today
-                        break
+                            if row_idx + 1 >= len(rows):
+                                continue
+
+                            next_row_cells = [node for node in rows[row_idx + 1] if local_name(node.tag) == "tc"]
+                            if col_idx >= len(next_row_cells):
+                                continue
+
+                            for node in next_row_cells[col_idx].iter():
+                                if local_name(node.tag) == "t" and (node.text or "").strip() == "PA":
+                                    node.text = tool_version
+                                    break
+                            break
+
+                for sdt in header_el.iter():
+                    if local_name(sdt.tag) != "sdt":
+                        continue
+
+                    is_date_alias = False
+                    for node in sdt.iter():
+                        if local_name(node.tag) == "alias" and node.get(qn("w:val")) == "Date":
+                            is_date_alias = True
+                            break
+
+                    if not is_date_alias:
+                        continue
+
+                    for node in sdt.iter():
+                        if local_name(node.tag) == "t":
+                            node.text = today
+                            break
 
     def find_template_anchor(doc: Document):
         for paragraph in doc.paragraphs:
@@ -405,7 +434,7 @@ def build_docx_from_markdown(md_file: Path, docx_file: Path) -> None:
         i += 1
 
     enable_toc_update_on_open(doc)
-    update_header_date(doc)
+    update_header_fields(doc, version)
     doc.save(docx_file)
 
 
@@ -869,7 +898,7 @@ if __name__ == "__main__":
 
     print(f"▶️ Updating User Guides to new version: {tool_version}...")
     paths = align_help_guides_to_version(tool_version)
-    build_docx_from_markdown(paths["md"], paths["docx"])
+    build_docx_from_markdown(paths["md"], paths["docx"], tool_version)
     build_pptx_summary(paths["md"], paths["pptx"], tool_version)
     if not try_update_docx_fields_and_export_pdf(paths["docx"], paths["pdf"]):
         build_pdf_from_markdown(paths["md"], paths["pdf"])
