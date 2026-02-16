@@ -27,6 +27,7 @@
 
 - #### 🐛 Bug fixes:
   - Fixed the templates_pptx folder.
+  - Fixed resource/template resolution across Docker, source runs (PyCharm), and PyInstaller by making `get_resource_path()` fall back to parent directories (e.g., repo-root `/assets`) when a provided `base_dir` does not contain the requested resource.
   - Fixed panel scrolling and selection size metadata in user/admin menus
 
 - #### 📚 Documentation: 

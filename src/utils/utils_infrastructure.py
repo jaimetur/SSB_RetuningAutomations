@@ -133,7 +133,19 @@ def get_resource_path(relative_path: str, base_dir: Optional[Union[str, os.PathL
     # If caller provides base_dir, it overrides the default base path resolution
     if base_dir is not None:
         base_path = os.fspath(base_dir)
-        return os.path.join(base_path, relative_path)
+
+        # Try base_dir and walk up parents (supports layouts where assets live at repo root but callers pass /src/modules).
+        probe = base_path
+        for _ in range(8):
+            candidate = os.path.join(probe, relative_path)
+            if os.path.exists(candidate):
+                return candidate
+            parent = os.path.dirname(probe)
+            if not parent or parent == probe:
+                break
+            probe = parent
+
+        # Not found under base_dir; fall back to default resolution below.
 
     if getattr(sys, 'frozen', False):
         # First, try next to the executable (your external templates_pptx folder)
@@ -147,9 +159,17 @@ def get_resource_path(relative_path: str, base_dir: Optional[Union[str, os.PathL
     else:
         # Source: go one level up from src/utils -> src
         utils_dir = os.path.dirname(os.path.abspath(__file__))    # .../src/utils
-        base_path = os.path.dirname(utils_dir)                    # .../src
+        src_dir = os.path.dirname(utils_dir)                      # .../src
+        project_root = os.path.dirname(src_dir)                   # repo root
+
+        candidate = os.path.join(project_root, relative_path)
+        if os.path.exists(candidate):
+            return candidate
+
+        base_path = src_dir
 
     return os.path.join(base_path, relative_path)
+
 
 
 # ============================== LOGGING SYSTEM ============================== #
