@@ -2255,6 +2255,33 @@ def resolve_run_log_path(conn: sqlite3.Connection, user_id: int, username: str, 
     return best
 
 
+def resolve_run_output_dir_path(conn: sqlite3.Connection, user_id: int, username: str, run_id: int, stored_output_dir: str | None, stored_output_zip: str | None, stored_output_log_file: str | None, module: str | None, tool_version: str | None, finished_at_raw: str | None) -> Path | None:
+    """Best-effort locate the output directory for a run even if output folders were renamed manually."""
+    out_dir = Path(stored_output_dir) if stored_output_dir else None
+    if out_dir and out_dir.exists() and out_dir.is_dir() and is_safe_path(OUTPUTS_DIR, out_dir):
+        return out_dir
+
+    zip_path = resolve_run_zip_path(conn, user_id, username, run_id, stored_output_zip, stored_output_dir, module, tool_version, finished_at_raw)
+    if zip_path and zip_path.exists() and is_safe_path(OUTPUTS_DIR, zip_path):
+        out_dir = zip_path.parent
+
+    if not (out_dir and out_dir.exists() and out_dir.is_dir() and is_safe_path(OUTPUTS_DIR, out_dir)):
+        log_path = resolve_run_log_path(conn, user_id, username, run_id, stored_output_log_file, stored_output_dir, module, tool_version, finished_at_raw)
+        if log_path and log_path.exists() and is_safe_path(OUTPUTS_DIR, log_path):
+            out_dir = log_path.parent
+
+    if out_dir and out_dir.exists() and out_dir.is_dir() and is_safe_path(OUTPUTS_DIR, out_dir):
+        try:
+            resolved_dir = str(out_dir.resolve())
+        except OSError:
+            resolved_dir = str(out_dir)
+        conn.execute("UPDATE task_runs SET output_dir = ? WHERE id = ? AND user_id = ?", (resolved_dir, run_id, user_id))
+        conn.commit()
+        return out_dir
+
+    return None
+
+
 @app.get("/runs/{run_id}/download", tags=["Runs & Logs"])
 def download_run_output(request: Request, run_id: int):
     try:
@@ -2360,27 +2387,27 @@ async def delete_runs(request: Request):
 
     conn = get_conn()
     rows = conn.execute(
-        "SELECT id, input_dir, output_dir, output_zip, output_log_file FROM task_runs WHERE user_id = ? AND id IN (%s)"
-        % ",".join("?" for _ in run_ids),
+        "SELECT id, module, tool_version, finished_at, output_dir, output_zip, output_log_file FROM task_runs WHERE user_id = ? AND id IN (%s)" % ",".join("?" for _ in run_ids),
         (user["id"], *run_ids),
     ).fetchall()
 
     for row in rows:
-        output_dir = Path(row["output_dir"]) if row["output_dir"] else None
-        output_zip = Path(row["output_zip"]) if row["output_zip"] else None
-        output_log = Path(row["output_log_file"]) if row["output_log_file"] else None
+        run_id = int(row["id"])
+        output_dir = resolve_run_output_dir_path(conn, user["id"], user["username"], run_id, row["output_dir"], row["output_zip"], row["output_log_file"], row["module"], row["tool_version"], row["finished_at"])
 
         if output_dir and is_safe_path(OUTPUTS_DIR, output_dir):
             shutil.rmtree(output_dir, ignore_errors=True)
+            continue
+
+        output_zip = resolve_run_zip_path(conn, user["id"], user["username"], run_id, row["output_zip"], row["output_dir"], row["module"], row["tool_version"], row["finished_at"])
+        output_log = resolve_run_log_path(conn, user["id"], user["username"], run_id, row["output_log_file"], row["output_dir"], row["module"], row["tool_version"], row["finished_at"])
+
         if output_zip and output_zip.is_file() and is_safe_path(OUTPUTS_DIR, output_zip):
             output_zip.unlink(missing_ok=True)
         if output_log and output_log.is_file() and is_safe_path(OUTPUTS_DIR, output_log):
             output_log.unlink(missing_ok=True)
 
-    conn.execute(
-        "DELETE FROM task_runs WHERE user_id = ? AND id IN (%s)" % ",".join("?" for _ in run_ids),
-        (user["id"], *run_ids),
-    )
+    conn.execute("DELETE FROM task_runs WHERE user_id = ? AND id IN (%s)" % ",".join("?" for _ in run_ids), (user["id"], *run_ids))
     conn.commit()
     conn.close()
 
@@ -2402,27 +2429,29 @@ async def admin_delete_runs(request: Request):
 
     conn = get_conn()
     rows = conn.execute(
-        "SELECT id, input_dir, output_dir, output_zip, output_log_file FROM task_runs WHERE id IN (%s)"
-        % ",".join("?" for _ in run_ids),
+        "SELECT tr.id, tr.user_id, u.username, tr.module, tr.tool_version, tr.finished_at, tr.output_dir, tr.output_zip, tr.output_log_file FROM task_runs tr JOIN users u ON u.id = tr.user_id WHERE tr.id IN (%s)" % ",".join("?" for _ in run_ids),
         tuple(run_ids),
     ).fetchall()
 
     for row in rows:
-        output_dir = Path(row["output_dir"]) if row["output_dir"] else None
-        output_zip = Path(row["output_zip"]) if row["output_zip"] else None
-        output_log = Path(row["output_log_file"]) if row["output_log_file"] else None
+        run_id = int(row["id"])
+        user_id = int(row["user_id"])
+        username = row["username"] or "unknown"
+        output_dir = resolve_run_output_dir_path(conn, user_id, username, run_id, row["output_dir"], row["output_zip"], row["output_log_file"], row["module"], row["tool_version"], row["finished_at"])
 
         if output_dir and is_safe_path(OUTPUTS_DIR, output_dir):
             shutil.rmtree(output_dir, ignore_errors=True)
+            continue
+
+        output_zip = resolve_run_zip_path(conn, user_id, username, run_id, row["output_zip"], row["output_dir"], row["module"], row["tool_version"], row["finished_at"])
+        output_log = resolve_run_log_path(conn, user_id, username, run_id, row["output_log_file"], row["output_dir"], row["module"], row["tool_version"], row["finished_at"])
+
         if output_zip and output_zip.is_file() and is_safe_path(OUTPUTS_DIR, output_zip):
             output_zip.unlink(missing_ok=True)
         if output_log and output_log.is_file() and is_safe_path(OUTPUTS_DIR, output_log):
             output_log.unlink(missing_ok=True)
 
-    conn.execute(
-        "DELETE FROM task_runs WHERE id IN (%s)" % ",".join("?" for _ in run_ids),
-        tuple(run_ids),
-    )
+    conn.execute("DELETE FROM task_runs WHERE id IN (%s)" % ",".join("?" for _ in run_ids), tuple(run_ids))
     conn.commit()
     conn.close()
 

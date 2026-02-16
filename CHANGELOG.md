@@ -13,6 +13,7 @@
   - Added admin DB backup import/export panel and update changelog.
   - Added MeContext workflow and priority columns for ConfigurationAudit.
   - Auto Fix Download links on Web Interface for “Download Zip” and “Download Log” links broken after manual output folder renames by adding best-effort resolvers that search the user outputs tree, repair missing output_zip/output_log_file (and output_dir) paths in SQLite, and reuse the updated paths for subsequent downloads.
+  - Made “Delete Execution” (user and admin panels) self-healing after manual output folder renames by resolving missing output paths (dir/zip/log), updating task_runs with repaired locations, and deleting the actual files to prevent orphaned outputs.
 
 - #### 🚀 Enhancements:
   - Moved documentation panels to the end and update label text.
