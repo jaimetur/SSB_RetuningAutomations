@@ -161,11 +161,15 @@
           <select id="select_user_runs_combo"><option value="__all__" selected>All Users</option></select>
           <button type="button" id="select_all_runs">Select All</button>
           <button type="button" id="select_none_runs">Select None</button>
-          <button type="button" id="select_running_queued_runs">Select Running/Queued</button>
-          <button type="button" id="select_cancelled_runs">Select Cancelled</button>
-          <button type="button" id="select_older_runs">Select Older</button>
-          <button type="button" id="select_error_runs">Select Error</button>
-          <button type="button" id="delete_selected_runs" class="btn btn-danger danger-anchor">Delete Selected</button>
+          <select id="runs_bulk_select_action" aria-label="Bulk run selection">
+            <option value="" selected>Select</option>
+            <option value="running">Select Running</option>
+            <option value="queued">Select Queued</option>
+            <option value="error">Select Error</option>
+            <option value="canceled">Select Cancelled</option>
+            <option value="older">Select Older</option>
+          </select>
+          <button type="button" id="delete_selected_runs" class="btn btn-danger">Delete Selected</button>
           <button type="button" id="toggle_runs_panel" class="panel-toggle" aria-label="Collapse runs panel" title="Collapse/Expand">▾</button>
         </div>
       </div>
@@ -338,13 +342,10 @@
       });
     });
 
-    const selectOlderRunsButton = document.getElementById("select_older_runs");
+    const runsBulkSelectAction = document.getElementById("runs_bulk_select_action");
     const selectUserRunsCombo = document.getElementById("select_user_runs_combo");
     const selectAllRunsButton = document.getElementById("select_all_runs");
     const selectNoneRunsButton = document.getElementById("select_none_runs");
-    const selectRunningQueuedRunsButton = document.getElementById("select_running_queued_runs");
-    const selectCancelledRunsButton = document.getElementById("select_cancelled_runs");
-    const selectErrorRunsButton = document.getElementById("select_error_runs");
     const deleteSelectedRunsButton = document.getElementById("delete_selected_runs");
     const toggleRunsPanelButton = document.getElementById("toggle_runs_panel");
     const runsTable = document.getElementById("runs_panel_table");
@@ -477,10 +478,6 @@
       });
     }
 
-    if (selectErrorRunsButton) {
-      selectErrorRunsButton.addEventListener("click", selectErrorRuns);
-    }
-
     function selectRunsByStatuses(statuses) {
       const normalizedStatuses = (statuses || []).map((status) => String(status).toLowerCase());
       document.querySelectorAll(".run-checkbox").forEach((box) => {
@@ -492,12 +489,22 @@
       updateSelectionSizeLabels();
     }
 
-    selectRunningQueuedRunsButton?.addEventListener("click", () => {
-      selectRunsByStatuses(["running", "queued"]);
-    });
-
-    selectCancelledRunsButton?.addEventListener("click", () => {
-      selectRunsByStatuses(["canceled"]);
+    runsBulkSelectAction?.addEventListener("change", () => {
+      const action = runsBulkSelectAction.value;
+      if (action === "running") {
+        selectRunsByStatuses(["running"]);
+      } else if (action === "queued") {
+        selectRunsByStatuses(["queued"]);
+      } else if (action === "error") {
+        selectErrorRuns();
+        updateSelectionSizeLabels();
+      } else if (action === "canceled") {
+        selectRunsByStatuses(["canceled"]);
+      } else if (action === "older") {
+        const picker = document.getElementById("older_date_picker");
+        picker?.showPicker();
+      }
+      runsBulkSelectAction.value = "";
     });
 
     let lastChecked = null;
@@ -516,15 +523,6 @@
         }
       });
     });
-
-    if (selectOlderRunsButton) {
-      selectOlderRunsButton.addEventListener("click", () => {
-        const picker = document.getElementById("older_date_picker");
-        if (picker) {
-          picker.showPicker();
-        }
-      });
-    }
 
     selectUserRunsCombo?.addEventListener("change", () => { applyScopeFilter(selectUserRunsCombo, "#runs_panel_table", 2); updateSelectionSizeLabels(); });
     selectAllRunsButton?.addEventListener("click", () => toggleVisibleCheckboxes("#runs_panel_table", ".run-checkbox", true));
