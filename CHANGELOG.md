@@ -10,11 +10,11 @@
 - #### 🚨 Breaking Changes:
 
 - #### 🌟 New Features:
-  - Added admin DB backup import/export panel and update changelog.
-  - Added MeContext workflow and priority columns for ConfigurationAudit.
+  - Added admin `Database Backup` import/export panel and update changelog.
+  - Added `Database Eeditor` panel into Administrator section on Web Interface.
+  - Added MeContext workflow and priority columns for `ConfigurationAudit`.
   - Auto Fix Download links on Web Interface for “Download Zip” and “Download Log” links broken after manual output folder renames by adding best-effort resolvers that search the user outputs tree, repair missing output_zip/output_log_file (and output_dir) paths in SQLite, and reuse the updated paths for subsequent downloads.
   - Made “Delete Execution” (user and admin panels) self-healing after manual output folder renames by resolving missing output paths (dir/zip/log), updating task_runs with repaired locations, and deleting the actual files to prevent orphaned outputs.
-  - Added DB editor panel into Administrator section on Web Interface.
 
 - #### 🚀 Enhancements:
   - Moved documentation panels to the end and update label text.
@@ -26,6 +26,10 @@
   - Included Documentation Links on Web Interface and adjusted panels styles.
   - Adjusted max-width to 1480px on Web Interface panels.
   - Adjusted web refresh polling.
+  - Added `Release Notes` button to the Web Interface.
+  - Added user filtering on `Inputs Repository` panel and Executions Logs panel.
+  - Disabled auto-refresh by default on `Executions Logs` panel and System Logs panel. 
+  - Added logic to enable auto-refresh on `Executions Logs` panel and System Logs panel only when any task is Running or Queued.
 
 - #### 🐛 Bug fixes:
   - Fixed the templates_pptx folder.
@@ -33,7 +37,8 @@
   - Fixed panel scrolling and selection size metadata in user/admin menus
 
 - #### 📚 Documentation: 
-  - Improved docs links and admin/user history panel actions.
+  - PDF User Guide is now also automatically generated from Markdown files.
+  - Added Documentation Links on Web Interface.
   - Updated README and related docs with all the latest changes.
 
 ---
