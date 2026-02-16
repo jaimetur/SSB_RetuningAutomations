@@ -19,6 +19,7 @@
   - Fix a bug where deleting runs in Queued or Running state could remove output folders belonging to other completed runs due to generic fallback output resolution.
 
 - #### 📚 Documentation: 
+  - Enriched Technical User Guides.
   - Auto-Update `Document Number` and `Revision` in the header of User Guides (word, ppt and pdf formats).
   - Updated README and related docs with all the latest changes.
 
