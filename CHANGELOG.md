@@ -5,7 +5,7 @@
 ---
 
 ## Release: v0.7.3
-### Release Date: 2026-02-17
+### Release Date: 2026-02-16
   
 - #### 🚨 Breaking Changes:
 
@@ -19,7 +19,7 @@
   - Fix a bug where deleting runs in Queued or Running state could remove output folders belonging to other completed runs due to generic fallback output resolution.
 
 - #### 📚 Documentation: 
-  - Auto-Update Document Number in the header of User Guides (word, ppt and pdf formats).
+  - Auto-Update `Document Number` and `Revision` in the header of User Guides (word, ppt and pdf formats).
   - Updated README and related docs with all the latest changes.
 
 ---
