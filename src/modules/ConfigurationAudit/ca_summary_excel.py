@@ -580,8 +580,6 @@ def build_summary_audit(
 
     preferred_cols = ["Category", "SubCategory", "Metric", "Value", "ExtraInfo", "Tips"]
     df = df[[c for c in preferred_cols if c in df.columns] + [c for c in df.columns if c not in preferred_cols]]
-
-
     # Tips column (requested in SummaryAudit slide updates)
     tips_by_metric: Dict[str, str] = {
         "Total unique nodes (from MeContext table)": "MeContext table to create lists of sites for implementation",
@@ -597,15 +595,46 @@ def build_summary_audit(
 
         f"NR nodes with the old N77 SSB ({n77_ssb_pre}) and the new SSB ({n77_ssb_post}) (from NRFreqRelation table)": "Need to run Step1 on this nodes",
         f"NR nodes with the old N77 SSB ({n77_ssb_pre}) but without new N77 SSB ({n77_ssb_post}) (from NRFreqRelation table)": "Nodes with any relations Step1 pending",
-        f"NR nodes with the old N77 SSB ({n77_ssb_pre}) and the new SSB ({n77_ssb_post}) NRFreqRelation pointing to same mcpcPCellNrFreqRelProfileRef containing old SSB name (from NRFreqRelation table)": "Need to review Step2b execution",
+        f"NR nodes with the old N77 SSB ({n77_ssb_pre}) and the new SSB ({n77_ssb_post}) NRFreqRelation pointing to same mcpcPCellNrFreqRelProfileRef containing old SSB name (from NRFreqRelation table)": "Need to run Step1 on this nodes",
         f"NR nodes with the new N77 SSB ({n77_ssb_post}) NRFreqRelation pointing to mcpcPCellNrFreqRelProfileRef containing new SSB name (cloned) or Other (from NRFreqRelation table)": "Nodes with Step1 completed",
+        f"NR nodes with the new N77 SSB ({n77_ssb_post}) and NRFreqRelation reference to McpcPCellNrFreqRelProfile with old SSB before '_'": "Need to review Step2b execution",
         "NR nodes with mismatching params (cell-level) between old N77 SSB": "Need to review. Step1 run could solve most cases",
 
-        "LTE nodes with GUtranFreqRelationId to new N77 SSB": "Need to review and fix with Step1 or Step2c",
-        "LTE nodes with same endBMeasPriority in old N77 SSB": "Need to review and fix with Step1 or Step2c",
+        "External cells to old N77 SSB": "PN and DAS might have no External relations defined",
+        "External cells to new N77 SSB": "PN and DAS might have no External relations defined",
+        "LTE nodes with old N77 SSB": "Need to run Step1 on this nodes",
+        "LTE nodes with GUtranFreqRelationId": "Nodes with any relations Step1 pending",
+        "LTE nodes with auto-created GUtranFreqRelationId": "Not an issue, unless other inconsistencies raised",
+        "LTE nodes with same endcB1MeasPriority in old N77 SSB": "Need to review and fix with Step1 or Step2c",
         "LTE nodes with mismatching params between GUtranFreqRelationId": "Parameters qQualMin, qRxLevMin, threshXHigh agreed to set to fixed values on new freqs and inconsistencies should be reported to VZ. Other inconsistent parameters would require review for further actions.",
+        "LTE cellRelations to old N77 SSB": "Post Step2 some relations pointing to other Mkts could be on old SSB. See details in table",
+        "External cells to old N77 SSB with serviceStatus=OUT_OF_SERVICE": "Externals with unavailable TermPoints are not operational for ENDC and might not be updated immediately after Step2",
+        "External cells to new N77 SSB with serviceStatus=OUT_OF_SERVICE": "Externals with unavailable TermPoints are not operational for ENDC and might not be updated immediately after Step2",
 
+        "LTE to NR TermPoints with administrativeState=LOCKED": "Helpful to troubleshoot External updates",
+        "LTE to NR TermPoints with operationalState=DISABLED": "Helpful to troubleshoot External updates",
+        "LTE to NR TermPoints with usedIpAddress=0.0.0.0/::": "Helpful to troubleshoot External updates",
+        "NR to LTE TermPoints with administrativeState=LOCKED": "Helpful to troubleshoot External updates",
+        "NR to LTE TermPoints with operationalState=DISABLED": "Helpful to troubleshoot External updates",
+
+        "Nodes with gUtranFreqRef containing the old N77 SSB": "Need to run Step2c on this nodes",
+        "Nodes with gUtranFreqRef containing the new N77 SSB": "Nodes with Step2c completed",
+        "Nodes with mandatoryGUtranFreqRef containing the old N77 SSB": "Need to run Step2c on this nodes",
+        "Nodes with mandatoryGUtranFreqRef containing the new N77 SSB": "Nodes with Step2c completed",
+        "Nodes with gUtranFreqRef not containing N77 SSBs": "Need to run Step1 on this nodes",
         "Nodes with mandatoryGUtranFreqRef not empty and not containing N77 SSBs": "These nodes must be checked in preparation phase and confirm if any special action needed",
+
+        "LTE nodes with the old N77 SSB": "Need to run Step1 on this nodes",
+        "LTE nodes with both, the old N77 SSB": "Nodes with Step1 completed",
+        "NR nodes with RATFreqPrioId different from 'fwa'/'publicsafety' in N77 band": "These nodes must be checked in preparation phase and confirm if any special action needed",
+
+        "NR nodes with NRFrequency definitions at limit 64": "These nodes must be checked in preparation phase and confirm if any special action needed",
+        "NR cells with NRFreqRelation count at limit 16": "These nodes must be checked in preparation phase and confirm if any special action needed",
+        "LTE nodes with GUtranSyncSignalFrequency definitions at limit 24": "These nodes must be checked in preparation phase and confirm if any special action needed",
+        "LTE cells with McpcPCellNrFreqRelProfileUeCfg definitions at limit 3": "These nodes must be checked in preparation phase and confirm if any special action needed",
+
+        "Profiles Inconsistencies": "Need to review profile consistency before/after retune",
+        "Profiles Discrepancies": "Need to review profile consistency before/after retune",
     }
 
     if not df.empty:
