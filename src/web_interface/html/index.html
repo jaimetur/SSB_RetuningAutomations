@@ -212,7 +212,9 @@
           <span class="runs-total" id="inputs_total_size">Total size: {{ inputs_total_size }} · Selected size: 0.00 MB</span>
         </div>
         <div class="runs-actions">
-          <select id="select_user_inputs_combo"><option value="__none__" selected>None</option><option value="__all__">All</option></select>
+          <select id="select_user_inputs_combo"><option value="__all__" selected>All</option></select>
+          <button type="button" id="select_all_inputs">Select All</button>
+          <button type="button" id="select_none_inputs">Select None</button>
           <button type="button" id="select_older_inputs">Select Older</button>
           <button type="button" id="send_selected_inputs" class="btn btn-success">Send to Input</button>
           <button type="button" id="delete_selected_inputs" class="btn btn-danger danger-anchor">Delete Selected</button>
@@ -264,7 +266,9 @@
           <span class="runs-total" id="runs_total_size">Total size: {{ total_runs_size }} · Selected size: 0.00 MB</span>
         </div>
         <div class="runs-actions">
-          <select id="select_user_runs_combo"><option value="__none__" selected>None</option><option value="__all__">All</option></select>
+          <select id="select_user_runs_combo"><option value="__all__" selected>All</option></select>
+          <button type="button" id="select_all_runs">Select All</button>
+          <button type="button" id="select_none_runs">Select None</button>
           <button type="button" id="select_older_runs">Select Older</button>
           <button type="button" id="select_error_runs">Select Error</button>
           <button type="button" id="stop_selected_runs" class="btn btn-danger danger-anchor">Stop Selected</button>
@@ -340,7 +344,7 @@
             {% endfor %}
           </select>
           <label class="checkbox">
-            <input type="checkbox" id="execution_log_auto" checked />
+            <input type="checkbox" id="execution_log_auto" disabled />
             Auto refresh
           </label>
           <button type="button" id="refresh_log">Refresh</button>
@@ -362,7 +366,7 @@
             <option value="api">API</option>
           </select>
           <label class="checkbox">
-            <input type="checkbox" id="system_log_auto" />
+            <input type="checkbox" id="system_log_auto" disabled />
             Auto refresh
           </label>
           <button type="button" id="refresh_system_log">Refresh</button>
@@ -399,6 +403,8 @@
     const configPicker = document.getElementById("config_picker");
     const selectUserRunsCombo = document.getElementById("select_user_runs_combo");
     const selectOlderRunsButton = document.getElementById("select_older_runs");
+    const selectAllRunsButton = document.getElementById("select_all_runs");
+    const selectNoneRunsButton = document.getElementById("select_none_runs");
     const selectErrorRunsButton = document.getElementById("select_error_runs");
     const stopSelectedRunsButton = document.getElementById("stop_selected_runs");
     const deleteSelectedRunsButton = document.getElementById("delete_selected_runs");
@@ -414,6 +420,8 @@
     const toggleSystemLogPanelButton = document.getElementById("toggle_system_log_panel");
     const selectOlderInputsButton = document.getElementById("select_older_inputs");
     const selectUserInputsCombo = document.getElementById("select_user_inputs_combo");
+    const selectAllInputsButton = document.getElementById("select_all_inputs");
+    const selectNoneInputsButton = document.getElementById("select_none_inputs");
     const sendSelectedInputsButton = document.getElementById("send_selected_inputs");
     const deleteSelectedInputsButton = document.getElementById("delete_selected_inputs");
     const olderInputDatePicker = document.getElementById("older_input_date_picker");
@@ -616,6 +624,7 @@
 
           applyCurrentOrDefaultSort("#inputs_panel_table table");
           populateInputScopeSelector();
+          applyScopeFilter("#inputs_panel_table", (row) => row?.cells?.[2]?.textContent?.trim() || "", selectUserInputsCombo?.value);
           updateSelectionSizeLabels();
         })
         .catch(() => {});
@@ -625,19 +634,27 @@
       if (!combo) return;
       const previous = combo.value;
       const uniqueUsers = Array.from(new Set(users.filter((value) => value && value !== "—"))).sort((a, b) => a.localeCompare(b));
-      combo.innerHTML = '<option value="__none__">None</option><option value="__all__">All</option>' +
+      combo.innerHTML = '<option value="__all__">All</option>' +
         uniqueUsers.map((user) => `<option value="${escapeHtml(user)}">${escapeHtml(user)}</option>`).join("");
-      combo.value = uniqueUsers.includes(previous) || ["__all__", "__none__"].includes(previous) ? previous : "__none__";
+      combo.value = uniqueUsers.includes(previous) || previous === "__all__" ? previous : "__all__";
     }
 
-    function applyScopeSelection(tableSelector, checkboxSelector, getRowUser, selectedValue) {
-      const mode = selectedValue || "__none__";
-      document.querySelectorAll(`${tableSelector} tbody ${checkboxSelector}`).forEach((box) => {
-        if (mode === "__all__") { box.checked = true; return; }
-        if (mode === "__none__") { box.checked = false; return; }
-        const row = box.closest("tr");
-        box.checked = getRowUser(row) === mode;
+    function applyScopeFilter(tableSelector, getRowUser, selectedValue) {
+      const mode = selectedValue || "__all__";
+      document.querySelectorAll(`${tableSelector} tbody tr`).forEach((row) => {
+        const rowUser = getRowUser(row);
+        const shouldShow = mode === "__all__" || rowUser === mode;
+        row.classList.toggle("hidden", !shouldShow);
       });
+    }
+
+    function toggleVisibleCheckboxes(tableSelector, checkboxSelector, checked) {
+      document.querySelectorAll(`${tableSelector} tbody tr`).forEach((row) => {
+        if (row.classList.contains("hidden")) return;
+        const box = row.querySelector(checkboxSelector);
+        if (box) box.checked = checked;
+      });
+      updateSelectionSizeLabels();
     }
 
     function parseSizeMb(value) {
@@ -1134,6 +1151,8 @@
 
           applyCurrentOrDefaultSort("#runs_panel_table table");
           populateRunScopeSelector();
+          applyScopeFilter("#runs_panel_table", (row) => row?.dataset?.runUser || currentUsername, selectUserRunsCombo?.value);
+          updateExecutionAutoRefreshAvailability(activeTasksFound);
           updateSelectionSizeLabels();
           return { hasActiveTasks: activeTasksFound };
         })
@@ -1315,8 +1334,16 @@
     });
 
     selectUserRunsCombo?.addEventListener("change", () => {
-      applyScopeSelection("#runs_panel_table", ".run-checkbox", (row) => row?.dataset?.runUser || currentUsername, selectUserRunsCombo.value);
+      applyScopeFilter("#runs_panel_table", (row) => row?.dataset?.runUser || currentUsername, selectUserRunsCombo.value);
       updateSelectionSizeLabels();
+    });
+
+    selectAllRunsButton?.addEventListener("click", () => {
+      toggleVisibleCheckboxes("#runs_panel_table", ".run-checkbox", true);
+    });
+
+    selectNoneRunsButton?.addEventListener("click", () => {
+      toggleVisibleCheckboxes("#runs_panel_table", ".run-checkbox", false);
     });
 
     const olderDatePicker = document.getElementById("older_date_picker");
@@ -1409,8 +1436,16 @@
     selectOlderInputsButton?.addEventListener("click", () => olderInputDatePicker?.showPicker());
 
     selectUserInputsCombo?.addEventListener("change", () => {
-      applyScopeSelection("#inputs_panel_table", ".input-checkbox", (row) => row?.cells?.[2]?.textContent?.trim() || "", selectUserInputsCombo.value);
+      applyScopeFilter("#inputs_panel_table", (row) => row?.cells?.[2]?.textContent?.trim() || "", selectUserInputsCombo.value);
       updateSelectionSizeLabels();
+    });
+
+    selectAllInputsButton?.addEventListener("click", () => {
+      toggleVisibleCheckboxes("#inputs_panel_table", ".input-checkbox", true);
+    });
+
+    selectNoneInputsButton?.addEventListener("click", () => {
+      toggleVisibleCheckboxes("#inputs_panel_table", ".input-checkbox", false);
     });
 
     olderInputDatePicker?.addEventListener("change", () => {
@@ -1607,8 +1642,8 @@
     if (inputsTotalSizeLabel) inputsTotalSizeLabel.dataset.totalSize = "{{ inputs_total_size }}";
     if (runsTotalSizeLabel) runsTotalSizeLabel.dataset.totalSize = "{{ total_runs_size }}";
 
-    applyScopeSelection("#inputs_panel_table", ".input-checkbox", (row) => row?.cells?.[2]?.textContent?.trim() || "", "__none__");
-    applyScopeSelection("#runs_panel_table", ".run-checkbox", (row) => row?.dataset?.runUser || currentUsername, "__none__");
+    applyScopeFilter("#inputs_panel_table", (row) => row?.cells?.[2]?.textContent?.trim() || "", selectUserInputsCombo?.value);
+    applyScopeFilter("#runs_panel_table", (row) => row?.dataset?.runUser || currentUsername, selectUserRunsCombo?.value);
 
     document.addEventListener("change", (event) => {
       const target = event.target;
@@ -1642,6 +1677,17 @@
           if (shouldRefreshSystemLog) fetchSystemLog();
         })
         .finally(scheduleBackgroundRefresh);
+    }
+
+    function updateExecutionAutoRefreshAvailability(hasActive) {
+      if (!executionLogAuto) return;
+      executionLogAuto.disabled = !hasActive;
+      if (!hasActive) executionLogAuto.checked = false;
+      if (hasActive && !executionLogAuto.checked) {
+        executionLogAuto.checked = true;
+        fetchLogByRun();
+      }
+      scheduleBackgroundRefresh();
     }
 
     executionLogAuto?.addEventListener("change", () => {
