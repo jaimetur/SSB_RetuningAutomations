@@ -20,7 +20,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, File, Form, Request, UploadFile
+from fastapi import FastAPI, File, Form, Request, UploadFile, Depends
 from fastapi.openapi.utils import get_openapi
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -2904,3 +2904,19 @@ def admin_delete_user(request: Request, user_id: int):
     shutil.rmtree(dirs["outputs"], ignore_errors=True)
 
     return RedirectResponse("/admin", status_code=302)
+
+
+@app.get("/release-notes", response_class=HTMLResponse)
+async def release_notes(request: Request, user=Depends(get_current_user)):
+    # Serve CHANGELOG.md from the repo mounted at /app and render it client-side
+    changelog_path = Path("/app/CHANGELOG.md")
+    changelog_md = changelog_path.read_text(encoding="utf-8", errors="replace") if changelog_path.exists() else "CHANGELOG.md not found at /app/CHANGELOG.md"
+    tool_meta = load_tool_metadata()
+    return templates.TemplateResponse("release_notes.html", {"request": request, "tool_meta": tool_meta, "user": user, "changelog_md": changelog_md})
+
+
+
+
+
+
+

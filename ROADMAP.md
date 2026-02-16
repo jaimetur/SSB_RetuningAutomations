@@ -4,14 +4,12 @@
 
 ---
 
-## Release: v0.6.0 
+## Release: v1.0.0
 
-- ### TODO:
-  - #### 🌟 New Features:
-    - Create logic for Module '5. Final Clean-Up'
-    - Generate output commands to run clean-up
+- ✅ Stable Production Release
+- 🌟 New Features:
+  - Create logic for Module '5. Final Clean-Up'
+  - Generate output commands to run clean-up
 
-  - #### 🚀 Enhancements:
-    - Review and test Command Line Interface (CLI) ussage with all different use cases
 
     
