@@ -35,24 +35,6 @@
       </form>
     </section>
 
-    <section class="card">
-      <h2>Database Backup</h2>
-      <div class="db-backup-actions">
-        <form method="get" action="/admin/database/export" class="inline">
-          <button type="submit" class="btn btn-primary">Export DB Backup</button>
-        </form>
-        <form method="post" action="/admin/database/import" enctype="multipart/form-data" class="inline db-backup-import-form" id="db_backup_import_form" novalidate>
-          <button type="submit" class="btn btn-danger">Import DB Backup</button>
-          <div class="db-backup-file-picker">
-            <input type="file" name="backup_file" id="db_backup_file_input" accept=".db,.sqlite,.sqlite3" />
-            <button type="button" class="btn btn-primary" id="db_backup_pick_file">Select file</button>
-            <span id="db_backup_file_name" class="db-backup-file-name">No file selected</span>
-          </div>
-          <small class="db-backup-file-help">Choose a file.</small>
-        </form>
-      </div>
-      <p class="db-backup-warning"><small>Import replaces the current database file after basic validation.</small></p>
-    </section>
 
     <section class="card">
       <h2>Create user</h2>
@@ -222,6 +204,25 @@
       </div>
     </section>
 
+
+    <section class="card">
+      <h2>Database Backup</h2>
+      <div class="db-backup-actions">
+        <form method="get" action="/admin/database/export" class="inline">
+          <button type="submit" class="btn btn-primary">Export DB Backup</button>
+        </form>
+        <form method="post" action="/admin/database/import" enctype="multipart/form-data" class="inline db-backup-import-form" id="db_backup_import_form" novalidate>
+          <button type="submit" class="btn btn-danger">Import DB Backup</button>
+          <div class="db-backup-file-picker">
+            <input type="file" name="backup_file" id="db_backup_file_input" accept=".db,.sqlite,.sqlite3" />
+            <button type="button" class="btn btn-primary" id="db_backup_pick_file">Select file</button>
+            <span id="db_backup_file_name" class="db-backup-file-name">No file selected</span>
+          </div>
+          <small class="db-backup-file-help">Choose a file.</small>
+        </form>
+      </div>
+      <p class="db-backup-warning"><small>Import replaces the current database file after basic validation.</small></p>
+    </section>
 
     <section class="card log-card">
       <div class="log-header">
