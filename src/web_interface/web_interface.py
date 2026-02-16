@@ -1020,7 +1020,7 @@ def run_queued_task(task_row: sqlite3.Row) -> None:
         outputs_dir.mkdir(parents=True, exist_ok=True)
         task_name_component = sanitize_component(detect_task_name_from_input(input_dir_value))
         module_prefix = sanitize_component(module)
-        dest_name = f"{module_prefix}_v{sanitize_component(tool_version)}_{task_name_component}_{timestamp}"
+        dest_name = f"{timestamp}_{module_prefix}_v{sanitize_component(tool_version)}_{task_name_component}"
         persisted_output_dir = outputs_dir / sanitize_component(dest_name)
         suffix = 1
         while persisted_output_dir.exists():

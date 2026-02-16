@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
+import os
 import re
 import subprocess
 import sys
@@ -11,7 +12,7 @@ from tkinter import messagebox
 ROOT = Path(__file__).resolve().parents[1]
 TOOL_MAIN_PATH = ROOT / "src" / "SSB_RetuningAutomations.py"
 DOWNLOAD_SCRIPT = ROOT / "tools" / "Update-Download-Links.py"
-GUIDES_SCRIPT = ROOT / "tools" / "Generate-User-Guides.py"
+GUIDES_SCRIPT = ROOT / "tools" / "Update-User-Guides.py"
 
 
 def read_version_date() -> tuple[str, str, str]:
@@ -40,21 +41,41 @@ def write_version_date(content: str, new_version: str, new_date: str) -> str:
     return updated
 
 
+def center_window(win: tk.Tk) -> None:
+    win.update_idletasks()
+    w = win.winfo_width()
+    h = win.winfo_height()
+    sw = win.winfo_screenwidth()
+    sh = win.winfo_screenheight()
+    x = max((sw - w) // 2, 0)
+    y = max((sh - h) // 2, 0)
+    win.geometry(f"{w}x{h}+{x}+{y}")
+
+
+def clear_console() -> None:
+    # Limpia la consola solo si es un terminal real (evita \f en consolas embebidas tipo PyCharm).
+    try:
+        if sys.stdout.isatty():
+            os.system("cls" if os.name == "nt" else "clear")
+    except Exception:
+        pass
+
+
 def run_script(path: Path) -> None:
+    # NOTE: No capturamos stdout/stderr -> se verán en la consola (PyCharm/terminal).
     result = subprocess.run(
         [sys.executable, str(path)],
         cwd=str(ROOT),
-        capture_output=True,
         text=True,
         encoding="utf-8",
         errors="replace",
     )
     if result.returncode != 0:
-        raise RuntimeError(f"{path.name} failed:\n{result.stdout}\n{result.stderr}")
+        raise RuntimeError(f"{path.name} failed (exit code {result.returncode}). Check console output above.")
 
 
 def main() -> None:
-    current_version, current_date, content = read_version_date()
+    current_version, current_date, _content = read_version_date()
 
     root = tk.Tk()
     root.title("Update TOOL_VERSION / TOOL_DATE")
@@ -80,63 +101,79 @@ def main() -> None:
         new_date = date_var.get().strip()
 
         if not re.fullmatch(r"\d+\.\d+\.\d+", new_version):
-            messagebox.showerror("Invalid version", "TOOL_VERSION must match X.Y.Z")
+            messagebox.showerror("Invalid version", "TOOL_VERSION must match X.Y.Z", parent=root)
             return None
         if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", new_date):
-            messagebox.showerror("Invalid date", "TOOL_DATE must match YYYY-MM-DD")
+            messagebox.showerror("Invalid date", "TOOL_DATE must match YYYY-MM-DD", parent=root)
             return None
         return new_version, new_date
 
-    def on_update_all() -> None:
+    def apply_version_date_from_inputs() -> tuple[str, str] | None:
         validated = validate_inputs()
         if not validated:
-            return
+            return None
         new_version, new_date = validated
 
-        write_version_date(content, new_version, new_date)
+        # Re-read file to avoid using stale content
+        fresh = TOOL_MAIN_PATH.read_text(encoding="utf-8")
+        write_version_date(fresh, new_version, new_date)
+        return new_version, new_date
+
+    def on_update_all() -> None:
+        clear_console()
+
+        applied = apply_version_date_from_inputs()
+        if not applied:
+            return
 
         try:
             run_script(DOWNLOAD_SCRIPT)
+            print("")
             run_script(GUIDES_SCRIPT)
         except Exception as exc:
-            messagebox.showerror("Script execution error", str(exc))
+            messagebox.showerror("Script execution error", str(exc), parent=root)
             return
 
-        version_msg = "TOOL_VERSION unchanged."
-        if new_version != current_version:
-            version_msg = "TOOL_VERSION changed."
-
-        messagebox.showinfo(
-            "Done",
-            "Updated values successfully.\n\n"
-            f"{version_msg}\n"
-            "Update-Download-Links.py and Generate-User-Guides.py executed.",
-        )
         root.destroy()
 
     def on_generate_guides() -> None:
+        clear_console()
+
+        applied = apply_version_date_from_inputs()
+        if not applied:
+            return
+
         try:
             run_script(GUIDES_SCRIPT)
         except Exception as exc:
-            messagebox.showerror("Script execution error", str(exc))
+            messagebox.showerror("Script execution error", str(exc), parent=root)
             return
-        messagebox.showinfo("Done", "Generate-User-Guides.py executed successfully.")
+
+        root.destroy()
 
     def on_update_download_links() -> None:
+        clear_console()
+
+        applied = apply_version_date_from_inputs()
+        if not applied:
+            return
+
         try:
             run_script(DOWNLOAD_SCRIPT)
         except Exception as exc:
-            messagebox.showerror("Script execution error", str(exc))
+            messagebox.showerror("Script execution error", str(exc), parent=root)
             return
-        messagebox.showinfo("Done", "Update-Download-Links.py executed successfully.")
+
+        root.destroy()
 
     buttons = tk.Frame(frame)
     buttons.pack(fill="x")
     tk.Button(buttons, text="Cancel", command=root.destroy).pack(side="right", padx=(8, 0))
     tk.Button(buttons, text="Update Download Links", command=on_update_download_links).pack(side="left")
-    tk.Button(buttons, text="Generate User Guides", command=on_generate_guides).pack(side="left", padx=(8, 0))
+    tk.Button(buttons, text="Update User Guides", command=on_generate_guides).pack(side="left", padx=(8, 0))
     tk.Button(buttons, text="Update All", command=on_update_all).pack(side="right")
 
+    center_window(root)
     root.mainloop()
 
 

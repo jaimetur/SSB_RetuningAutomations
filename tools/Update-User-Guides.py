@@ -1,3 +1,6 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
 import re
 from datetime import date
 from math import ceil
@@ -148,6 +151,67 @@ def is_table_separator(line: str) -> bool:
     return bool(re.fullmatch(r"\|?[\s:-]+(\|[\s:-]+)+\|?", stripped))
 
 
+def try_update_docx_fields_and_export_pdf(docx_file: Path, pdf_file: Path) -> bool:
+    """Best effort on Windows: update TOC/fields via Word automation and export PDF."""
+    if os.name != "nt":
+        return False
+
+    ps_script = f"""
+$ErrorActionPreference = 'Stop'
+$word = $null
+try {{
+    $docPath = '{str(docx_file)}'
+    $pdfPath = '{str(pdf_file)}'
+    $word = New-Object -ComObject Word.Application
+    $word.Visible = $false
+    $word.DisplayAlerts = 0
+    $doc = $word.Documents.Open($docPath)
+    $doc.Fields.Update() | Out-Null
+    foreach ($toc in $doc.TablesOfContents) {{ $toc.Update() | Out-Null }}
+    $doc.Save()
+    $wdExportFormatPDF = 17
+    $wdExportOptimizeForPrint = 0
+    $wdExportAllDocument = 0
+    $wdExportDocumentContent = 0
+    $wdExportCreateHeadingBookmarks = 1
+
+    $doc.ExportAsFixedFormat(
+        $pdfPath,
+        $wdExportFormatPDF,
+        $false,
+        $wdExportOptimizeForPrint,
+        $wdExportAllDocument,
+        1,
+        1,
+        $wdExportDocumentContent,
+        $false,
+        $true,
+        $wdExportCreateHeadingBookmarks,
+        $true,
+        $true,
+        $false
+    )
+
+    $doc.Close()
+    exit 0
+}} catch {{
+    if ($doc) {{ $doc.Close() }}
+    exit 1
+}} finally {{
+    if ($word) {{ $word.Quit() }}
+}}
+"""
+
+    result = subprocess.run(
+        ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps_script],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="ignore",
+    )
+    return result.returncode == 0 and pdf_file.exists()
+
+
 def build_docx_from_markdown(md_file: Path, docx_file: Path) -> None:
     # ------------------- Word-only helpers (subfunctions) ------------------- #
     def markdown_segments(text: str) -> list[tuple[str, bool]]:
@@ -218,7 +282,11 @@ def build_docx_from_markdown(md_file: Path, docx_file: Path) -> None:
         body = doc._element.body
         start = body.index(anchor_paragraph._p)
         for idx in range(len(body) - 1, start - 1, -1):
-            body.remove(body[idx])
+            el = body[idx]
+            # Keep section properties, otherwise doc.sections becomes empty and add_table() crashes
+            if str(el.tag).endswith("}sectPr"):
+                continue
+            body.remove(el)
 
     # ------------------------------ Word logic ------------------------------ #
     text = md_file.read_text(encoding="utf-8")
@@ -341,43 +409,7 @@ def build_docx_from_markdown(md_file: Path, docx_file: Path) -> None:
     doc.save(docx_file)
 
 
-def try_update_docx_fields_and_export_pdf(docx_file: Path, pdf_file: Path) -> bool:
-    """Best effort on Windows: update TOC/fields via Word automation and export PDF."""
-    if os.name != "nt":
-        return False
 
-    ps_script = f"""
-$ErrorActionPreference = 'Stop'
-$word = $null
-try {{
-    $docPath = '{str(docx_file)}'
-    $pdfPath = '{str(pdf_file)}'
-    $word = New-Object -ComObject Word.Application
-    $word.Visible = $false
-    $word.DisplayAlerts = 0
-    $doc = $word.Documents.Open($docPath)
-    $doc.Fields.Update() | Out-Null
-    foreach ($toc in $doc.TablesOfContents) {{ $toc.Update() | Out-Null }}
-    $doc.Save()
-    $doc.ExportAsFixedFormat($pdfPath, 17)
-    $doc.Close()
-    exit 0
-}} catch {{
-    if ($doc) {{ $doc.Close() }}
-    exit 1
-}} finally {{
-    if ($word) {{ $word.Quit() }}
-}}
-"""
-
-    result = subprocess.run(
-        ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps_script],
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="ignore",
-    )
-    return result.returncode == 0 and pdf_file.exists()
 
 
 def build_pptx_summary(md_file: Path, pptx_file: Path, version: str) -> None:
@@ -829,20 +861,24 @@ def build_pdf_from_markdown(md_file: Path, pdf_file: Path) -> None:
 
 
 if __name__ == "__main__":
-    version = get_tool_version()
-    update_readme_links(version)
+    tool_version = get_tool_version()
+    print(f"🔍 TOOL_VERSION detected: v{tool_version}")
 
-    paths = align_help_guides_to_version(version)
+    print(f"▶️ Updating README.md User Guides links to new version: {tool_version}...")
+    update_readme_links(tool_version)
+
+    print(f"▶️ Updating User Guides to new version: {tool_version}...")
+    paths = align_help_guides_to_version(tool_version)
     build_docx_from_markdown(paths["md"], paths["docx"])
-    build_pptx_summary(paths["md"], paths["pptx"], version)
+    build_pptx_summary(paths["md"], paths["pptx"], tool_version)
     if not try_update_docx_fields_and_export_pdf(paths["docx"], paths["pdf"]):
         build_pdf_from_markdown(paths["md"], paths["pdf"])
     cleanup_old_versioned_guides(paths)
 
-    print(f"Tool version detected: v{version}")
+
     print(f"Using markdown: {paths['md']}")
     print(f"Generated: {paths['docx']}")
     print(f"Generated: {paths['pptx']}")
     print(f"Generated: {paths['pdf']}")
-    print("README technical guide links updated.")
-    print("Old versioned guides cleaned from help/.")
+    print("User Guides updated.")
+    print("README Technical Guide Links updated.")

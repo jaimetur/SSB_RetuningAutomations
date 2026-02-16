@@ -8,7 +8,6 @@
   <link rel="icon" type="image/png" href="/static/logo_02.png" />
 </head>
 <body>
-  <!-- Main dashboard -->
   <main class="container">
     <header class="topbar">
       <div>
@@ -24,13 +23,24 @@
       </nav>
     </header>
 
-    <section class="card module-card">
+    <!-- MAIN PANEL (single, full-width) -->
+    <section class="card module-card module-main">
       <div class="module-header">
         <img class="module-logo" src="/static/logo_02.png" alt="SSB Retuning Automations logo" />
         <div class="module-title">
           <h2>SSB Retuning Automations</h2>
           <p class="module-eyebrow">Web Interface</p>
           <p class="module-subtitle">1️⃣ Select Module. 2️⃣ Configure Paths & Freqs. 3️⃣ Press Run to execute...</p>
+          <div class="doc-inline">
+            <div class="doc-inline-title">Documentation:</div>
+            <div class="doc-links">
+              <a class="doc-link" href="/documentation/user-guide/md?mode=view" target="_blank" rel="noopener">📝 Markdown</a>
+              <a class="doc-link" href="/documentation/user-guide/pdf?mode=view" target="_blank" rel="noopener">📄 PDF</a>
+              <a class="doc-link" href="/documentation/user-guide/docx?mode=download" target="_blank" rel="noopener">📘 Word</a>
+              <a class="doc-link" href="/documentation/user-guide/pptx?mode=download" target="_blank" rel="noopener">📊 PowerPoint</a>
+            </div>
+          </div>
+
         </div>
         <div class="module-actions">
           <button type="button" class="btn btn-danger" id="change_password_button">Change Password</button>
@@ -40,6 +50,7 @@
           </div>
         </div>
       </div>
+
       <form action="/run" method="post" class="module-form">
         <div class="form-section">
           <p class="section-title">Module to execute</p>
@@ -62,6 +73,7 @@
               </span>
             </label>
           </div>
+
           <div class="grid grid-1 hidden" id="prepost-input-rows">
             <label>Input PRE
               <span class="input-with-button">
@@ -76,6 +88,7 @@
               </span>
             </label>
           </div>
+
           <input type="file" id="input_zip" class="hidden" accept=".zip,.log,.txt" multiple />
           <input type="file" id="input_pre_zip" class="hidden" accept=".zip,.log,.txt" multiple />
           <input type="file" id="input_post_zip" class="hidden" accept=".zip,.log,.txt" multiple />
@@ -126,6 +139,7 @@
                 <input type="text" name="cc_freq_filters" id="cc_freq_filters" value="{{ settings.get('cc_freq_filters', '') }}" />
               </label>
             </div>
+
             <div class="freq-buttons">
               <div class="freq-group">
                 <label>Apply to
@@ -140,6 +154,7 @@
               </div>
               <button type="button" id="freq_select_all">Select all in list</button>
             </div>
+
             <div class="freq-list">
               <label>Network frequencies
                 <select id="freq_list" multiple size="10">
@@ -179,14 +194,16 @@
           <button type="submit" class="btn btn-success" id="run_module_button">Run Module</button>
           <span class="module-unavailable hidden" id="module_unavailable_message">This module is not available from the Web Interface.</span>
         </div>
+
         <input type="hidden" name="selected_inputs_single" id="selected_inputs_single" value="" />
         <input type="hidden" name="selected_inputs_pre" id="selected_inputs_pre" value="" />
         <input type="hidden" name="selected_inputs_post" id="selected_inputs_post" value="" />
       </form>
+
       <span class="run-status" id="run_status" data-latest-status="{{ latest_runs[0].status_lower if latest_runs else '' }}"></span>
     </section>
 
-
+    <!-- Inputs Repository -->
     <section class="card">
       <div class="runs-header">
         <div>
@@ -203,23 +220,42 @@
       </div>
       <input type="date" id="older_input_date_picker" class="hidden" />
       <div class="table-scroll history-scroll inputs-scroll" id="inputs_panel_table">
-      <table>
-        <thead><tr><th></th><th class="sortable" data-sort-key="text">Input</th><th class="sortable" data-sort-key="text">Uploaded by</th><th class="sortable" data-sort-key="datetime" data-default-sort="desc">Uploaded at</th><th class="sortable" data-sort-key="size">Size</th><th class="sortable" data-sort-key="text">Target</th></tr></thead>
-        <tbody>
-        {% for item in input_items %}
-          <tr>
-            <td><input type="checkbox" class="input-checkbox" value="{{ item.id }}" data-uploaded-at="{{ item.uploaded_at }}" /></td>
-            <td>{{ item.input_name }}</td><td>{{ item.uploaded_by }}</td><td>{{ item.uploaded_at }}</td><td>{{ item.size_mb }}</td>
-            <td data-input-path="{{ item.input_path }}"><select class="send-target"><option value="single">Single Input</option><option value="pre">Input PRE</option><option value="post">Input POST</option></select></td>
-          </tr>
-        {% else %}
-          <tr><td colspan="6">No inputs in repository.</td></tr>
-        {% endfor %}
-        </tbody>
-      </table>
+        <table>
+          <thead>
+            <tr>
+              <th></th>
+              <th class="sortable" data-sort-key="text">Input</th>
+              <th class="sortable" data-sort-key="text">Uploaded by</th>
+              <th class="sortable" data-sort-key="datetime" data-default-sort="desc">Uploaded at</th>
+              <th class="sortable" data-sort-key="size">Size</th>
+              <th class="sortable" data-sort-key="text">Target</th>
+            </tr>
+          </thead>
+          <tbody>
+          {% for item in input_items %}
+            <tr>
+              <td><input type="checkbox" class="input-checkbox" value="{{ item.id }}" data-uploaded-at="{{ item.uploaded_at }}" /></td>
+              <td>{{ item.input_name }}</td>
+              <td>{{ item.uploaded_by }}</td>
+              <td>{{ item.uploaded_at }}</td>
+              <td>{{ item.size_mb }}</td>
+              <td data-input-path="{{ item.input_path }}">
+                <select class="send-target">
+                  <option value="single">Single Input</option>
+                  <option value="pre">Input PRE</option>
+                  <option value="post">Input POST</option>
+                </select>
+              </td>
+            </tr>
+          {% else %}
+            <tr><td colspan="6">No inputs in repository.</td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
       </div>
     </section>
 
+    <!-- Executions History -->
     <section class="card">
       <div class="runs-header">
         <div>
@@ -235,46 +271,64 @@
           <button type="button" id="toggle_runs_panel" class="panel-toggle" aria-label="Collapse runs panel" title="Collapse/Expand">▾</button>
         </div>
       </div>
+
       <input type="date" id="older_date_picker" class="hidden" />
       <div class="latest-runs-scroll history-scroll runs-scroll" id="runs_panel_table">
-      <table>
-        <thead><tr><th></th><th class="sortable" data-sort-key="number">ID</th><th class="sortable" data-sort-key="text">Module</th><th class="sortable" data-sort-key="text">Version</th><th class="sortable" data-sort-key="text">Input</th><th class="sortable" data-sort-key="text">Status</th><th class="sortable" data-sort-key="datetime" data-default-sort="desc">Start</th><th class="sortable" data-sort-key="datetime">End</th><th class="sortable" data-sort-key="duration">Duration</th><th class="sortable" data-sort-key="text">Output</th><th class="sortable" data-sort-key="text">Log</th><th class="sortable" data-sort-key="size">Size</th></tr></thead>
-        <tbody>
-        {% for r in latest_runs %}
-          <tr class="run-row {% if r.status_lower == 'error' %}run-error{% elif r.status_lower == 'success' %}run-success{% elif r.status_lower == 'canceled' %}run-canceled{% endif %}" data-run-id="{{ r.id }}" data-status="{{ r.status_lower }}" data-run-user="{{ user.username }}">
-            <td><input type="checkbox" class="run-checkbox" value="{{ r.id }}" data-start="{{ r.started_at }}" data-status="{{ r.status_lower }}" /></td>
-            <td>{{ r.id }}</td>
-            <td>{{ r.module }}</td>
-            <td>{{ r.tool_version or '—' }}</td>
-            <td>{{ r.input_name or "—" }}</td>
-            <td class="run-status-cell">{{ r.status_display }}</td>
-            <td class="run-start-cell">{{ r.started_at }}</td>
-            <td class="run-finished-cell">{{ r.finished_at }}</td>
-            <td class="run-duration-cell">{{ r.duration_hms }}</td>
-            <td class="run-output-cell">
-              {% if r.output_zip %}
-                <a href="/runs/{{ r.id }}/download">Download zip</a>
-              {% else %}
-                —
-              {% endif %}
-            </td>
-            <td class="run-log-cell">
-              {% if r.output_log_file %}
-                <a href="/runs/{{ r.id }}/log">Download log</a>
-              {% else %}
-                —
-              {% endif %}
-            </td>
-            <td>{{ r.size_mb }}</td>
-          </tr>
-        {% else %}
-          <tr><td colspan="12">No executions yet.</td></tr>
-        {% endfor %}
-        </tbody>
-      </table>
+        <table>
+          <thead>
+            <tr>
+              <th></th>
+              <th class="sortable" data-sort-key="number">ID</th>
+              <th class="sortable" data-sort-key="text">Module</th>
+              <th class="sortable" data-sort-key="text">Version</th>
+              <th class="sortable" data-sort-key="text">Input</th>
+              <th class="sortable" data-sort-key="text">Status</th>
+              <th class="sortable" data-sort-key="datetime" data-default-sort="desc">Start</th>
+              <th class="sortable" data-sort-key="datetime">End</th>
+              <th class="sortable" data-sort-key="duration">Duration</th>
+              <th class="sortable" data-sort-key="text">Output</th>
+              <th class="sortable" data-sort-key="text">Log</th>
+              <th class="sortable" data-sort-key="size">Size</th>
+            </tr>
+          </thead>
+          <tbody>
+          {% for r in latest_runs %}
+            <tr class="run-row {% if r.status_lower == 'error' %}run-error{% elif r.status_lower == 'success' %}run-success{% elif r.status_lower == 'canceled' %}run-canceled{% endif %}"
+                data-run-id="{{ r.id }}" data-status="{{ r.status_lower }}" data-run-user="{{ user.username }}">
+              <td><input type="checkbox" class="run-checkbox" value="{{ r.id }}" data-start="{{ r.started_at }}" data-status="{{ r.status_lower }}" /></td>
+              <td>{{ r.id }}</td>
+              <td>{{ r.module }}</td>
+              <td>{{ r.tool_version or '—' }}</td>
+              <td>{{ r.input_name or "—" }}</td>
+              <td class="run-status-cell">{{ r.status_display }}</td>
+              <td class="run-start-cell">{{ r.started_at }}</td>
+              <td class="run-finished-cell">{{ r.finished_at }}</td>
+              <td class="run-duration-cell">{{ r.duration_hms }}</td>
+              <td class="run-output-cell">
+                {% if r.output_zip %}
+                  <a href="/runs/{{ r.id }}/download">Download zip</a>
+                {% else %}
+                  —
+                {% endif %}
+              </td>
+              <td class="run-log-cell">
+                {% if r.output_log_file %}
+                  <a href="/runs/{{ r.id }}/log">Download log</a>
+                {% else %}
+                  —
+                {% endif %}
+              </td>
+              <td>{{ r.size_mb }}</td>
+            </tr>
+          {% else %}
+            <tr><td colspan="12">No executions yet.</td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
       </div>
     </section>
 
+    <!-- Execution Logs -->
     <section class="card log-card">
       <div class="log-header">
         <h2>Executions Logs</h2>
@@ -297,6 +351,7 @@
       <pre id="log_output" class="log-output">No logs yet.</pre>
     </section>
 
+    <!-- System Logs -->
     <section class="card log-card">
       <div class="log-header">
         <h2>System Logs</h2>
@@ -317,20 +372,9 @@
       </div>
       <pre id="system_log_output" class="log-output">No logs yet.</pre>
     </section>
-
-    <section class="card">
-      <div class="runs-header">
-        <h2>Documentation</h2>
-      </div>
-      <p>User Guides:</p>
-      <ul>
-        <li>Markdown (.md): <a href="/documentation/user-guide/md?mode=view" target="_blank" rel="noopener">Open</a> · <a href="/documentation/user-guide/md?mode=download" target="_blank" rel="noopener">Download</a></li>
-        <li>PDF (.pdf): <a href="/documentation/user-guide/pdf?mode=view" target="_blank" rel="noopener">Open</a> · <a href="/documentation/user-guide/pdf?mode=download" target="_blank" rel="noopener">Download</a></li>
-        <li>Word (.docx): <a href="/documentation/user-guide/docx?mode=download" target="_blank" rel="noopener">Download</a></li>
-        <li>PowerPoint (.pptx): <a href="/documentation/user-guide/pptx?mode=download" target="_blank" rel="noopener">Download</a></li>
-      </ul>
-    </section>
   </main>
+
+  <!-- JS: unchanged except it no longer references documentation-side -->
   <script>
     const moduleSelect = document.querySelector('select[name="module"]');
     const singleInputRow = document.getElementById("single-input-row");
@@ -345,7 +389,6 @@
     const exportConfigButton = document.getElementById("export_config_button");
     const changePasswordButton = document.getElementById("change_password_button");
     const refreshLogButton = document.getElementById("refresh_log");
-    const clearLogButton = document.getElementById("clear_log");
     const copyLogButton = document.getElementById("copy_log");
     const copySelectionButton = document.getElementById("copy_selection");
     const toggleExecutionLogPanelButton = document.getElementById("toggle_execution_log_panel");
@@ -365,10 +408,8 @@
     const systemLogSource = document.getElementById("system_log_source");
     const systemLogAuto = document.getElementById("system_log_auto");
     const refreshSystemLogButton = document.getElementById("refresh_system_log");
-    const clearSystemLogButton = document.getElementById("clear_system_log");
     const copySystemLogButton = document.getElementById("copy_system_log");
     const copySystemSelectionButton = document.getElementById("copy_system_selection");
-    const deleteSystemLogButton = document.getElementById("delete_system_log");
     const toggleSystemLogPanelButton = document.getElementById("toggle_system_log_panel");
     const selectOlderInputsButton = document.getElementById("select_older_inputs");
     const selectUserInputsCombo = document.getElementById("select_user_inputs_combo");
@@ -435,14 +476,10 @@
     }
 
     function inferParentFolderName(files) {
-      if (!files || !files.length) {
-        return "uploaded_input";
-      }
+      if (!files || !files.length) return "uploaded_input";
       const first = files[0];
       const relativePath = first.webkitRelativePath || "";
-      if (relativePath.includes("/")) {
-        return relativePath.split("/")[0] || "uploaded_input";
-      }
+      if (relativePath.includes("/")) return relativePath.split("/")[0] || "uploaded_input";
       const firstName = first.name || "uploaded_input";
       const dot = firstName.lastIndexOf(".");
       return (dot > 0 ? firstName.slice(0, dot) : firstName) || "uploaded_input";
@@ -453,8 +490,6 @@
       return `<div class="modal-list-wrapper"><strong>Queued folders:</strong><ul class="modal-list">${listItems}</ul></div>`;
     }
 
-
-
     function parseSortableValue(rawValue, sortType) {
       const value = (rawValue || "").trim();
       if (sortType === "size") {
@@ -463,9 +498,7 @@
       }
       if (sortType === "duration") {
         const parts = value.split(":").map((item) => Number.parseInt(item, 10));
-        if (parts.length === 3 && parts.every((item) => !Number.isNaN(item))) {
-          return (parts[0] * 3600) + (parts[1] * 60) + parts[2];
-        }
+        if (parts.length === 3 && parts.every((item) => !Number.isNaN(item))) return (parts[0] * 3600) + (parts[1] * 60) + parts[2];
         return -1;
       }
       if (sortType === "datetime") {
@@ -478,19 +511,14 @@
 
     function sortTableByHeader(table, header, forcedDirection = null) {
       const tbody = table?.querySelector("tbody");
-      if (!tbody || !header) {
-        return;
-      }
+      if (!tbody || !header) return;
       const rows = Array.from(tbody.querySelectorAll("tr"));
-      if (rows.length <= 1) {
-        return;
-      }
+      if (rows.length <= 1) return;
+
       const headers = Array.from(table.querySelectorAll("thead th.sortable"));
       const columnIndex = Array.from(header.parentElement.children).indexOf(header);
       headers.forEach((other) => {
-        if (!other.dataset.label) {
-          other.dataset.label = other.textContent.replace(/\s*[▲▼]$/, "").trim();
-        }
+        if (!other.dataset.label) other.dataset.label = other.textContent.replace(/\s*[▲▼]$/, "").trim();
       });
 
       headers.forEach((other) => {
@@ -523,9 +551,7 @@
 
     function applyCurrentOrDefaultSort(tableSelector) {
       const table = document.querySelector(tableSelector);
-      if (!table) {
-        return;
-      }
+      if (!table) return;
       const headers = Array.from(table.querySelectorAll("thead th.sortable"));
       const activeHeader = headers.find((header) => ["asc", "desc"].includes(header.dataset.sortDirection));
       if (activeHeader) {
@@ -533,16 +559,12 @@
         return;
       }
       const defaultHeader = headers.find((header) => header.dataset.defaultSort);
-      if (defaultHeader) {
-        sortTableByHeader(table, defaultHeader, defaultHeader.dataset.defaultSort);
-      }
+      if (defaultHeader) sortTableByHeader(table, defaultHeader, defaultHeader.dataset.defaultSort);
     }
 
     function initSortableTable(tableSelector) {
       const table = document.querySelector(tableSelector);
-      if (!table) {
-        return;
-      }
+      if (!table) return;
       const headers = Array.from(table.querySelectorAll("thead th.sortable"));
       headers.forEach((header) => {
         header.dataset.sortDirection = "none";
@@ -557,23 +579,21 @@
       return fetch("/inputs/list")
         .then((res) => res.json())
         .then(async (data) => {
-          if (!data.ok) {
-            return;
-          }
-          if (inputsTotalSizeLabel && data.total_size) {
-            inputsTotalSizeLabel.dataset.totalSize = data.total_size;
-          }
+          if (!data.ok) return;
+
+          if (inputsTotalSizeLabel && data.total_size) inputsTotalSizeLabel.dataset.totalSize = data.total_size;
+
           const tbody = document.querySelector("#inputs_panel_table tbody");
-          if (!tbody) {
-            return;
-          }
+          if (!tbody) return;
+
           if (!data.items || data.items.length === 0) {
             tbody.innerHTML = '<tr><td colspan="6">No inputs in repository.</td></tr>';
             applyCurrentOrDefaultSort("#inputs_panel_table table");
             populateInputScopeSelector();
-          updateSelectionSizeLabels();
+            updateSelectionSizeLabels();
             return;
           }
+
           tbody.innerHTML = data.items.map((item) => `
             <tr>
               <td><input type="checkbox" class="input-checkbox" value="${item.id}" data-uploaded-at="${item.uploaded_at}" /></td>
@@ -581,9 +601,16 @@
               <td>${escapeHtml(item.uploaded_by)}</td>
               <td>${escapeHtml(item.uploaded_at)}</td>
               <td>${escapeHtml(item.size_mb)}</td>
-              <td data-input-path="${escapeHtml(item.input_path || "")}"><select class="send-target"><option value="single">Single Input</option><option value="pre">Input PRE</option><option value="post">Input POST</option></select></td>
+              <td data-input-path="${escapeHtml(item.input_path || "")}">
+                <select class="send-target">
+                  <option value="single">Single Input</option>
+                  <option value="pre">Input PRE</option>
+                  <option value="post">Input POST</option>
+                </select>
+              </td>
             </tr>
           `).join("");
+
           applyCurrentOrDefaultSort("#inputs_panel_table table");
           populateInputScopeSelector();
           updateSelectionSizeLabels();
@@ -592,36 +619,26 @@
     }
 
     function populateScopeCombo(combo, users) {
-      if (!combo) {
-        return;
-      }
+      if (!combo) return;
       const previous = combo.value;
       const uniqueUsers = Array.from(new Set(users.filter((value) => value && value !== "—"))).sort((a, b) => a.localeCompare(b));
-      combo.innerHTML = '<option value="__none__">None</option><option value="__all__">All</option>' + uniqueUsers.map((user) => `<option value="${escapeHtml(user)}">${escapeHtml(user)}</option>`).join("");
+      combo.innerHTML = '<option value="__none__">None</option><option value="__all__">All</option>' +
+        uniqueUsers.map((user) => `<option value="${escapeHtml(user)}">${escapeHtml(user)}</option>`).join("");
       combo.value = uniqueUsers.includes(previous) || ["__all__", "__none__"].includes(previous) ? previous : "__none__";
     }
 
     function applyScopeSelection(tableSelector, checkboxSelector, getRowUser, selectedValue) {
       const mode = selectedValue || "__none__";
       document.querySelectorAll(`${tableSelector} tbody ${checkboxSelector}`).forEach((box) => {
-        if (mode === "__all__") {
-          box.checked = true;
-          return;
-        }
-        if (mode === "__none__") {
-          box.checked = false;
-          return;
-        }
+        if (mode === "__all__") { box.checked = true; return; }
+        if (mode === "__none__") { box.checked = false; return; }
         const row = box.closest("tr");
         box.checked = getRowUser(row) === mode;
       });
     }
 
-
     function parseSizeMb(value) {
-      if (!value) {
-        return 0;
-      }
+      if (!value) return 0;
       const cleaned = String(value).replace(',', '.');
       const match = cleaned.match(/([\d.]+)/);
       return match ? Number(match[1]) || 0 : 0;
@@ -672,9 +689,7 @@
         const inputName = row?.cells?.[1]?.textContent?.trim() || "";
         const inputPath = row?.cells?.[5]?.dataset?.inputPath || "";
         const value = inputPath || buildRepositoryPath(inputName);
-        if (value && selected[rowTarget]) {
-          selected[rowTarget].push(value);
-        }
+        if (value && selected[rowTarget]) selected[rowTarget].push(value);
       });
       return selected;
     }
@@ -684,14 +699,11 @@
     }
 
     function updateModuleAvailability() {
-      if (!runModuleButton || !moduleUnavailableMessage) {
-        return;
-      }
+      if (!runModuleButton || !moduleUnavailableMessage) return;
       const blocked = isModuleBlocked();
       runModuleButton.disabled = blocked;
       moduleUnavailableMessage.classList.toggle("hidden", !blocked);
     }
-
 
     function showModal({ title = "Notice", message = "", messageHtml = "", confirmText = "Accept", cancelText = "", showInput = false, inputValue = "", inputPlaceholder = "", tone = "info" }) {
       return new Promise((resolve) => {
@@ -702,16 +714,13 @@
         const titleEl = document.createElement("h3");
         titleEl.className = "modal-title";
         titleEl.textContent = title;
+
         const messageEl = document.createElement("p");
         messageEl.className = "modal-message";
-        if (tone === "error") {
-          messageEl.classList.add("modal-message-error");
-        }
-        if (messageHtml) {
-          messageEl.innerHTML = messageHtml;
-        } else {
-          messageEl.textContent = message;
-        }
+        if (tone === "error") messageEl.classList.add("modal-message-error");
+        if (messageHtml) messageEl.innerHTML = messageHtml;
+        else messageEl.textContent = message;
+
         box.appendChild(titleEl);
         box.appendChild(messageEl);
 
@@ -727,6 +736,7 @@
 
         const actions = document.createElement("div");
         actions.className = "modal-actions";
+
         if (cancelText) {
           const cancelBtn = document.createElement("button");
           cancelBtn.type = "button";
@@ -738,6 +748,7 @@
           });
           actions.appendChild(cancelBtn);
         }
+
         const okBtn = document.createElement("button");
         okBtn.type = "button";
         okBtn.className = "btn btn-primary";
@@ -752,6 +763,7 @@
         box.appendChild(actions);
         backdrop.appendChild(box);
         document.body.appendChild(backdrop);
+
         if (inputEl) {
           inputEl.focus();
           inputEl.select();
@@ -771,33 +783,26 @@
       formData.append("input_name", inputName || "");
       formData.append("parent_folder_name", parentFolderName || "");
       formData.append("overwrite", overwrite ? "1" : "0");
-      return fetch("/uploads/zip", {
-        method: "POST",
-        body: formData
-      }).then((res) => res.json());
+      return fetch("/uploads/zip", { method: "POST", body: formData }).then((res) => res.json());
     }
 
     document.querySelectorAll(".upload-button").forEach((button) => {
       button.addEventListener("click", () => {
         const fileInput = uploadInputs[button.dataset.file];
-        if (fileInput) {
-          fileInput.click();
-        }
+        if (fileInput) fileInput.click();
       });
     });
 
     Object.entries(uploadInputs).forEach(([inputId, inputElement]) => {
       inputElement.addEventListener("change", async () => {
         const files = inputElement.files;
-        if (!files || files.length === 0) {
-          return;
-        }
+        if (!files || files.length === 0) return;
+
         const button = document.querySelector(`[data-file="${inputId}"]`);
         const targetInput = button ? document.getElementById(button.dataset.target) : null;
         const kindValue = button ? button.dataset.kind : "";
-        if (!targetInput || !kindValue) {
-          return;
-        }
+        if (!targetInput || !kindValue) return;
+
         const inferredParentFolderName = inferParentFolderName(Array.from(files));
         const defaultInputName = inferredParentFolderName || "uploaded_input";
         const modalInput = await showModal({
@@ -808,15 +813,12 @@
           showInput: true,
           inputValue: defaultInputName
         });
+
         let selectedInputName = modalInput.value;
-        if (!modalInput.ok || selectedInputName === null) {
-          inputElement.value = "";
-          return;
-        }
-        selectedInputName = selectedInputName.trim();
-        if (!selectedInputName) {
-          selectedInputName = defaultInputName;
-        }
+        if (!modalInput.ok || selectedInputName === null) { inputElement.value = ""; return; }
+
+        selectedInputName = (selectedInputName || "").trim() || defaultInputName;
+
         targetInput.value = "Uploading...";
         uploadZip(files, moduleSelect.value, kindValue, selectedInputName, false, inferredParentFolderName)
           .then(async (data) => {
@@ -827,7 +829,12 @@
               return;
             }
             if (data.error === "already_exists") {
-              const overwriteResponse = await showModal({ title: "Input already exists", message: `Input ${data.existing_name} already exists. Overwrite?`, confirmText: "Accept", cancelText: "Cancel" });
+              const overwriteResponse = await showModal({
+                title: "Input already exists",
+                message: `Input ${data.existing_name} already exists. Overwrite?`,
+                confirmText: "Accept",
+                cancelText: "Cancel"
+              });
               if (overwriteResponse.ok) {
                 uploadZip(files, moduleSelect.value, kindValue, selectedInputName, true, inferredParentFolderName).then((retry) => {
                   if (retry.ok && retry.path) {
@@ -843,19 +850,13 @@
             }
             targetInput.value = "";
           })
-          .catch(() => {
-            targetInput.value = "";
-          })
-          .finally(() => {
-            inputElement.value = "";
-          });
+          .catch(() => { targetInput.value = ""; })
+          .finally(() => { inputElement.value = ""; });
       });
     });
 
     function toBool(value) {
-      if (!value) {
-        return false;
-      }
+      if (!value) return false;
       return ["true", "1", "yes", "on"].includes(value.toLowerCase());
     }
 
@@ -875,9 +876,7 @@
       };
       const normalized = { ...source };
       Object.entries(keyMap).forEach(([rawKey, logicalKey]) => {
-        if (rawKey in source && !(logicalKey in normalized)) {
-          normalized[logicalKey] = source[rawKey];
-        }
+        if (rawKey in source && !(logicalKey in normalized)) normalized[logicalKey] = source[rawKey];
       });
       return normalized;
     }
@@ -911,18 +910,12 @@
       inputFields.frequency_audit.checked = toBool(general.frequency_audit);
       inputFields.export_correction_cmd.checked = toBool(general.export_correction_cmd);
       inputFields.fast_excel_export.checked = toBool(general.fast_excel_export);
-      if (general.network_frequencies) {
-        updateNetworkFrequencies(parseCsv(general.network_frequencies));
-      }
+      if (general.network_frequencies) updateNetworkFrequencies(parseCsv(general.network_frequencies));
     }
 
     function escapeHtml(text) {
-      return text.replace(/[&<>"']/g, (char) => ({
-        "&": "&amp;",
-        "<": "&lt;",
-        ">": "&gt;",
-        '"': "&quot;",
-        "'": "&#39;"
+      return String(text || "").replace(/[&<>"']/g, (char) => ({
+        "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
       }[char]));
     }
 
@@ -931,33 +924,21 @@
       let currentSection = "";
       content.split(/\r?\n/).forEach((line) => {
         const trimmed = line.trim();
-        if (!trimmed || trimmed.startsWith(";") || trimmed.startsWith("#")) {
-          return;
-        }
+        if (!trimmed || trimmed.startsWith(";") || trimmed.startsWith("#")) return;
         const sectionMatch = trimmed.match(/^\[(.+)\]$/);
-        if (sectionMatch) {
-          currentSection = sectionMatch[1].trim();
-          return;
-        }
+        if (sectionMatch) { currentSection = sectionMatch[1].trim(); return; }
         const equalsIndex = trimmed.indexOf("=");
-        if (equalsIndex === -1) {
-          return;
-        }
+        if (equalsIndex === -1) return;
         const key = trimmed.slice(0, equalsIndex).trim();
         const value = trimmed.slice(equalsIndex + 1).trim();
-        if (!result[currentSection]) {
-          result[currentSection] = {};
-        }
+        if (!result[currentSection]) result[currentSection] = {};
         result[currentSection][key] = value;
       });
       return result;
     }
 
     function parseCsv(value) {
-      return value
-        .split(",")
-        .map((item) => item.trim())
-        .filter((item) => item);
+      return String(value || "").split(",").map((item) => item.trim()).filter((item) => item);
     }
 
     function formatCsv(values) {
@@ -965,10 +946,8 @@
       unique.sort((a, b) => {
         const aNum = Number(a);
         const bNum = Number(b);
-        if (!Number.isNaN(aNum) && !Number.isNaN(bNum)) {
-          return aNum - bNum;
-        }
-        return a.localeCompare(b);
+        if (!Number.isNaN(aNum) && !Number.isNaN(bNum)) return aNum - bNum;
+        return String(a).localeCompare(String(b));
       });
       return unique.join(",");
     }
@@ -978,9 +957,7 @@
     }
 
     function updateNetworkFrequencies(values) {
-      if (!values || values.length === 0) {
-        return;
-      }
+      if (!values || values.length === 0) return;
       freqList.innerHTML = "";
       values.forEach((value) => {
         const option = document.createElement("option");
@@ -993,9 +970,7 @@
 
     function addToFilters(targetInput) {
       const selected = getSelectedFrequencies();
-      if (selected.length === 0) {
-        return;
-      }
+      if (selected.length === 0) return;
       const current = parseCsv(targetInput.value);
       targetInput.value = formatCsv([...current, ...selected]);
       scheduleAutoSave();
@@ -1003,9 +978,7 @@
 
     function removeFromFilters(targetInput) {
       const selected = new Set(getSelectedFrequencies());
-      if (selected.size === 0) {
-        return;
-      }
+      if (selected.size === 0) return;
       const current = parseCsv(targetInput.value).filter((value) => !selected.has(value));
       targetInput.value = current.join(",");
       scheduleAutoSave();
@@ -1017,38 +990,26 @@
     }
 
     function selectAllFrequencies() {
-      Array.from(freqList.options).forEach((option) => {
-        option.selected = true;
-      });
+      Array.from(freqList.options).forEach((option) => { option.selected = true; });
     }
 
     function renderLog(text) {
-      if (!text) {
-        logOutput.textContent = "No logs yet.";
-        return;
-      }
-      const lines = text.split(/\r?\n/);
+      if (!text) { logOutput.textContent = "No logs yet."; return; }
+      const lines = String(text).split(/\r?\n/);
       logOutput.innerHTML = lines.map((line) => {
         let cls = "log-info";
-        if (line.includes("[ERROR]")) {
-          cls = "log-error";
-        } else if (line.includes("[WARNING]")) {
-          cls = "log-warning";
-        } else if (line.includes("[DEBUG]")) {
-          cls = "log-debug";
-        }
+        if (line.includes("[ERROR]")) cls = "log-error";
+        else if (line.includes("[WARNING]")) cls = "log-warning";
+        else if (line.includes("[DEBUG]")) cls = "log-debug";
         return `<span class="${cls}">${escapeHtml(line)}</span>`;
       }).join("\n");
-      if (executionLogAuto?.checked) {
-        logOutput.scrollTop = logOutput.scrollHeight;
-      }
+      if (executionLogAuto?.checked) logOutput.scrollTop = logOutput.scrollHeight;
     }
 
     function buildNoCacheUrl(baseUrl) {
       const separator = baseUrl.includes("?") ? "&" : "?";
       return `${baseUrl}${separator}_=${Date.now()}_${Math.random().toString(36).slice(2)}`;
     }
-
 
     function fetchJsonWithTimeout(url, timeoutMs = 2500) {
       const controller = new AbortController();
@@ -1058,14 +1019,12 @@
         .finally(() => clearTimeout(timer));
     }
 
-    function fetchLatestLog() {
-      fetchJsonWithTimeout(buildNoCacheUrl("/logs/latest"))
-        .then((data) => {
-          renderLog(data.log || "");
-        })
-        .catch(() => {
-          renderLog("");
-        });
+    function fetchLogByRun() {
+      const runId = logRunSelector?.value;
+      if (!runId) return fetchJsonWithTimeout(buildNoCacheUrl("/logs/latest")).then((data) => renderLog(data.log || "")).catch(() => renderLog(""));
+      fetchJsonWithTimeout(buildNoCacheUrl(`/logs/by_run/${runId}`))
+        .then((data) => renderLog(data.log || ""))
+        .catch(() => renderLog(""));
     }
 
     function sortByExecutionOrder(a, b) {
@@ -1074,94 +1033,73 @@
 
     function pickExecutionLogRunId(items, currentRunId) {
       const currentItem = items.find((item) => String(item.id) === String(currentRunId || ""));
-      const runningItems = items
-        .filter((item) => item.status_lower === "running")
-        .slice()
-        .sort(sortByExecutionOrder);
-      const cancelingItems = items
-        .filter((item) => item.status_lower === "canceling")
-        .slice()
-        .sort(sortByExecutionOrder);
-      const queuedItems = items
-        .filter((item) => item.status_lower === "queued")
-        .slice()
-        .sort(sortByExecutionOrder);
+      const runningItems = items.filter((item) => item.status_lower === "running").slice().sort(sortByExecutionOrder);
+      const cancelingItems = items.filter((item) => item.status_lower === "canceling").slice().sort(sortByExecutionOrder);
+      const queuedItems = items.filter((item) => item.status_lower === "queued").slice().sort(sortByExecutionOrder);
 
       if (currentItem) {
         const currentStatus = String(currentItem.status_lower || "").toLowerCase();
-        if (["running", "canceling"].includes(currentStatus)) {
-          return String(currentItem.id);
-        }
+        if (["running", "canceling"].includes(currentStatus)) return String(currentItem.id);
       }
-
-      if (runningItems.length > 0) {
-        return String(runningItems[0].id);
-      }
-      if (cancelingItems.length > 0) {
-        return String(cancelingItems[0].id);
-      }
-      if (queuedItems.length > 0) {
-        return String(queuedItems[0].id);
-      }
-
-      if (currentItem) {
-        return String(currentItem.id);
-      }
+      if (runningItems.length > 0) return String(runningItems[0].id);
+      if (cancelingItems.length > 0) return String(cancelingItems[0].id);
+      if (queuedItems.length > 0) return String(queuedItems[0].id);
+      if (currentItem) return String(currentItem.id);
       return items[0] ? String(items[0].id) : "";
     }
 
-
     function refreshRunsTable() {
-      if (runsRefreshInFlight) {
-        return runsRefreshPromise || Promise.resolve();
-      }
+      if (runsRefreshInFlight) return runsRefreshPromise || Promise.resolve();
       runsRefreshInFlight = true;
+
       runsRefreshPromise = fetchJsonWithTimeout(buildNoCacheUrl("/runs/list"), 2500)
         .then((data) => {
-          if (!data.ok) {
-            return;
-          }
+          if (!data.ok) return;
+
           const tbody = document.querySelector("#runs_panel_table tbody");
-          if (!tbody) {
-            return;
-          }
+          if (!tbody) return;
+
           const selectedIds = new Set(Array.from(document.querySelectorAll(".run-checkbox:checked")).map((box) => Number(box.value)));
           if (!data.items || data.items.length === 0) {
             tbody.innerHTML = '<tr><td colspan="12">No executions yet.</td></tr>';
             applyCurrentOrDefaultSort("#runs_panel_table table");
-          populateRunScopeSelector();
-          updateSelectionSizeLabels();
+            populateRunScopeSelector();
+            updateSelectionSizeLabels();
             return;
           }
 
           tbody.innerHTML = data.items.map((item) => {
-            const rowClass = item.status_lower === "error" ? "run-row run-error" : (item.status_lower === "success" ? "run-row run-success" : (item.status_lower === "canceled" ? "run-row run-canceled" : "run-row"));
+            const rowClass = item.status_lower === "error"
+              ? "run-row run-error"
+              : (item.status_lower === "success"
+                ? "run-row run-success"
+                : (item.status_lower === "canceled" ? "run-row run-canceled" : "run-row"));
+
             const checked = selectedIds.has(item.id) ? 'checked' : '';
             const outputCell = item.output_zip ? `<a href="/runs/${item.id}/download">Download zip</a>` : "—";
             const logCell = item.output_log_file ? `<a href="/runs/${item.id}/log">Download log</a>` : "—";
+
             return `
-            <tr class="${rowClass}" data-run-id="${item.id}" data-status="${item.status_lower}" data-run-user="${escapeHtml(currentUsername)}">
-              <td><input type="checkbox" class="run-checkbox" value="${item.id}" data-start="${item.started_at}" data-status="${item.status_lower}" ${checked} /></td>
-              <td>${escapeHtml(item.id)}</td>
-              <td>${escapeHtml(item.module)}</td>
-              <td>${escapeHtml(item.tool_version || "—")}</td>
-              <td>${escapeHtml(item.input_name || "—")}</td>
-              <td class="run-status-cell">${escapeHtml(item.status_display)}</td>
-              <td class="run-start-cell">${escapeHtml(item.started_at || "")}</td>
-              <td class="run-finished-cell">${escapeHtml(item.finished_at || "")}</td>
-              <td class="run-duration-cell">${escapeHtml(item.duration_hms || "00:00:00")}</td>
-              <td class="run-output-cell">${outputCell}</td>
-              <td class="run-log-cell">${logCell}</td>
-              <td>${escapeHtml(item.size_mb || "0.00 MB")}</td>
-            </tr>`;
+              <tr class="${rowClass}" data-run-id="${item.id}" data-status="${item.status_lower}" data-run-user="${escapeHtml(currentUsername)}">
+                <td><input type="checkbox" class="run-checkbox" value="${item.id}" data-start="${item.started_at}" data-status="${item.status_lower}" ${checked} /></td>
+                <td>${escapeHtml(item.id)}</td>
+                <td>${escapeHtml(item.module)}</td>
+                <td>${escapeHtml(item.tool_version || "—")}</td>
+                <td>${escapeHtml(item.input_name || "—")}</td>
+                <td class="run-status-cell">${escapeHtml(item.status_display)}</td>
+                <td class="run-start-cell">${escapeHtml(item.started_at || "")}</td>
+                <td class="run-finished-cell">${escapeHtml(item.finished_at || "")}</td>
+                <td class="run-duration-cell">${escapeHtml(item.duration_hms || "00:00:00")}</td>
+                <td class="run-output-cell">${outputCell}</td>
+                <td class="run-log-cell">${logCell}</td>
+                <td>${escapeHtml(item.size_mb || "0.00 MB")}</td>
+              </tr>`;
           }).join("");
 
           if (logRunSelector) {
             const nextRunId = pickExecutionLogRunId(data.items, logRunSelector.value);
             logRunSelector.innerHTML = data.items.map((item) => `<option value="${item.id}">${escapeHtml(item.run_label)}</option>`).join("");
-            if (nextRunId) {
-              logRunSelector.value = nextRunId;
-            }
+            if (nextRunId) logRunSelector.value = nextRunId;
             fetchLogByRun();
           }
 
@@ -1170,6 +1108,7 @@
           const hasError = data.items.some((item) => item.status_lower === "error");
           const latestStatus = hasRunning ? "running" : (hasQueued ? "queued" : ((data.items[0]?.status_lower || "").toLowerCase()));
           runStatusLabel.dataset.latestStatus = latestStatus;
+
           if (latestStatus === "ok" || latestStatus === "success") {
             runStatusLabel.textContent = "SUCCESS!!!";
             runStatusLabel.className = "run-status status-done";
@@ -1190,68 +1129,40 @@
           runsRefreshInFlight = false;
           runsRefreshPromise = null;
         });
-      return runsRefreshPromise;
-    }
 
-    function fetchLogByRun() {
-      const runId = logRunSelector?.value;
-      if (!runId) {
-        fetchLatestLog();
-        return;
-      }
-      fetchJsonWithTimeout(buildNoCacheUrl(`/logs/by_run/${runId}`))
-        .then((data) => {
-          renderLog(data.log || "");
-        })
-        .catch(() => {
-          renderLog("");
-        });
+      return runsRefreshPromise;
     }
 
     function renderSystemLog(text) {
       if (!text) {
         systemLogOutput.textContent = "No logs yet.";
-        if (systemLogAuto?.checked) {
-          systemLogOutput.scrollTop = systemLogOutput.scrollHeight;
-        }
+        if (systemLogAuto?.checked) systemLogOutput.scrollTop = systemLogOutput.scrollHeight;
         return;
       }
-      const lines = text.split(/\r?\n/);
+      const lines = String(text).split(/\r?\n/);
       systemLogOutput.innerHTML = lines.map((line) => {
         let cls = "log-info";
-        if (line.includes("[ERROR]")) {
-          cls = "log-error";
-        } else if (line.includes("[WARNING]")) {
-          cls = "log-warning";
-        } else if (line.includes("[DEBUG]")) {
-          cls = "log-debug";
-        }
+        if (line.includes("[ERROR]")) cls = "log-error";
+        else if (line.includes("[WARNING]")) cls = "log-warning";
+        else if (line.includes("[DEBUG]")) cls = "log-debug";
         return `<span class="${cls}">${escapeHtml(line)}</span>`;
       }).join("\n");
-      if (systemLogAuto?.checked) {
-        systemLogOutput.scrollTop = systemLogOutput.scrollHeight;
-      }
+      if (systemLogAuto?.checked) systemLogOutput.scrollTop = systemLogOutput.scrollHeight;
     }
 
     function fetchSystemLog() {
       const source = systemLogSource?.value || "app";
       fetch(buildNoCacheUrl(`/logs/system?source=${encodeURIComponent(source)}`), { cache: "no-store" })
         .then((res) => res.json())
-        .then((data) => {
-          renderSystemLog(data.log || "");
-        })
-        .catch(() => {
-          renderSystemLog("");
-        });
+        .then((data) => renderSystemLog(data.log || ""))
+        .catch(() => renderSystemLog(""));
     }
 
     function collectFormValues() {
       const form = document.querySelector(".module-form");
       const data = new FormData(form);
       const payload = {};
-      data.forEach((value, key) => {
-        payload[key] = value;
-      });
+      data.forEach((value, key) => { payload[key] = value; });
       ["profiles_audit", "frequency_audit", "export_correction_cmd", "fast_excel_export"].forEach((key) => {
         payload[key] = form.querySelector(`input[name="${key}"]`).checked;
       });
@@ -1260,9 +1171,7 @@
 
     let saveTimeout = null;
     function scheduleAutoSave() {
-      if (saveTimeout) {
-        clearTimeout(saveTimeout);
-      }
+      if (saveTimeout) clearTimeout(saveTimeout);
       saveTimeout = setTimeout(() => {
         fetch("/settings/update", {
           method: "POST",
@@ -1277,15 +1186,11 @@
       field.addEventListener("input", scheduleAutoSave);
     });
 
-    loadConfigButton.addEventListener("click", () => {
-      configPicker.click();
-    });
+    loadConfigButton.addEventListener("click", () => configPicker.click());
 
     configPicker.addEventListener("change", () => {
       const file = configPicker.files[0];
-      if (!file) {
-        return;
-      }
+      if (!file) return;
       const reader = new FileReader();
       reader.onload = () => {
         const parsed = parseIni(reader.result || "");
@@ -1295,9 +1200,7 @@
       reader.readAsText(file);
     });
 
-    exportConfigButton.addEventListener("click", () => {
-      window.location.href = "/config/export";
-    });
+    exportConfigButton.addEventListener("click", () => { window.location.href = "/config/export"; });
 
     changePasswordButton.addEventListener("click", async () => {
       const response = await showModal({
@@ -1309,9 +1212,8 @@
         inputPlaceholder: "New password"
       });
       const newPassword = (response.value || "").trim();
-      if (!response.ok || !newPassword) {
-        return;
-      }
+      if (!response.ok || !newPassword) return;
+
       fetch("/account/change_password", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1325,9 +1227,7 @@
     });
 
     function copyToClipboard(text) {
-      if (!text) {
-        return;
-      }
+      if (!text) return;
       if (navigator.clipboard && navigator.clipboard.writeText) {
         navigator.clipboard.writeText(text).catch(() => {});
         return;
@@ -1340,58 +1240,23 @@
       document.body.removeChild(helper);
     }
 
-    copyLogButton.addEventListener("click", () => {
-      copyToClipboard(logOutput.textContent || "");
-    });
-
+    copyLogButton.addEventListener("click", () => copyToClipboard(logOutput.textContent || ""));
     copySelectionButton.addEventListener("click", () => {
       const selection = window.getSelection();
-      if (selection) {
-        copyToClipboard(selection.toString());
-      }
+      if (selection) copyToClipboard(selection.toString());
     });
 
-    if (refreshSystemLogButton) {
-      refreshSystemLogButton.addEventListener("click", fetchSystemLog);
-    }
-    if (deleteSystemLogButton) {
-      deleteSystemLogButton.addEventListener("click", async () => {
-        const ok = await showModal({ title: "Delete system log", message: "Delete all contents from the selected system log file?", confirmText: "Accept", cancelText: "Cancel" });
-        if (!ok.ok) {
-          return;
-        }
-        const source = systemLogSource?.value || "app";
-        fetch(`/logs/system/delete?source=${encodeURIComponent(source)}`, { method: "POST" })
-          .then((res) => res.json())
-          .then((data) => {
-            if (data.ok) {
-              renderSystemLog("");
-            }
-          })
-          .catch(() => {});
-      });
-    }
-    if (copySystemLogButton) {
-      copySystemLogButton.addEventListener("click", () => {
-        copyToClipboard(systemLogOutput.textContent || "");
-      });
-    }
-    if (copySystemSelectionButton) {
-      copySystemSelectionButton.addEventListener("click", () => {
-        const selection = window.getSelection();
-        if (selection) {
-          copyToClipboard(selection.toString());
-        }
-      });
-    }
-    if (systemLogSource) {
-      systemLogSource.addEventListener("change", fetchSystemLog);
-    }
+    refreshSystemLogButton?.addEventListener("click", fetchSystemLog);
+    copySystemLogButton?.addEventListener("click", () => copyToClipboard(systemLogOutput.textContent || ""));
+    copySystemSelectionButton?.addEventListener("click", () => {
+      const selection = window.getSelection();
+      if (selection) copyToClipboard(selection.toString());
+    });
+    systemLogSource?.addEventListener("change", fetchSystemLog);
 
     function getTargetFiltersInput() {
       return freqTargetSelect.value === "cc" ? ccFiltersInput : caFiltersInput;
     }
-
     freqAddButton.addEventListener("click", () => addToFilters(getTargetFiltersInput()));
     freqRemoveButton.addEventListener("click", () => removeFromFilters(getTargetFiltersInput()));
     freqClearButton.addEventListener("click", () => clearFilters(getTargetFiltersInput()));
@@ -1406,9 +1271,7 @@
       const headerCells = table ? table.querySelectorAll("thead th") : [];
       let statusIndex = -1;
       headerCells.forEach((cell, index) => {
-        if (cell.textContent.trim().toLowerCase() === "status") {
-          statusIndex = index;
-        }
+        if (cell.textContent.trim().toLowerCase() === "status") statusIndex = index;
       });
 
       document.querySelectorAll(".run-checkbox").forEach((box) => {
@@ -1416,38 +1279,26 @@
         const statusColumn = row && statusIndex >= 0 ? row.cells[statusIndex] : null;
         const statusText = statusColumn ? statusColumn.textContent.trim().toLowerCase() : "";
         const statusAttr = (row?.dataset.status || box.dataset.status || "").trim().toLowerCase();
-        if (statusText === "error" || statusAttr === "error" || row?.classList.contains("run-error")) {
-          box.checked = true;
-        }
+        if (statusText === "error" || statusAttr === "error" || row?.classList.contains("run-error")) box.checked = true;
       });
     }
-
-    if (selectErrorRunsButton) {
-      selectErrorRunsButton.addEventListener("click", selectErrorRuns);
-    }
+    selectErrorRunsButton?.addEventListener("click", selectErrorRuns);
 
     let lastChecked = null;
     document.querySelectorAll(".run-checkbox").forEach((box) => {
       box.addEventListener("click", (event) => {
-        if (!event.shiftKey || !lastChecked) {
-          lastChecked = box;
-          return;
-        }
+        if (!event.shiftKey || !lastChecked) { lastChecked = box; return; }
         const checkboxes = Array.from(document.querySelectorAll(".run-checkbox"));
         const start = checkboxes.indexOf(box);
         const end = checkboxes.indexOf(lastChecked);
         const [min, max] = start < end ? [start, end] : [end, start];
-        for (let i = min; i <= max; i += 1) {
-          checkboxes[i].checked = lastChecked.checked;
-        }
+        for (let i = min; i <= max; i += 1) checkboxes[i].checked = lastChecked.checked;
       });
     });
 
-    selectOlderRunsButton.addEventListener("click", () => {
+    selectOlderRunsButton?.addEventListener("click", () => {
       const picker = document.getElementById("older_date_picker");
-      if (picker) {
-        picker.showPicker();
-      }
+      picker?.showPicker();
     });
 
     selectUserRunsCombo?.addEventListener("change", () => {
@@ -1456,45 +1307,34 @@
     });
 
     const olderDatePicker = document.getElementById("older_date_picker");
-    olderDatePicker.addEventListener("change", () => {
+    olderDatePicker?.addEventListener("change", () => {
       const selected = olderDatePicker.value;
-      if (!selected) {
-        return;
-      }
+      if (!selected) return;
       const threshold = new Date(`${selected}T00:00:00`);
-      if (Number.isNaN(threshold.getTime())) {
-        return;
-      }
+      if (Number.isNaN(threshold.getTime())) return;
+
       document.querySelectorAll(".run-checkbox").forEach((box) => {
         const startValue = box.dataset.start;
-        if (!startValue) {
-          return;
-        }
+        if (!startValue) return;
         const parts = startValue.split("-");
         const normalized = `${parts[0]}-${parts[1]}-${parts[2]}T${parts[3] || "00:00:00"}`;
         const startDate = new Date(normalized);
-        if (!Number.isNaN(startDate.getTime()) && startDate < threshold) {
-          box.checked = true;
-        }
+        if (!Number.isNaN(startDate.getTime()) && startDate < threshold) box.checked = true;
       });
       olderDatePicker.value = "";
+      updateSelectionSizeLabels();
     });
 
     stopSelectedRunsButton?.addEventListener("click", async () => {
       const ids = getSelectedRunIds();
-      if (ids.length === 0) {
-        return;
-      }
+      if (!ids.length) return;
       const stopRunsAnswer = await showModal({ title: "Stop executions", message: "Stop selected queued/running tasks?", confirmText: "Accept", cancelText: "Cancel" });
-      if (!stopRunsAnswer.ok) {
-        return;
-      }
+      if (!stopRunsAnswer.ok) return;
+
       ids.forEach((id) => {
         const row = document.querySelector(`#runs_panel_table tr[data-run-id="${id}"]`);
         const statusCell = row?.querySelector(".run-status-cell");
-        if (statusCell) {
-          statusCell.textContent = "Canceling";
-        }
+        if (statusCell) statusCell.textContent = "Canceling";
       });
 
       fetch(buildNoCacheUrl("/runs/stop"), {
@@ -1511,15 +1351,11 @@
             return refreshRunsTable().then(() => {
               const stillCanceling = ids.some((id) => {
                 const row = document.querySelector(`#runs_panel_table tr[data-run-id="${id}"]`);
-                if (!row) {
-                  return false;
-                }
+                if (!row) return false;
                 const status = String(row.getAttribute("data-status") || "").toLowerCase();
                 return status === "running" || status === "canceling";
               });
-              if (!stillCanceling || attempts >= maxAttempts) {
-                return;
-              }
+              if (!stillCanceling || attempts >= maxAttempts) return;
               return new Promise((resolve) => setTimeout(resolve, 1000)).then(pollStopStatus);
             });
           };
@@ -1528,15 +1364,16 @@
         .catch(() => {});
     });
 
-    deleteSelectedRunsButton.addEventListener("click", async () => {
+    deleteSelectedRunsButton?.addEventListener("click", async () => {
       const ids = getSelectedRunIds();
-      if (ids.length === 0) {
-        return;
-      }
-      const removeRunsAnswer = await showModal({ title: "Delete executions", message: "This will delete the Uploads and Exports for the selected executions. Continue?", confirmText: "Accept", cancelText: "Cancel" });
-      if (!removeRunsAnswer.ok) {
-        return;
-      }
+      if (!ids.length) return;
+      const removeRunsAnswer = await showModal({
+        title: "Delete executions",
+        message: "This will delete the Uploads and Exports for the selected executions. Continue?",
+        confirmText: "Accept",
+        cancelText: "Cancel"
+      });
+      if (!removeRunsAnswer.ok) return;
       fetch("/runs/delete", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1547,15 +1384,7 @@
     function buildSessionId() {
       const now = new Date();
       const pad = (value) => String(value).padStart(2, "0");
-      return (
-        now.getFullYear().toString() +
-        pad(now.getMonth() + 1) +
-        pad(now.getDate()) +
-        "_" +
-        pad(now.getHours()) +
-        pad(now.getMinutes()) +
-        pad(now.getSeconds())
-      );
+      return now.getFullYear().toString() + pad(now.getMonth() + 1) + pad(now.getDate()) + "_" + pad(now.getHours()) + pad(now.getMinutes()) + pad(now.getSeconds());
     }
 
     let uploadSessionId = buildSessionId();
@@ -1565,10 +1394,12 @@
     }
 
     selectOlderInputsButton?.addEventListener("click", () => olderInputDatePicker?.showPicker());
+
     selectUserInputsCombo?.addEventListener("change", () => {
       applyScopeSelection("#inputs_panel_table", ".input-checkbox", (row) => row?.cells?.[2]?.textContent?.trim() || "", selectUserInputsCombo.value);
       updateSelectionSizeLabels();
     });
+
     olderInputDatePicker?.addEventListener("change", () => {
       const selected = olderInputDatePicker.value;
       if (!selected) return;
@@ -1612,55 +1443,52 @@
         return;
       }
 
-      if (selectedByTarget.single.length) {
-        inputFields.input.value = selectedByTarget.single.join(",");
-      }
-      if (selectedByTarget.pre.length) {
-        inputFields.input_pre.value = selectedByTarget.pre.join(",");
-      }
-      if (selectedByTarget.post.length) {
-        inputFields.input_post.value = selectedByTarget.post.join(",");
-      }
+      if (selectedByTarget.single.length) inputFields.input.value = selectedByTarget.single.join(",");
+      if (selectedByTarget.pre.length) inputFields.input_pre.value = selectedByTarget.pre.join(",");
+      if (selectedByTarget.post.length) inputFields.input_post.value = selectedByTarget.post.join(",");
+
       scheduleAutoSave();
       await showModal({ title: "Inputs assigned", message: "Selected inputs were sent to Input / Input PRE / Input POST based on each row target.", confirmText: "Accept" });
     });
+
     deleteSelectedInputsButton?.addEventListener("click", async () => {
       const ids = getSelectedInputIds();
       if (!ids.length) return;
       const removeInputsAnswer = await showModal({ title: "Delete inputs", message: "Delete selected inputs?", confirmText: "Accept", cancelText: "Cancel" });
       if (!removeInputsAnswer.ok) return;
-      fetch("/inputs/delete", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ids})})
+
+      fetch("/inputs/delete", {
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({ids})
+      })
         .then((res) => res.json())
-         .then(async (data) => {
+        .then(async (data) => {
           if (!data.ok && data.error === "forbidden_inputs") {
             await showModal({ title: "Action not allowed", message: "Only inputs uploaded by your user can be deleted. Admin users can delete any input only from the Admin panel.", confirmText: "Accept" });
           }
           return refreshInputsRepository();
         });
     });
+
     toggleRunsPanelButton?.addEventListener("click", () => {
       runsPanelTable?.classList.toggle("hidden");
-      if (toggleRunsPanelButton) {
-        toggleRunsPanelButton.textContent = runsPanelTable?.classList.contains("hidden") ? "▸" : "▾";
-      }
+      toggleRunsPanelButton.textContent = runsPanelTable?.classList.contains("hidden") ? "▸" : "▾";
     });
+
     toggleExecutionLogPanelButton?.addEventListener("click", () => {
       logOutput?.classList.toggle("hidden");
-      if (toggleExecutionLogPanelButton) {
-        toggleExecutionLogPanelButton.textContent = logOutput?.classList.contains("hidden") ? "▸" : "▾";
-      }
+      toggleExecutionLogPanelButton.textContent = logOutput?.classList.contains("hidden") ? "▸" : "▾";
     });
+
     toggleSystemLogPanelButton?.addEventListener("click", () => {
       systemLogOutput?.classList.toggle("hidden");
-      if (toggleSystemLogPanelButton) {
-        toggleSystemLogPanelButton.textContent = systemLogOutput?.classList.contains("hidden") ? "▸" : "▾";
-      }
+      toggleSystemLogPanelButton.textContent = systemLogOutput?.classList.contains("hidden") ? "▸" : "▾";
     });
+
     toggleInputsPanelButton?.addEventListener("click", () => {
       inputsPanelTable?.classList.toggle("hidden");
-      if (toggleInputsPanelButton) {
-        toggleInputsPanelButton.textContent = inputsPanelTable?.classList.contains("hidden") ? "▸" : "▾";
-      }
+      toggleInputsPanelButton.textContent = inputsPanelTable?.classList.contains("hidden") ? "▸" : "▾";
     });
 
     moduleSelect.addEventListener("change", () => {
@@ -1669,25 +1497,27 @@
     });
     toggleInputRows();
     updateModuleAvailability();
+
     const moduleForm = document.querySelector(".module-form");
     moduleForm.addEventListener("submit", async (event) => {
       event.preventDefault();
-      if (isModuleBlocked()) {
-        updateModuleAvailability();
-        return;
-      }
+      if (isModuleBlocked()) { updateModuleAvailability(); return; }
+
       logOutput.textContent = "";
       uploadSessionId = buildSessionId();
+
       const isConsistencyCheck = moduleSelect.value === "consistency-check";
       const singleInputs = parseCsvList(inputFields.input.value);
       const preInputs = parseCsvList(inputFields.input_pre.value);
       const postInputs = parseCsvList(inputFields.input_post.value);
+
       selectedInputsSingleField.value = "";
       selectedInputsPreField.value = "";
       selectedInputsPostField.value = "";
 
       let confirmationMessage = "";
       let confirmationHtml = "";
+
       if (!isConsistencyCheck && singleInputs.length > 1) {
         selectedInputsSingleField.value = singleInputs.join("|");
         inputFields.input.value = singleInputs[0];
@@ -1697,13 +1527,13 @@
         const isPairable = preInputs.length === postInputs.length || preInputs.length === 1 || postInputs.length === 1;
         if (!isPairable) {
           showModal({ title: "Invalid PRE/POST pairing", message: "Cannot queue tasks: PRE and POST selections have different lengths and both are greater than 1.", confirmText: "Accept" });
-          event.preventDefault();
           return;
         }
         selectedInputsPreField.value = preInputs.join("|");
         selectedInputsPostField.value = postInputs.join("|");
         inputFields.input_pre.value = preInputs[0] || "";
         inputFields.input_post.value = postInputs[0] || "";
+
         const queuedCount = Math.max(preInputs.length, postInputs.length);
         const pairingList = Array.from({ length: queuedCount }).map((_, idx) => {
           const preValue = preInputs.length > 1 ? preInputs[idx] : (preInputs[0] || "");
@@ -1717,15 +1547,16 @@
       const currentInput = isConsistencyCheck ? (document.getElementById("input_post_path")?.value || "") : (document.getElementById("input_path")?.value || "");
       const taskName = currentInput.split("/").filter(Boolean).pop() || "unknown";
       const confirmText = confirmationMessage || `Queue task: ${taskName}?`;
+
       const queueAnswer = await showModal({ title: "Queue task", message: confirmText, messageHtml: confirmationHtml, confirmText: "Accept", cancelText: "Cancel" });
-      if (!queueAnswer.ok) {
-        return;
-      }
+      if (!queueAnswer.ok) return;
+
       runStatusLabel.textContent = "Task queued...";
       runStatusLabel.className = "run-status status-running";
       runModuleButton.disabled = true;
       moduleForm.submit();
     });
+
     if (runStatusLabel) {
       const latestStatus = (runStatusLabel.dataset.latestStatus || "").trim().toLowerCase();
       if (latestStatus === "ok") {
@@ -1736,15 +1567,15 @@
         runStatusLabel.className = "run-status status-error";
       }
     }
+
     initSortableTable("#inputs_panel_table table");
     initSortableTable("#runs_panel_table table");
 
     fetch("/config/load")
       .then((res) => res.json())
-      .then((data) => {
-        applyConfigValues(data);
-      })
+      .then((data) => applyConfigValues(data))
       .catch(() => {});
+
     logRunSelector?.addEventListener("change", fetchLogByRun);
     fetchLogByRun();
     fetchSystemLog();
@@ -1752,57 +1583,39 @@
     refreshRunsTable();
     populateInputScopeSelector();
     populateRunScopeSelector();
-    if (inputsTotalSizeLabel) {
-      inputsTotalSizeLabel.dataset.totalSize = "{{ inputs_total_size }}";
-    }
-    if (runsTotalSizeLabel) {
-      runsTotalSizeLabel.dataset.totalSize = "{{ total_runs_size }}";
-    }
+
+    if (inputsTotalSizeLabel) inputsTotalSizeLabel.dataset.totalSize = "{{ inputs_total_size }}";
+    if (runsTotalSizeLabel) runsTotalSizeLabel.dataset.totalSize = "{{ total_runs_size }}";
+
     applyScopeSelection("#inputs_panel_table", ".input-checkbox", (row) => row?.cells?.[2]?.textContent?.trim() || "", "__none__");
     applyScopeSelection("#runs_panel_table", ".run-checkbox", (row) => row?.dataset?.runUser || currentUsername, "__none__");
+
     document.addEventListener("change", (event) => {
       const target = event.target;
-      if (target && (target.classList?.contains("input-checkbox") || target.classList?.contains("run-checkbox"))) {
-        updateSelectionSizeLabels();
-      }
+      if (target && (target.classList?.contains("input-checkbox") || target.classList?.contains("run-checkbox"))) updateSelectionSizeLabels();
     });
     updateSelectionSizeLabels();
 
     let executionPanelsRefreshTimer = null;
     const refreshExecutionPanels = () => {
       refreshRunsTable()
-        .then(() => {
-          fetchLogByRun();
-        })
-        .finally(() => {
-          executionPanelsRefreshTimer = setTimeout(refreshExecutionPanels, 3000);
-        });
+        .then(() => fetchLogByRun())
+        .finally(() => { executionPanelsRefreshTimer = setTimeout(refreshExecutionPanels, 3000); });
     };
     refreshExecutionPanels();
 
     let executionLogTimer = null;
     const scheduleExecutionLogAutoRefresh = () => {
-      if (!executionLogAuto?.checked) {
-        executionLogTimer = null;
-        return;
-      }
+      if (!executionLogAuto?.checked) { executionLogTimer = null; return; }
       fetchLogByRun();
       executionLogTimer = setTimeout(scheduleExecutionLogAutoRefresh, 3000);
     };
     if (executionLogAuto) {
       executionLogAuto.addEventListener("change", () => {
-        if (!executionLogAuto.checked && executionLogTimer) {
-          clearTimeout(executionLogTimer);
-          executionLogTimer = null;
-          return;
-        }
-        if (executionLogAuto.checked && !executionLogTimer) {
-          scheduleExecutionLogAutoRefresh();
-        }
+        if (!executionLogAuto.checked && executionLogTimer) { clearTimeout(executionLogTimer); executionLogTimer = null; return; }
+        if (executionLogAuto.checked && !executionLogTimer) scheduleExecutionLogAutoRefresh();
       });
-      if (executionLogAuto.checked) {
-        scheduleExecutionLogAutoRefresh();
-      }
+      if (executionLogAuto.checked) scheduleExecutionLogAutoRefresh();
     }
 
     let systemLogTimer = null;

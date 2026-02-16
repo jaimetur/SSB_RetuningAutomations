@@ -20,6 +20,7 @@
   - Polished documentation panel behavior and add PDF user guide output.
   - Improved get_resource_path() function to accept a base_dr parameter.
   - Refined header meta-spacing/color and reorder documentation links.
+  - Included Documentation Links on Web Interface and adjusted panels styles.
 
 - #### 🐛 Bug fixes:
   - Fixed the templates_pptx folder.
