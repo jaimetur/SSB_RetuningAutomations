@@ -1220,6 +1220,38 @@ def build_settings_defaults(module_value: str, config_values: dict[str, str]) ->
     return settings
 
 
+def normalize_module_inputs_map(raw_map: Any) -> dict[str, dict[str, str]]:
+    if not isinstance(raw_map, dict):
+        return {}
+
+    normalized: dict[str, dict[str, str]] = {}
+    for module_key, module_inputs in raw_map.items():
+        module_name = str(module_key or "").strip()
+        if not module_name or not isinstance(module_inputs, dict):
+            continue
+        normalized[module_name] = {
+            "input": str(module_inputs.get("input", "") or ""),
+            "input_pre": str(module_inputs.get("input_pre", "") or ""),
+            "input_post": str(module_inputs.get("input_post", "") or ""),
+        }
+    return normalized
+
+
+def build_settings_with_module_inputs(existing_settings: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:
+    merged_settings = dict(existing_settings)
+    merged_settings.update(payload)
+
+    module_value = str(merged_settings.get("module") or "configuration-audit")
+    module_inputs_map = normalize_module_inputs_map(merged_settings.get("module_inputs_map"))
+    module_inputs_map[module_value] = {
+        "input": str(merged_settings.get("input", "") or ""),
+        "input_pre": str(merged_settings.get("input_pre", "") or ""),
+        "input_post": str(merged_settings.get("input_post", "") or ""),
+    }
+    merged_settings["module_inputs_map"] = module_inputs_map
+    return merged_settings
+
+
 def persist_settings_to_config(module_value: str, payload: dict[str, Any]) -> None:
     # Keep network frequencies global and stable across users/sessions.
     # They are persisted by Module 0 itself (launcher logic), not by per-user web form autosave.
@@ -1399,9 +1431,12 @@ def index(request: Request):
     network_frequencies = load_network_frequencies()
     settings.update(user_settings)
     settings["module"] = module_value
-    settings["input"] = ""
-    settings["input_pre"] = ""
-    settings["input_post"] = ""
+    module_inputs_map = normalize_module_inputs_map(settings.get("module_inputs_map"))
+    current_module_inputs = module_inputs_map.get(module_value, {})
+    settings["input"] = str(current_module_inputs.get("input", settings.get("input", "")) or "")
+    settings["input_pre"] = str(current_module_inputs.get("input_pre", settings.get("input_pre", "")) or "")
+    settings["input_post"] = str(current_module_inputs.get("input_post", settings.get("input_post", "")) or "")
+    settings["module_inputs_map"] = module_inputs_map
     cleanup_stale_runs_for_user(user["id"])
 
     conn = get_conn()
@@ -1439,6 +1474,7 @@ def index(request: Request):
             "user": user,
             "module_options": MODULE_OPTIONS,
             "settings": settings,
+            "module_inputs_map": module_inputs_map,
             "latest_runs": latest_runs,
             "tool_meta": tool_meta,
             "network_frequencies": network_frequencies,
@@ -1617,7 +1653,7 @@ def run_module(
     except PermissionError:
         return RedirectResponse("/login", status_code=302)
 
-    payload = {
+    raw_payload = {
         "module": module,
         "input": input.strip(),
         "input_pre": input_pre.strip(),
@@ -1638,6 +1674,8 @@ def run_module(
         "fast_excel_export": fast_excel_export,
         "output": (output or str((OUTPUTS_DIR / sanitize_component(user["username"])).resolve())).strip(),
     }
+    existing_settings = load_user_settings(user["id"])
+    payload = build_settings_with_module_inputs(existing_settings, raw_payload)
     save_user_settings(user["id"], payload)
     persist_settings_to_config(module, payload)
     if module in WEB_INTERFACE_BLOCKED_MODULES:
@@ -1650,7 +1688,7 @@ def run_module(
     def parse_selected(raw: str) -> list[str]:
         return [item.strip() for item in (raw or "").split("|") if item.strip()]
 
-    queue_payloads = [payload]
+    queue_payloads = [dict(raw_payload)]
     selected_single = parse_selected(selected_inputs_single)
     selected_pre = parse_selected(selected_inputs_pre)
     selected_post = parse_selected(selected_inputs_post)
@@ -1658,7 +1696,7 @@ def run_module(
     if module != "consistency-check" and len(selected_single) > 1:
         queue_payloads = []
         for selected_input in selected_single:
-            payload_copy = dict(payload)
+            payload_copy = dict(raw_payload)
             payload_copy["input"] = selected_input
             queue_payloads.append(payload_copy)
     elif module == "consistency-check" and (len(selected_pre) > 1 or len(selected_post) > 1):
@@ -1667,14 +1705,14 @@ def run_module(
             queue_payloads = []
             queued_len = max(len(selected_pre), len(selected_post))
             for idx in range(queued_len):
-                pre_value = selected_pre[idx] if len(selected_pre) > 1 else (selected_pre[0] if selected_pre else payload.get("input_pre", ""))
-                post_value = selected_post[idx] if len(selected_post) > 1 else (selected_post[0] if selected_post else payload.get("input_post", ""))
-                payload_copy = dict(payload)
+                pre_value = selected_pre[idx] if len(selected_pre) > 1 else (selected_pre[0] if selected_pre else raw_payload.get("input_pre", ""))
+                post_value = selected_post[idx] if len(selected_post) > 1 else (selected_post[0] if selected_post else raw_payload.get("input_post", ""))
+                payload_copy = dict(raw_payload)
                 payload_copy["input_pre"] = pre_value
                 payload_copy["input_post"] = post_value
                 queue_payloads.append(payload_copy)
 
-    base_output_root = Path(payload.get("output") or (OUTPUTS_DIR / sanitize_component(user["username"])))
+    base_output_root = Path(raw_payload.get("output") or (OUTPUTS_DIR / sanitize_component(user["username"])))
     queue_batch_stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     for index, queue_payload in enumerate(queue_payloads, start=1):
         queue_output_dir = base_output_root / f"queue_task_{queue_batch_stamp}_{index:02d}"
@@ -1703,12 +1741,11 @@ def run_module(
     conn.commit()
     conn.close()
 
-    reset_payload = dict(payload)
-    reset_payload["input"] = ""
-    reset_payload["input_pre"] = ""
-    reset_payload["input_post"] = ""
-    save_user_settings(user["id"], reset_payload)
-    persist_settings_to_config(module, reset_payload)
+    if queue_payloads:
+        latest_payload = queue_payloads[-1]
+        latest_settings_payload = build_settings_with_module_inputs(payload, latest_payload)
+        save_user_settings(user["id"], latest_settings_payload)
+        persist_settings_to_config(module, latest_settings_payload)
 
     queue_event.set()
     ensure_worker_started()
@@ -1723,7 +1760,9 @@ async def update_settings(request: Request):
     except PermissionError:
         return {"ok": False}
 
-    payload = await request.json()
+    incoming_payload = await request.json()
+    existing_settings = load_user_settings(user["id"])
+    payload = build_settings_with_module_inputs(existing_settings, incoming_payload)
     save_user_settings(user["id"], payload)
     module_value = payload.get("module") or "configuration-audit"
     persist_settings_to_config(module_value, payload)
@@ -3084,7 +3123,6 @@ async def release_notes(request: Request, user=Depends(get_current_user)):
     changelog_md = changelog_path.read_text(encoding="utf-8", errors="replace") if changelog_path.exists() else "CHANGELOG.md not found at /app/CHANGELOG.md"
     tool_meta = load_tool_metadata()
     return templates.TemplateResponse("release_notes.html", {"request": request, "tool_meta": tool_meta, "user": user, "changelog_md": changelog_md})
-
 
 
 

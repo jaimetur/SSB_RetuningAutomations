@@ -457,6 +457,7 @@
     const inputsTotalSizeLabel = document.getElementById("inputs_total_size");
     const runsTotalSizeLabel = document.getElementById("runs_total_size");
     const currentUsername = "{{ user.username }}";
+    let moduleInputsMap = {{ module_inputs_map | tojson }};
 
     const inputFields = {
       input: document.getElementById("input_path"),
@@ -549,6 +550,14 @@
       selectedInputsSingleField.value = "";
       selectedInputsPreField.value = "";
       selectedInputsPostField.value = "";
+    }
+
+    function applyModuleInputsFor(moduleValue) {
+      if (!moduleValue) return;
+      const moduleInputs = moduleInputsMap?.[moduleValue] || {};
+      inputFields.input.value = moduleInputs.input || "";
+      inputFields.input_pre.value = moduleInputs.input_pre || "";
+      inputFields.input_post.value = moduleInputs.input_post || "";
     }
 
     function buildRepositoryPath(inputName) {
@@ -1021,20 +1030,8 @@
 
     function applyConfigValues(config) {
       const general = normalizeConfig(config);
-      const moduleValue = moduleSelect.value;
-      const inputMappings = {
-        "update-network-frequencies": general.last_input || "",
-        "configuration-audit": general.last_input_audit || general.last_input || "",
-        "consistency-check-bulk": general.last_input_cc_bulk || general.last_input || "",
-        "final-cleanup": general.last_input_final_cleanup || general.last_input || ""
-      };
 
-      if (moduleValue === "consistency-check") {
-        inputFields.input_pre.value = general.last_input_cc_pre || "";
-        inputFields.input_post.value = general.last_input_cc_post || "";
-      } else {
-        inputFields.input.value = inputMappings[moduleValue] || "";
-      }
+      applyModuleInputsFor(moduleSelect.value);
 
       inputFields.n77_ssb_pre.value = general.n77_ssb_pre || inputFields.n77_ssb_pre.value;
       inputFields.n77_ssb_post.value = general.n77_ssb_post || inputFields.n77_ssb_post.value;
@@ -1736,6 +1733,7 @@
     });
 
     moduleSelect.addEventListener("change", () => {
+      applyModuleInputsFor(moduleSelect.value);
       toggleInputRows();
       updateModuleAvailability();
     });
