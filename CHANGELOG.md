@@ -4,6 +4,25 @@
 
 ---
 
+## Release: v0.7.3
+### Release Date: 2026-02-17
+  
+- #### 🚨 Breaking Changes:
+
+- #### 🌟 New Features:
+  - Added `Update Network Frequencies` module to update network frequencies from any Step0 folder..
+
+- #### 🚀 Enhancements:
+  - Ensure active tasks only remove their dedicated queue_task_* working folder and keep admin and user deletion behavior consistent.
+
+- #### 🐛 Bug fixes:
+  - Fix a bug where deleting runs in Queued or Running state could remove output folders belonging to other completed runs due to generic fallback output resolution.
+
+- #### 📚 Documentation: 
+  - Updated README and related docs with all the latest changes.
+
+---
+
 ## Release: v0.7.2
 ### Release Date: 2026-02-16
   
