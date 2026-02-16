@@ -22,6 +22,8 @@
   - Updated button styling/placement requests: Stop Selected (user) switched to green; Stop Selected (admin global history) added in red before Delete and wired to an admin stop endpoint. 
   - Refined Admin Database Backup UX: Import row placement, red Import button, English file-picker messaging, gray “Select file” button, and red import warning text. 
   - Final layout adjustment: moved Database Backup to sit immediately before Database Editor in Admin. 
+  - Updated the MeContext enriched-columns logic to match the slide changes (new yellow-highlighted parts and removed strikethrough items), and expose a Format column to drive cell coloring when conditions are met.
+  - Addded conditional formatting to the output Excel to highlight results (yellow/green/red/gray) for both xlsxwriter and openpyxl.
 
 - #### 🐛 Bug fixes:
   - Fix a bug where deleting runs in Queued or Running state could remove output folders belonging to other completed runs due to generic fallback output resolution.
