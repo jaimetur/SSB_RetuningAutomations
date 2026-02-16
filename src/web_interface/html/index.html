@@ -434,6 +434,7 @@
     let runsRefreshInFlight = false;
     let runsRefreshPromise = null;
     let hasActiveTasks = false;
+    let hadActiveTasks = false;
     let backgroundRefreshTimer = null;
     let systemLogRefreshTimer = null;
     const updateNetworkFrequenciesModule = "update-network-frequencies";
@@ -1868,6 +1869,8 @@
 
     function updateExecutionAutoRefreshAvailability(hasActive) {
       if (!executionLogAuto) return;
+      const becameActive = Boolean(hasActive && !hadActiveTasks);
+      hadActiveTasks = Boolean(hasActive);
       executionLogAuto.disabled = !hasActive;
 
       if (!hasActive) {
@@ -1877,7 +1880,7 @@
         return;
       }
 
-      if (pendingExecutionAutoEnable && !executionLogAuto.checked) {
+      if ((pendingExecutionAutoEnable || becameActive) && !executionLogAuto.checked) {
         setExecutionAutoChecked(true);
         fetchLogByRun();
       }
