@@ -266,7 +266,7 @@
           <span class="runs-total" id="runs_total_size">Total size: {{ total_runs_size }} · Selected size: 0.00 MB</span>
         </div>
         <div class="runs-actions">
-          <select id="select_user_runs_combo"><option value="__all__" selected>All Users</option></select>
+          <select id="select_user_runs_combo"><option value="{{ user.username }}" selected>{{ user.username }}</option></select>
           <button type="button" id="select_all_runs">Select All</button>
           <button type="button" id="select_none_runs">Select None</button>
           <button type="button" id="select_older_runs">Select Older</button>
@@ -630,13 +630,21 @@
         .catch(() => {});
     }
 
-    function populateScopeCombo(combo, users) {
+    function populateScopeCombo(combo, users, options = {}) {
       if (!combo) return;
       const previous = combo.value;
+      const includeAll = options.includeAll !== false;
+      const fallback = options.fallback || "__all__";
       const uniqueUsers = Array.from(new Set(users.filter((value) => value && value !== "—"))).sort((a, b) => a.localeCompare(b));
-      combo.innerHTML = '<option value="__all__">All Users</option>' +
-        uniqueUsers.map((user) => `<option value="${escapeHtml(user)}">${escapeHtml(user)}</option>`).join("");
-      combo.value = uniqueUsers.includes(previous) || previous === "__all__" ? previous : "__all__";
+      const allOption = includeAll ? '<option value="__all__">All Users</option>' : "";
+      combo.innerHTML = allOption + uniqueUsers.map((user) => `<option value="${escapeHtml(user)}">${escapeHtml(user)}</option>`).join("");
+      if (uniqueUsers.includes(previous) || (includeAll && previous === "__all__")) {
+        combo.value = previous;
+      } else if (uniqueUsers.includes(fallback) || (includeAll && fallback === "__all__")) {
+        combo.value = fallback;
+      } else if (uniqueUsers.length > 0) {
+        combo.value = uniqueUsers[0];
+      }
     }
 
     function applyScopeFilter(tableSelector, getRowUser, selectedValue) {
@@ -698,13 +706,13 @@
     function populateInputScopeSelector() {
       const users = Array.from(document.querySelectorAll("#inputs_panel_table tbody tr"))
         .map((row) => row.cells?.[2]?.textContent?.trim() || "");
-      populateScopeCombo(selectUserInputsCombo, users);
+      populateScopeCombo(selectUserInputsCombo, users, { includeAll: true, fallback: "__all__" });
     }
 
     function populateRunScopeSelector() {
       const users = Array.from(document.querySelectorAll("#runs_panel_table tbody tr"))
         .map((row) => row.dataset.runUser || currentUsername);
-      populateScopeCombo(selectUserRunsCombo, users);
+      populateScopeCombo(selectUserRunsCombo, users, { includeAll: false, fallback: currentUsername });
     }
 
     function collectSelectedInputsByTarget() {
