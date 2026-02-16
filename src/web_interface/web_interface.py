@@ -1668,7 +1668,7 @@ def run_module(
                 module,
                 tool_version,
                 task_name,
-                now_iso(),
+                "",
                 json.dumps(queue_payload),
                 task_input,
             ),

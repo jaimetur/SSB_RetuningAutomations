@@ -201,7 +201,7 @@
         <input type="hidden" name="selected_inputs_post" id="selected_inputs_post" value="" />
       </form>
 
-      <span class="run-status" id="run_status" data-latest-status="{{ latest_runs[0].status_lower if latest_runs else '' }}"></span>
+      <span class="run-status hidden" id="run_status" data-latest-status=""></span>
     </section>
 
     <!-- Inputs Repository -->
@@ -283,12 +283,12 @@
           <thead>
             <tr>
               <th></th>
-              <th class="sortable" data-sort-key="number">ID</th>
+              <th class="sortable" data-sort-key="number" data-default-sort="desc">ID</th>
               <th class="sortable" data-sort-key="text">Module</th>
               <th class="sortable" data-sort-key="text">Version</th>
               <th class="sortable" data-sort-key="text">Input</th>
               <th class="sortable" data-sort-key="text">Status</th>
-              <th class="sortable" data-sort-key="datetime" data-default-sort="desc">Start</th>
+              <th class="sortable" data-sort-key="datetime">Start</th>
               <th class="sortable" data-sort-key="datetime">End</th>
               <th class="sortable" data-sort-key="duration">Duration</th>
               <th class="sortable" data-sort-key="text">Output</th>
@@ -431,6 +431,13 @@
     let runsRefreshPromise = null;
     let hasActiveTasks = false;
     let backgroundRefreshTimer = null;
+    const EXECUTION_AUTO_ENABLE_PENDING_KEY = "execution_log_auto_enable_pending";
+    let pendingExecutionAutoEnable = false;
+    try {
+      pendingExecutionAutoEnable = window.sessionStorage?.getItem(EXECUTION_AUTO_ENABLE_PENDING_KEY) === "1";
+    } catch (_error) {
+      pendingExecutionAutoEnable = false;
+    }
     const inputsTotalSizeLabel = document.getElementById("inputs_total_size");
     const runsTotalSizeLabel = document.getElementById("runs_total_size");
     const currentUsername = "{{ user.username }}";
@@ -468,6 +475,24 @@
     const selectedInputsSingleField = document.getElementById("selected_inputs_single");
     const selectedInputsPreField = document.getElementById("selected_inputs_pre");
     const selectedInputsPostField = document.getElementById("selected_inputs_post");
+
+    function markExecutionAutoEnablePending() {
+      pendingExecutionAutoEnable = true;
+      try {
+        window.sessionStorage?.setItem(EXECUTION_AUTO_ENABLE_PENDING_KEY, "1");
+      } catch (_error) {
+        // ignore storage errors
+      }
+    }
+
+    function clearExecutionAutoEnablePending() {
+      pendingExecutionAutoEnable = false;
+      try {
+        window.sessionStorage?.removeItem(EXECUTION_AUTO_ENABLE_PENDING_KEY);
+      } catch (_error) {
+        // ignore storage errors
+      }
+    }
 
     function toggleInputRows() {
       const isConsistencyCheck = moduleSelect.value === "consistency-check";
@@ -1082,6 +1107,70 @@
       return items[0] ? String(items[0].id) : "";
     }
 
+    function parseRunDateTime(rawValue) {
+      const value = (rawValue || "").trim();
+      if (!value) return null;
+      const normalized = value.replace(/^(\d{4})-(\d{2})-(\d{2})-(\d{2}:\d{2}:\d{2})$/, "$1-$2-$3T$4");
+      const timestamp = Date.parse(normalized);
+      if (Number.isNaN(timestamp)) return null;
+      return new Date(timestamp);
+    }
+
+    function buildRunStatusSummary(items) {
+      const normalizedItems = Array.isArray(items) ? items : [];
+      const hasRunningOrQueued = normalizedItems.some((item) => ["running", "queued", "canceling"].includes(item.status_lower));
+      if (hasRunningOrQueued) {
+        return {
+          latestStatus: "active",
+          className: "run-status status-running",
+          text: "Tasks Running/Queued...",
+          hidden: false
+        };
+      }
+
+      const now = Date.now();
+      const lookbackMs = 24 * 60 * 60 * 1000;
+      const recentFinished = normalizedItems.filter((item) => {
+        const status = (item.status_lower || "").toLowerCase();
+        if (!["success", "error", "ok"].includes(status)) return false;
+        const finishedAt = parseRunDateTime(item.finished_at || item.finished_at_raw || "");
+        if (!finishedAt) return false;
+        return (now - finishedAt.getTime()) <= lookbackMs;
+      });
+
+      if (recentFinished.length === 0) {
+        return { latestStatus: "", className: "run-status hidden", text: "", hidden: true };
+      }
+
+      const hasRecentError = recentFinished.some((item) => {
+        const status = (item.status_lower || "").toLowerCase();
+        return status === "error";
+      });
+
+      return hasRecentError
+        ? {
+            latestStatus: "error",
+            className: "run-status status-error",
+            text: "Last 24h: Some tasks with Error!",
+            hidden: false
+          }
+        : {
+            latestStatus: "success",
+            className: "run-status status-done",
+            text: "Last 24h: All Tasks Executed Successfully!",
+            hidden: false
+          };
+    }
+
+    function applyRunStatusSummary(items) {
+      if (!runStatusLabel) return;
+      const summary = buildRunStatusSummary(items);
+      runStatusLabel.dataset.latestStatus = summary.latestStatus;
+      runStatusLabel.textContent = summary.text;
+      runStatusLabel.className = summary.className;
+      runStatusLabel.classList.toggle("hidden", Boolean(summary.hidden));
+    }
+
     function refreshRunsTable(options = {}) {
       const opts = {
         updateExecutionLogPanel: true,
@@ -1103,6 +1192,7 @@
           if (!data.items || data.items.length === 0) {
             tbody.innerHTML = '<tr><td colspan="12">No executions yet.</td></tr>';
             hasActiveTasks = false;
+            applyRunStatusSummary([]);
             applyCurrentOrDefaultSort("#runs_panel_table table");
             populateRunScopeSelector();
             updateSelectionSizeLabels();
@@ -1148,20 +1238,7 @@
           const hasQueued = data.items.some((item) => item.status_lower === "queued");
           activeTasksFound = hasRunning || hasQueued;
           hasActiveTasks = activeTasksFound;
-          const hasError = data.items.some((item) => item.status_lower === "error");
-          const latestStatus = hasRunning ? "running" : (hasQueued ? "queued" : ((data.items[0]?.status_lower || "").toLowerCase()));
-          runStatusLabel.dataset.latestStatus = latestStatus;
-
-          if (latestStatus === "ok" || latestStatus === "success") {
-            runStatusLabel.textContent = "SUCCESS!!!";
-            runStatusLabel.className = "run-status status-done";
-          } else if (latestStatus === "error" || (!latestStatus && hasError)) {
-            runStatusLabel.textContent = "ERROR!!!";
-            runStatusLabel.className = "run-status status-error";
-          } else if (latestStatus === "running" || latestStatus === "queued") {
-            runStatusLabel.textContent = "Task queued...";
-            runStatusLabel.className = "run-status status-running";
-          }
+          applyRunStatusSummary(data.items);
 
           applyCurrentOrDefaultSort("#runs_panel_table table");
           populateRunScopeSelector();
@@ -1613,21 +1690,19 @@
       const queueAnswer = await showModal({ title: "Queue task", message: confirmText, messageHtml: confirmationHtml, confirmText: "Accept", cancelText: "Cancel" });
       if (!queueAnswer.ok) return;
 
-      runStatusLabel.textContent = "Task queued...";
+      runStatusLabel.textContent = "Tasks Running/Queued...";
       runStatusLabel.className = "run-status status-running";
+      runStatusLabel.classList.remove("hidden");
+      markExecutionAutoEnablePending();
+      if (executionLogAuto) executionLogAuto.checked = true;
       runModuleButton.disabled = true;
       moduleForm.submit();
     });
 
     if (runStatusLabel) {
-      const latestStatus = (runStatusLabel.dataset.latestStatus || "").trim().toLowerCase();
-      if (latestStatus === "ok") {
-        runStatusLabel.textContent = "SUCCESS!!!";
-        runStatusLabel.className = "run-status status-done";
-      } else if (latestStatus === "error") {
-        runStatusLabel.textContent = "ERROR!!!";
-        runStatusLabel.className = "run-status status-error";
-      }
+      runStatusLabel.classList.add("hidden");
+      runStatusLabel.dataset.latestStatus = "";
+      runStatusLabel.textContent = "";
     }
 
     initSortableTable("#inputs_panel_table table");
@@ -1696,11 +1771,19 @@
     function updateExecutionAutoRefreshAvailability(hasActive) {
       if (!executionLogAuto) return;
       executionLogAuto.disabled = !hasActive;
-      if (!hasActive) executionLogAuto.checked = false;
-      if (hasActive && !executionLogAuto.checked) {
+
+      if (!hasActive) {
+        executionLogAuto.checked = false;
+        clearExecutionAutoEnablePending();
+        scheduleBackgroundRefresh();
+        return;
+      }
+
+      if (pendingExecutionAutoEnable && !executionLogAuto.checked) {
         executionLogAuto.checked = true;
         fetchLogByRun();
       }
+      clearExecutionAutoEnablePending();
       scheduleBackgroundRefresh();
     }
 
