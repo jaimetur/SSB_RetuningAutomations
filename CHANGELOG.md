@@ -14,6 +14,8 @@
   - Changed `NRFreqRelation` `NR nodes with the old N77 SSB (648672) and the new SSB (647328) NRFreqRelation pointing to same mcpcPCellNrFreqRelProfileRef containing old SSB name (from NRFreqRelation table)`from NR Frequency Audit to NR Frequency Inconsistency.
   - Allow empty `mandatoryGUtranFreqRef` in ENDC Inconsistencies.
   - Support nodes where some N77 cells are in the retuning frequency list but others are not.
+  - Persist user module inputs/options.
+  - Updated log timestamp format in System Logs.
 
 - #### 🐛 Bug fixes:
 
