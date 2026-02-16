@@ -16,8 +16,10 @@
   - Support nodes where some N77 cells are in the retuning frequency list but others are not.
   - Persist user module inputs/options.
   - Updated log timestamp format in System Logs.
+  - Expanded SummaryAudit tips coverage from provided slide.
 
 - #### 🐛 Bug fixes:
+  - Fixed per-module input persistence for each user.
 
 - #### 📚 Documentation: 
   - Updated README and related docs with all the latest changes.
