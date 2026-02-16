@@ -14,11 +14,11 @@
 
 ## 📝 Changelog
 The Historical Change Log can be checked in the following link:
-[Changelog](https://github.com/jaimetur/SSB_RetuningAutomations/blob/main/CHANGELOG.md)
+[Changelog](CHANGELOG.md)
 
 ## 📅 Roadmap
 The Planned Roadmap for futures releases can be checked in the following link:
-[Planned Roadmap](https://github.com/jaimetur/SSB_RetuningAutomations/blob/main/ROADMAP.md)
+[Planned Roadmap](ROADMAP.md)
 
 ## 💾 Download
 Download the tool either for Linux, MacOS or Windows (for both x64 and arm64 architectures) as you prefer, directly from following link:
@@ -52,7 +52,7 @@ You can find the technical user guide in these formats:
 ---
 
 ## 🖥️ Module Selector
-![Module Selector](https://github.com/jaimetur/SSB_RetuningAutomations/blob/main/assets/screenshots/module_selector.png?raw=true) 
+![Module Selector](assets/screenshots/module_selector.png?raw=true) 
 
 ---
 
@@ -408,16 +408,16 @@ A new web interface was added to run the same launcher modules using CLI under t
 - HTTP access log at `data/web-access.log`.
 
 ### User Panel
-![Module Selector](https://github.com/jaimetur/SSB_RetuningAutomations/blob/main/assets/screenshots/web-interface-user-panel.png?raw=true) 
+![Module Selector](assets/screenshots/web-interface-user-panel.png?raw=true) 
 
 ### Inputs & Executions Panels
-![Module Selector](https://github.com/jaimetur/SSB_RetuningAutomations/blob/main/assets/screenshots/web-interface-inputs-executions-panels.png?raw=true) 
+![Module Selector](assets/screenshots/web-interface-inputs-executions-panels.png?raw=true) 
 
 ### Logs Panels
-![Module Selector](https://github.com/jaimetur/SSB_RetuningAutomations/blob/main/assets/screenshots/web-interface-logs-panels.png?raw=true) 
+![Module Selector](assets/screenshots/web-interface-logs-panels.png?raw=true) 
 
 ### Admin Panel
-![Module Selector](https://github.com/jaimetur/SSB_RetuningAutomations/blob/main/assets/screenshots/web-interface-admin-panel.png?raw=true) 
+![Module Selector](assets/screenshots/web-interface-admin-panel.png?raw=true) 
 
 
 
@@ -486,7 +486,7 @@ Examples:
 ---
 
 ## 🛡️ Code of Conduct
-By participating in this project, you agree to abide by our [Code of Conduct](https://github.com/jaimetur/SSB_RetuningAutomations/blob/main/CODE_OF_CONDUCT.md).
+By participating in this project, you agree to abide by our [Code of Conduct](CODE_OF_CONDUCT.md).
 
 ## 📢 Disclaimer
 
@@ -512,7 +512,7 @@ By participating in this project, you agree to abide by our [Code of Conduct](ht
   <img src="https://contrib.rocks/image?repo=jaimetur/SSB_RetuningAutomations" width="15%"/>
 </a>
 
-If you want to Contribute to this project please, first read the file [CONTRIBUTING.md](https://github.com/jaimetur/SSB_RetuningAutomations/blob/main/CONTRIBUTING.md)
+If you want to Contribute to this project please, first read the file [CONTRIBUTING.md](CONTRIBUTING.md)
 
 ---
 

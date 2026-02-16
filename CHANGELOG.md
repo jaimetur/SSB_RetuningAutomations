@@ -1,6 +1,6 @@
 # 🗓️ CHANGELOG
-[Planned Roadmap](https://github.com/jaimetur/SSB_RetuningAutomations/blob/main/ROADMAP.md) for the following releases
-[Changelog](https://github.com/jaimetur/SSB_RetuningAutomations/blob/main/CHANGELOG.md) for the past releases
+[Planned Roadmap](ROADMAP.md) for the following releases
+[Changelog](CHANGELOG.md) for the past releases
 
 ---
 
@@ -14,9 +14,18 @@
 
 - #### 🚀 Enhancements:
   - Ensure active tasks only remove their dedicated queue_task_* working folder and keep admin and user deletion behavior consistent.
+  - Added independent System Logs auto-refresh behavior (not blocked by task queue/running state) while keeping Execution Logs auto-refresh tied to execution activity. 
+  - Implemented dedicated 60-second polling for System Logs and kept polling scoped to the currently selected log source. 
+  - Reordered Admin panels so Database Editor appears before Executions Logs, with a safe default state (Select Table) that shows no table until explicitly selected. 
+  - Standardized run/input bulk actions by replacing multiple selection buttons with compact Select dropdown workflows (including All/None/Running/Queued/Error/Cancelled/Older where applicable).
+  - Added/updated bulk-selection handlers so dropdown actions execute selection logic and reset to the default option after use. 
+  - Updated button styling/placement requests: Stop Selected (user) switched to green; Stop Selected (admin global history) added in red before Delete and wired to an admin stop endpoint. 
+  - Refined Admin Database Backup UX: Import row placement, red Import button, English file-picker messaging, gray “Select file” button, and red import warning text. 
+  - Final layout adjustment: moved Database Backup to sit immediately before Database Editor in Admin. 
 
 - #### 🐛 Bug fixes:
   - Fix a bug where deleting runs in Queued or Running state could remove output folders belonging to other completed runs due to generic fallback output resolution.
+  - Fixed user Inputs filter population by exposing uploader usernames from backend and feeding them to the UI filter options. 
 
 - #### 📚 Documentation: 
   - Enriched Technical User Guides.
