@@ -101,7 +101,7 @@ def setup_logging() -> logging.Logger:
     if not logger.handlers:
         # Persist application logs across restarts.
         app_handler = RotatingFileHandler(APP_LOG_PATH, maxBytes=2_000_000, backupCount=3)
-        app_handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s", datefmt=LOG_DATETIME_FORMAT))
+        app_handler.setFormatter(logging.Formatter("[%(asctime)s] - %(levelname)s %(message)s", datefmt=LOG_DATETIME_FORMAT))
         logger.addHandler(app_handler)
 
         for name in ("uvicorn", "uvicorn.error"):
@@ -118,7 +118,7 @@ def setup_api_logger() -> logging.Logger:
     if not logger.handlers:
         # Keep API request logs separate from application logs.
         api_handler = RotatingFileHandler(API_LOG_PATH, maxBytes=2_000_000, backupCount=3)
-        api_handler.setFormatter(logging.Formatter("%(asctime)s %(message)s", datefmt=LOG_DATETIME_FORMAT))
+        api_handler.setFormatter(logging.Formatter("[%(asctime)s] - %(message)s", datefmt=LOG_DATETIME_FORMAT))
         logger.addHandler(api_handler)
     return logger
 
@@ -129,7 +129,7 @@ def setup_web_access_logger() -> logging.Logger:
     if not logger.handlers:
         # Keep web access/authentication logs separate from API call logs.
         access_handler = RotatingFileHandler(WEB_ACCESS_LOG_PATH, maxBytes=2_000_000, backupCount=3)
-        access_handler.setFormatter(logging.Formatter("%(asctime)s %(message)s", datefmt=LOG_DATETIME_FORMAT))
+        access_handler.setFormatter(logging.Formatter("[%(asctime)s] - %(message)s", datefmt=LOG_DATETIME_FORMAT))
         logger.addHandler(access_handler)
     return logger
 
@@ -765,6 +765,34 @@ def save_user_settings(user_id: int, settings: dict[str, Any]) -> None:
     conn.close()
 
 
+def extract_module_inputs(settings: dict[str, Any], module_value: str) -> dict[str, str]:
+    module_inputs = settings.get("module_inputs") if isinstance(settings, dict) else {}
+    if not isinstance(module_inputs, dict):
+        return {}
+    module_payload = module_inputs.get(module_value)
+    if not isinstance(module_payload, dict):
+        return {}
+    return {
+        "input": str(module_payload.get("input") or ""),
+        "input_pre": str(module_payload.get("input_pre") or ""),
+        "input_post": str(module_payload.get("input_post") or ""),
+    }
+
+
+def update_module_inputs(settings: dict[str, Any], module_value: str, payload: dict[str, Any]) -> dict[str, Any]:
+    updated = dict(settings or {})
+    module_inputs = updated.get("module_inputs")
+    if not isinstance(module_inputs, dict):
+        module_inputs = {}
+    module_inputs[module_value] = {
+        "input": str(payload.get("input") or ""),
+        "input_pre": str(payload.get("input_pre") or ""),
+        "input_post": str(payload.get("input_post") or ""),
+    }
+    updated["module_inputs"] = module_inputs
+    return updated
+
+
 def load_user_settings(user_id: int) -> dict[str, Any]:
     conn = get_conn()
     row = conn.execute("SELECT settings_json FROM user_settings WHERE user_id = ?", (user_id,)).fetchone()
@@ -1347,7 +1375,7 @@ async def access_log_middleware(request: Request, call_next):
     elapsed_ms = (time.perf_counter() - start) * 1000
     client = get_client_ip(request)
     api_logger.info(
-        '%s "%s %s" status=%s duration_ms=%.2f',
+        '[%s] - "%s %s" status=%s duration_ms=%.2f',
         client,
         request.method,
         request.url.path,
@@ -1399,9 +1427,7 @@ def index(request: Request):
     network_frequencies = load_network_frequencies()
     settings.update(user_settings)
     settings["module"] = module_value
-    settings["input"] = ""
-    settings["input_pre"] = ""
-    settings["input_post"] = ""
+    settings.update(extract_module_inputs(user_settings, module_value))
     cleanup_stale_runs_for_user(user["id"])
 
     conn = get_conn()
@@ -1638,6 +1664,8 @@ def run_module(
         "fast_excel_export": fast_excel_export,
         "output": (output or str((OUTPUTS_DIR / sanitize_component(user["username"])).resolve())).strip(),
     }
+    existing_settings = load_user_settings(user["id"])
+    payload = update_module_inputs(existing_settings, module, payload)
     save_user_settings(user["id"], payload)
     persist_settings_to_config(module, payload)
     if module in WEB_INTERFACE_BLOCKED_MODULES:
@@ -1703,12 +1731,14 @@ def run_module(
     conn.commit()
     conn.close()
 
-    reset_payload = dict(payload)
-    reset_payload["input"] = ""
-    reset_payload["input_pre"] = ""
-    reset_payload["input_post"] = ""
-    save_user_settings(user["id"], reset_payload)
-    persist_settings_to_config(module, reset_payload)
+    if queue_payloads:
+        latest_payload = queue_payloads[-1]
+        persisted_payload = dict(payload)
+        persisted_payload["input"] = str(latest_payload.get("input") or "")
+        persisted_payload["input_pre"] = str(latest_payload.get("input_pre") or "")
+        persisted_payload["input_post"] = str(latest_payload.get("input_post") or "")
+        persisted_payload = update_module_inputs(existing_settings, module, persisted_payload)
+        save_user_settings(user["id"], persisted_payload)
 
     queue_event.set()
     ensure_worker_started()
@@ -1724,8 +1754,10 @@ async def update_settings(request: Request):
         return {"ok": False}
 
     payload = await request.json()
-    save_user_settings(user["id"], payload)
     module_value = payload.get("module") or "configuration-audit"
+    existing_settings = load_user_settings(user["id"])
+    payload = update_module_inputs(existing_settings, module_value, payload)
+    save_user_settings(user["id"], payload)
     persist_settings_to_config(module_value, payload)
     return {"ok": True}
 
@@ -3084,7 +3116,6 @@ async def release_notes(request: Request, user=Depends(get_current_user)):
     changelog_md = changelog_path.read_text(encoding="utf-8", errors="replace") if changelog_path.exists() else "CHANGELOG.md not found at /app/CHANGELOG.md"
     tool_meta = load_tool_metadata()
     return templates.TemplateResponse("release_notes.html", {"request": request, "tool_meta": tool_meta, "user": user, "changelog_md": changelog_md})
-
 
 
 
