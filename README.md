@@ -395,7 +395,7 @@ A new web interface was added to run the same launcher modules using CLI under t
 
 ### Included features
 - Private login with session management.
-- Main dashboard to run modules (`configuration-audit`, `consistency-check`, `consistency-check-bulk`, `final-cleanup`).
+- Main dashboard to run modules (`update-network-frequencies`, `configuration-audit`, `consistency-check`, `consistency-check-bulk`, `final-cleanup`).
 - Per-user parameter persistence (stores the last values used by each user).
 - Upload MO inputs via **Upload MOs** (accepts `.zip`, `.log`, `.txt`) instead of local input folders.
 - Export results are downloadable as ZIPs from the **Latest Runs** panel (output logs are also downloadable).
