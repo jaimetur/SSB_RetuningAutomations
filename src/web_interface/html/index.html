@@ -432,11 +432,15 @@
     let hasActiveTasks = false;
     let backgroundRefreshTimer = null;
     const EXECUTION_AUTO_ENABLE_PENDING_KEY = "execution_log_auto_enable_pending";
+    const EXECUTION_AUTO_CHECKED_KEY = "execution_log_auto_checked";
     let pendingExecutionAutoEnable = false;
+    let persistedExecutionAutoChecked = false;
     try {
       pendingExecutionAutoEnable = window.sessionStorage?.getItem(EXECUTION_AUTO_ENABLE_PENDING_KEY) === "1";
+      persistedExecutionAutoChecked = window.sessionStorage?.getItem(EXECUTION_AUTO_CHECKED_KEY) === "1";
     } catch (_error) {
       pendingExecutionAutoEnable = false;
+      persistedExecutionAutoChecked = false;
     }
     const inputsTotalSizeLabel = document.getElementById("inputs_total_size");
     const runsTotalSizeLabel = document.getElementById("runs_total_size");
@@ -492,6 +496,25 @@
       } catch (_error) {
         // ignore storage errors
       }
+    }
+
+    function persistExecutionAutoCheckedState(isChecked) {
+      persistedExecutionAutoChecked = Boolean(isChecked);
+      try {
+        window.sessionStorage?.setItem(EXECUTION_AUTO_CHECKED_KEY, persistedExecutionAutoChecked ? "1" : "0");
+      } catch (_error) {
+        // ignore storage errors
+      }
+    }
+
+    function setExecutionAutoChecked(isChecked) {
+      if (!executionLogAuto) return;
+      executionLogAuto.checked = Boolean(isChecked);
+      persistExecutionAutoCheckedState(executionLogAuto.checked);
+    }
+
+    if (executionLogAuto) {
+      executionLogAuto.checked = persistedExecutionAutoChecked;
     }
 
     function toggleInputRows() {
@@ -1694,7 +1717,7 @@
       runStatusLabel.className = "run-status status-running";
       runStatusLabel.classList.remove("hidden");
       markExecutionAutoEnablePending();
-      if (executionLogAuto) executionLogAuto.checked = true;
+      setExecutionAutoChecked(true);
       runModuleButton.disabled = true;
       moduleForm.submit();
     });
@@ -1773,21 +1796,23 @@
       executionLogAuto.disabled = !hasActive;
 
       if (!hasActive) {
-        executionLogAuto.checked = false;
+        setExecutionAutoChecked(false);
         clearExecutionAutoEnablePending();
         scheduleBackgroundRefresh();
         return;
       }
 
       if (pendingExecutionAutoEnable && !executionLogAuto.checked) {
-        executionLogAuto.checked = true;
+        setExecutionAutoChecked(true);
         fetchLogByRun();
       }
       clearExecutionAutoEnablePending();
+      persistExecutionAutoCheckedState(executionLogAuto.checked);
       scheduleBackgroundRefresh();
     }
 
     executionLogAuto?.addEventListener("change", () => {
+      persistExecutionAutoCheckedState(executionLogAuto.checked);
       if (executionLogAuto.checked) fetchLogByRun();
       scheduleBackgroundRefresh();
     });
