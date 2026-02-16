@@ -2496,6 +2496,84 @@ async def delete_runs(request: Request):
     return {"ok": True}
 
 
+@app.post("/admin/runs/stop", tags=["Administration"])
+async def admin_stop_runs(request: Request):
+    try:
+        require_admin(request)
+    except PermissionError:
+        return {"ok": False}
+
+    payload = await request.json()
+    raw_run_ids = payload.get("ids", [])
+    run_ids = [int(run_id) for run_id in raw_run_ids if str(run_id).isdigit()]
+    if not run_ids:
+        return {"ok": False}
+
+    conn = get_conn()
+    rows = conn.execute(
+        "SELECT id, status FROM task_runs WHERE id IN (%s)" % ",".join("?" for _ in run_ids),
+        tuple(run_ids),
+    ).fetchall()
+
+    now_value = now_iso()
+    queued_ids: list[int] = []
+    running_ids: list[int] = []
+    running_without_process_ids: list[int] = []
+    for row in rows:
+        status = (row["status"] or "").lower()
+        if status == "queued":
+            queued_ids.append(row["id"])
+        elif status == "running":
+            running_ids.append(row["id"])
+
+    if queued_ids:
+        conn.execute(
+            "UPDATE task_runs SET status = 'canceled', finished_at = ?, output_log = TRIM(output_log || '\nCanceled by admin before execution.') WHERE id IN (%s)"
+            % ",".join("?" for _ in queued_ids),
+            (now_value, *queued_ids),
+        )
+
+    running_with_process_ids: list[int] = []
+    with running_processes_lock:
+        for task_id in running_ids:
+            proc = running_processes.get(task_id)
+            if proc and proc.poll() is None:
+                running_with_process_ids.append(task_id)
+            else:
+                running_without_process_ids.append(task_id)
+
+    if running_with_process_ids:
+        conn.execute(
+            "UPDATE task_runs SET status = 'canceling', output_log = TRIM(output_log || '\nCancellation requested by admin.') WHERE id IN (%s)"
+            % ",".join("?" for _ in running_with_process_ids),
+            tuple(running_with_process_ids),
+        )
+        with canceled_task_ids_lock:
+            canceled_task_ids.update(running_with_process_ids)
+        with running_processes_lock:
+            for task_id in running_with_process_ids:
+                proc = running_processes.get(task_id)
+                if proc and proc.poll() is None:
+                    try:
+                        proc.terminate()
+                    except OSError:
+                        pass
+
+    if running_without_process_ids:
+        conn.execute(
+            "UPDATE task_runs SET status = 'canceled', finished_at = ?, output_log = TRIM(output_log || '\nCanceled by admin (process already finished).') WHERE id IN (%s)"
+            % ",".join("?" for _ in running_without_process_ids),
+            (now_value, *running_without_process_ids),
+        )
+
+    conn.commit()
+    conn.close()
+
+    if queued_ids:
+        queue_event.set()
+    return {"ok": True}
+
+
 @app.post("/admin/runs/delete", tags=["Administration"])
 async def admin_delete_runs(request: Request):
     try:

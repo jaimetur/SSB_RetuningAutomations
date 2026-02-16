@@ -37,16 +37,18 @@
 
     <section class="card">
       <h2>Database Backup</h2>
-      <div class="action-row">
+      <div class="db-backup-actions">
         <form method="get" action="/admin/database/export" class="inline">
           <button type="submit" class="btn btn-primary">Export DB Backup</button>
         </form>
-        <form method="post" action="/admin/database/import" enctype="multipart/form-data" class="inline">
-          <input type="file" name="backup_file" accept=".db,.sqlite,.sqlite3" required />
-          <button type="submit" class="btn btn-accent">Import DB Backup</button>
+        <form method="post" action="/admin/database/import" enctype="multipart/form-data" class="inline db-backup-import-form">
+          <button type="submit" class="btn btn-danger">Import DB Backup</button>
+          <label class="db-backup-file-label">Backup file
+            <input type="file" name="backup_file" accept=".db,.sqlite,.sqlite3" required />
+          </label>
         </form>
       </div>
-      <p><small>Import will replace the current database file after basic validation.</small></p>
+      <p><small>Import replaces the current database file after basic validation.</small></p>
     </section>
 
     <section class="card">
@@ -172,6 +174,7 @@
             <option value="canceled">Select Cancelled</option>
             <option value="older">Select Older</option>
           </select>
+          <button type="button" id="admin_stop_selected_runs" class="btn btn-danger">Stop Selected</button>
           <button type="button" id="delete_selected_runs" class="btn btn-danger">Delete Selected</button>
           <button type="button" id="toggle_runs_panel" class="panel-toggle" aria-label="Collapse runs panel" title="Collapse/Expand">▾</button>
         </div>
@@ -347,6 +350,7 @@
 
     const runsBulkSelectAction = document.getElementById("runs_bulk_select_action");
     const selectUserRunsCombo = document.getElementById("select_user_runs_combo");
+    const adminStopSelectedRunsButton = document.getElementById("admin_stop_selected_runs");
     const deleteSelectedRunsButton = document.getElementById("delete_selected_runs");
     const toggleRunsPanelButton = document.getElementById("toggle_runs_panel");
     const runsTable = document.getElementById("runs_panel_table");
@@ -574,6 +578,18 @@
         }).then(() => window.location.reload());
       });
     }
+
+    adminStopSelectedRunsButton?.addEventListener("click", async () => {
+      const ids = getSelectedRunIds();
+      if (!ids.length) return;
+      const ok = await showModal({ title: "Stop executions", message: "Stop selected queued/running tasks?", confirmText: "Accept", cancelText: "Cancel" });
+      if (!ok) return;
+      fetch("/admin/runs/stop", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids })
+      }).then(() => window.location.reload());
+    });
 
 
     function getSelectedInputIds() {
