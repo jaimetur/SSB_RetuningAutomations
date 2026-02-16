@@ -123,7 +123,7 @@
           <span class="runs-total" id="inputs_total_size">Total size: {{ inputs_total_size }} · Selected size: 0.00 MB</span>
         </div>
         <div class="runs-actions">
-          <select id="select_user_inputs_combo"><option value="__all__" selected>All</option></select>
+          <select id="select_user_inputs_combo"><option value="__all__" selected>All Users</option></select>
           <button type="button" id="select_all_inputs">Select All</button>
           <button type="button" id="select_none_inputs">Select None</button>
           <button type="button" id="select_older_inputs">Select Older</button>
@@ -158,7 +158,7 @@
           </div>
         </div>
         <div class="runs-actions">
-          <select id="select_user_runs_combo"><option value="__all__" selected>All</option></select>
+          <select id="select_user_runs_combo"><option value="__all__" selected>All Users</option></select>
           <button type="button" id="select_all_runs">Select All</button>
           <button type="button" id="select_none_runs">Select None</button>
           <button type="button" id="select_older_runs">Select Older</button>
@@ -385,7 +385,7 @@
         .map((row) => row.cells?.[columnIndex]?.textContent?.trim() || "")
         .filter((value) => value && value !== "—");
       const uniqueUsers = Array.from(new Set(users)).sort((a, b) => a.localeCompare(b));
-      combo.innerHTML = '<option value="__all__">All</option>' + uniqueUsers.map((user) => `<option value="${user}">${user}</option>`).join("");
+      combo.innerHTML = '<option value="__all__">All Users</option>' + uniqueUsers.map((user) => `<option value="${user}">${user}</option>`).join("");
       combo.value = uniqueUsers.includes(previous) || previous === "__all__" ? previous : "__all__";
     }
 
@@ -423,22 +423,28 @@
 
     function updateSelectionSizeLabels() {
       if (inputsTotalSizeLabel) {
-        const totalText = (inputsTotalSizeLabel.dataset.totalSize || '').trim();
+        let visibleTotalMb = 0;
         let selectedMb = 0;
-        document.querySelectorAll('.input-checkbox:checked').forEach((box) => {
-          const row = box.closest('tr');
-          selectedMb += parseSizeMb(row?.cells?.[4]?.textContent || '0 MB');
+        document.querySelectorAll('#inputs_panel_table tbody tr').forEach((row) => {
+          if (row.classList.contains('hidden')) return;
+          const rowSize = parseSizeMb(row?.cells?.[4]?.textContent || '0 MB');
+          visibleTotalMb += rowSize;
+          const box = row.querySelector('.input-checkbox');
+          if (box?.checked) selectedMb += rowSize;
         });
-        inputsTotalSizeLabel.textContent = `Total size: ${totalText || '0.00 MB'} · Selected size: ${formatSizeMb(selectedMb)}`;
+        inputsTotalSizeLabel.textContent = `Total size: ${formatSizeMb(visibleTotalMb)} · Selected size: ${formatSizeMb(selectedMb)}`;
       }
       if (runsTotalSizeLabel) {
-        const totalText = (runsTotalSizeLabel.dataset.totalSize || '').trim();
+        let visibleTotalMb = 0;
         let selectedMb = 0;
-        document.querySelectorAll('.run-checkbox:checked').forEach((box) => {
-          const row = box.closest('tr');
-          selectedMb += parseSizeMb(row?.cells?.[12]?.textContent || '0 MB');
+        document.querySelectorAll('#runs_panel_table tbody tr').forEach((row) => {
+          if (row.classList.contains('hidden')) return;
+          const rowSize = parseSizeMb(row?.cells?.[12]?.textContent || '0 MB');
+          visibleTotalMb += rowSize;
+          const box = row.querySelector('.run-checkbox');
+          if (box?.checked) selectedMb += rowSize;
         });
-        runsTotalSizeLabel.textContent = `Total size: ${totalText || '0.00 MB'} · Selected size: ${formatSizeMb(selectedMb)}`;
+        runsTotalSizeLabel.textContent = `Total size: ${formatSizeMb(visibleTotalMb)} · Selected size: ${formatSizeMb(selectedMb)}`;
       }
     }
 
