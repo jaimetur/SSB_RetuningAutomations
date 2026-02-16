@@ -8,12 +8,12 @@
 - #### 🚨 Breaking Changes:
 
 - #### 🌟 New Features:
-  - Added new column `Notes`to SummaryAudit table to add some comments on different checks. 
+  - Added new column `Tips`to SummaryAudit table in ConfigurationAudit and ConsistencyCheck modules to add some tips on different checks. 
 
 - #### 🚀 Enhancements:
   - Changed `NRFreqRelation` `NR nodes with the old N77 SSB (648672) and the new SSB (647328) NRFreqRelation pointing to same mcpcPCellNrFreqRelProfileRef containing old SSB name (from NRFreqRelation table)`from NR Frequency Audit to NR Frequency Inconsistency.
   - Allow empty `mandatoryGUtranFreqRef` in ENDC Inconsistencies.
-  - Support nodes where some N77 cells are in the retuning frequency list but others are not.. 
+  - Support nodes where some N77 cells are in the retuning frequency list but others are not.
 
 - #### 🐛 Bug fixes:
 
