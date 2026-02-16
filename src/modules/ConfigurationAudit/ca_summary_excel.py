@@ -149,7 +149,7 @@ def build_summary_audit(
                 "Metric": metric,
                 "Value": value,
                 "ExtraInfo": extra,
-                "Notes": "",
+                "Tips": "",
             }
         )
 
@@ -431,7 +431,7 @@ def build_summary_audit(
             "Metric": "SummaryAudit",
             "Value": "No data available",
             "ExtraInfo": "",
-            "Notes": "",
+            "Tips": "",
         })
 
     # Build final DataFrame
@@ -578,39 +578,45 @@ def build_summary_audit(
 
         df = df.sort_values(by=["_order_"], kind="stable").drop(columns="_order_").reset_index(drop=True)
 
-    preferred_cols = ["Category", "SubCategory", "Metric", "Value", "ExtraInfo", "Notes"]
+    preferred_cols = ["Category", "SubCategory", "Metric", "Value", "ExtraInfo", "Tips"]
     df = df[[c for c in preferred_cols if c in df.columns] + [c for c in df.columns if c not in preferred_cols]]
 
 
-    # Notes column (requested in SummaryAudit slide updates)
-    notes_by_metric: Dict[str, str] = {
+    # Tips column (requested in SummaryAudit slide updates)
+    tips_by_metric: Dict[str, str] = {
         "Total unique nodes (from MeContext table)": "MeContext table to create lists of sites for implementation",
         "Nodes with syncStatus='UNSYNCHRONIZED' (being excluded in all Audits)": "Unsynch nodes excluded in Audits and Implementation",
+
         "NR nodes with N77 SSB in Pre-Retune allowed list": "Nodes with Step2b pending",
         "NR nodes with N77 SSB in Post-Retune allowed list": "Nodes with Step2b completed",
         "NR nodes with N77 SSB not in Pre/Post Retune allowed lists": "These nodes must be checked in preparation phase and confirm if any special action needed",
+
         "NR nodes with N77 ARCFN in Pre-Retune allowed list": "Nodes with Step2b pending",
         "NR nodes with N77 ARCFN in Post-Retune allowed list": "Nodes with Step2b completed",
         "NR nodes with N77 ARCFN not in Pre/Post Retune allowed lists": "These nodes must be checked in preparation phase and confirm if any special action needed",
-        f"NR nodes with the old N77 SSB ({n77_ssb_pre}) (from NRFreqRelation table)": "Need to run Step1 on this nodes",
+
+        f"NR nodes with the old N77 SSB ({n77_ssb_pre}) and the new SSB ({n77_ssb_post}) (from NRFreqRelation table)": "Need to run Step1 on this nodes",
         f"NR nodes with the old N77 SSB ({n77_ssb_pre}) but without new N77 SSB ({n77_ssb_post}) (from NRFreqRelation table)": "Nodes with any relations Step1 pending",
         f"NR nodes with the old N77 SSB ({n77_ssb_pre}) and the new SSB ({n77_ssb_post}) NRFreqRelation pointing to same mcpcPCellNrFreqRelProfileRef containing old SSB name (from NRFreqRelation table)": "Need to review Step2b execution",
+        f"NR nodes with the new N77 SSB ({n77_ssb_post}) NRFreqRelation pointing to mcpcPCellNrFreqRelProfileRef containing new SSB name (cloned) or Other (from NRFreqRelation table)": "Nodes with Step1 completed",
         "NR nodes with mismatching params (cell-level) between old N77 SSB": "Need to review. Step1 run could solve most cases",
+
         "LTE nodes with GUtranFreqRelationId to new N77 SSB": "Need to review and fix with Step1 or Step2c",
         "LTE nodes with same endBMeasPriority in old N77 SSB": "Need to review and fix with Step1 or Step2c",
         "LTE nodes with mismatching params between GUtranFreqRelationId": "Parameters qQualMin, qRxLevMin, threshXHigh agreed to set to fixed values on new freqs and inconsistencies should be reported to VZ. Other inconsistent parameters would require review for further actions.",
+
         "Nodes with mandatoryGUtranFreqRef not empty and not containing N77 SSBs": "These nodes must be checked in preparation phase and confirm if any special action needed",
     }
 
     if not df.empty:
-        def _note_for_metric(metric: object) -> str:
+        def _tip_for_metric(metric: object) -> str:
             m = str(metric)
-            for k, v in notes_by_metric.items():
+            for k, v in tips_by_metric.items():
                 if k in m:
                     return v
-            return ""
+            return "Tip to be defined"
 
-        df["Notes"] = df.get("Metric", "").map(_note_for_metric)
+        df["Tips"] = df.get("Metric", "").map(_tip_for_metric)
 
     # Build NR param mismatching dataframe
     df_param_mismatch_nr = pd.DataFrame(param_mismatch_rows_nr, columns=param_mismatch_columns_nr)
@@ -623,4 +629,3 @@ def build_summary_audit(
         df_param_mismatch_gu = pd.DataFrame(columns=param_mismatch_columns_gu)
 
     return df, df_param_mismatch_nr, df_param_mismatch_gu
-
