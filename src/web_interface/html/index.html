@@ -420,6 +420,8 @@
     const inputsPanelTable = document.getElementById("inputs_panel_table");
     let runsRefreshInFlight = false;
     let runsRefreshPromise = null;
+    let hasActiveTasks = false;
+    let backgroundRefreshTimer = null;
     const inputsTotalSizeLabel = document.getElementById("inputs_total_size");
     const runsTotalSizeLabel = document.getElementById("runs_total_size");
     const currentUsername = "{{ user.username }}";
@@ -1048,7 +1050,11 @@
       return items[0] ? String(items[0].id) : "";
     }
 
-    function refreshRunsTable() {
+    function refreshRunsTable(options = {}) {
+      const opts = {
+        updateExecutionLogPanel: true,
+        ...options
+      };
       if (runsRefreshInFlight) return runsRefreshPromise || Promise.resolve();
       runsRefreshInFlight = true;
 
@@ -1059,13 +1065,16 @@
           const tbody = document.querySelector("#runs_panel_table tbody");
           if (!tbody) return;
 
+          let activeTasksFound = false;
+
           const selectedIds = new Set(Array.from(document.querySelectorAll(".run-checkbox:checked")).map((box) => Number(box.value)));
           if (!data.items || data.items.length === 0) {
             tbody.innerHTML = '<tr><td colspan="12">No executions yet.</td></tr>';
+            hasActiveTasks = false;
             applyCurrentOrDefaultSort("#runs_panel_table table");
             populateRunScopeSelector();
             updateSelectionSizeLabels();
-            return;
+            return { hasActiveTasks: false };
           }
 
           tbody.innerHTML = data.items.map((item) => {
@@ -1096,7 +1105,7 @@
               </tr>`;
           }).join("");
 
-          if (logRunSelector) {
+          if (logRunSelector && opts.updateExecutionLogPanel) {
             const nextRunId = pickExecutionLogRunId(data.items, logRunSelector.value);
             logRunSelector.innerHTML = data.items.map((item) => `<option value="${item.id}">${escapeHtml(item.run_label)}</option>`).join("");
             if (nextRunId) logRunSelector.value = nextRunId;
@@ -1105,6 +1114,8 @@
 
           const hasRunning = data.items.some((item) => item.status_lower === "running" || item.status_lower === "canceling");
           const hasQueued = data.items.some((item) => item.status_lower === "queued");
+          activeTasksFound = hasRunning || hasQueued;
+          hasActiveTasks = activeTasksFound;
           const hasError = data.items.some((item) => item.status_lower === "error");
           const latestStatus = hasRunning ? "running" : (hasQueued ? "queued" : ((data.items[0]?.status_lower || "").toLowerCase()));
           runStatusLabel.dataset.latestStatus = latestStatus;
@@ -1123,8 +1134,9 @@
           applyCurrentOrDefaultSort("#runs_panel_table table");
           populateRunScopeSelector();
           updateSelectionSizeLabels();
+          return { hasActiveTasks: activeTasksFound };
         })
-        .catch(() => {})
+        .catch(() => ({ hasActiveTasks }))
         .finally(() => {
           runsRefreshInFlight = false;
           runsRefreshPromise = null;
@@ -1576,11 +1588,18 @@
       .then((data) => applyConfigValues(data))
       .catch(() => {});
 
+    function manualRefreshExecutionLogPanel() {
+      refreshRunsTable({ updateExecutionLogPanel: true });
+    }
+
     logRunSelector?.addEventListener("change", fetchLogByRun);
+    refreshLogButton?.addEventListener("click", manualRefreshExecutionLogPanel);
     fetchLogByRun();
     fetchSystemLog();
     refreshInputsRepository();
-    refreshRunsTable();
+    refreshRunsTable({ updateExecutionLogPanel: false }).finally(() => {
+      scheduleBackgroundRefresh();
+    });
     populateInputScopeSelector();
     populateRunScopeSelector();
 
@@ -1596,44 +1615,44 @@
     });
     updateSelectionSizeLabels();
 
-    let executionPanelsRefreshTimer = null;
-    const refreshExecutionPanels = () => {
-      refreshRunsTable()
-        .then(() => fetchLogByRun())
-        .finally(() => { executionPanelsRefreshTimer = setTimeout(refreshExecutionPanels, 3000); });
-    };
-    refreshExecutionPanels();
-
-    let executionLogTimer = null;
-    const scheduleExecutionLogAutoRefresh = () => {
-      if (!executionLogAuto?.checked) { executionLogTimer = null; return; }
-      fetchLogByRun();
-      executionLogTimer = setTimeout(scheduleExecutionLogAutoRefresh, 3000);
-    };
-    if (executionLogAuto) {
-      executionLogAuto.addEventListener("change", () => {
-        if (!executionLogAuto.checked && executionLogTimer) { clearTimeout(executionLogTimer); executionLogTimer = null; return; }
-        if (executionLogAuto.checked && !executionLogTimer) scheduleExecutionLogAutoRefresh();
-      });
-      if (executionLogAuto.checked) scheduleExecutionLogAutoRefresh();
-    }
-
-    let systemLogTimer = null;
-    if (systemLogAuto) {
-      systemLogAuto.addEventListener("change", () => {
-        if (systemLogAuto.checked) {
-          fetchSystemLog();
-          systemLogTimer = setInterval(fetchSystemLog, 3000);
-        } else if (systemLogTimer) {
-          clearInterval(systemLogTimer);
-          systemLogTimer = null;
-        }
-      });
-      if (systemLogAuto.checked) {
-        fetchSystemLog();
-        systemLogTimer = setInterval(fetchSystemLog, 3000);
+    const clearBackgroundRefreshTimer = () => {
+      if (backgroundRefreshTimer) {
+        clearTimeout(backgroundRefreshTimer);
+        backgroundRefreshTimer = null;
       }
+    };
+
+    const shouldPollBackground = () => {
+      return Boolean(executionLogAuto?.checked || systemLogAuto?.checked || hasActiveTasks);
+    };
+
+    const scheduleBackgroundRefresh = () => {
+      clearBackgroundRefreshTimer();
+      if (!shouldPollBackground()) return;
+      backgroundRefreshTimer = setTimeout(runBackgroundRefreshCycle, 3000);
+    };
+
+    function runBackgroundRefreshCycle() {
+      const updateExecutionLogPanel = Boolean(executionLogAuto?.checked);
+      const shouldRefreshSystemLog = Boolean(systemLogAuto?.checked);
+
+      refreshRunsTable({ updateExecutionLogPanel })
+        .then(() => {
+          if (shouldRefreshSystemLog) fetchSystemLog();
+        })
+        .finally(scheduleBackgroundRefresh);
     }
+
+    executionLogAuto?.addEventListener("change", () => {
+      if (executionLogAuto.checked) fetchLogByRun();
+      scheduleBackgroundRefresh();
+    });
+
+    systemLogAuto?.addEventListener("change", () => {
+      if (systemLogAuto.checked) fetchSystemLog();
+      scheduleBackgroundRefresh();
+    });
+
   </script>
 </body>
 </html>

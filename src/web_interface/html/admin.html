@@ -214,6 +214,10 @@
             {% endfor %}
           </select>
           <button type="button" id="admin_refresh_log">Refresh</button>
+          <label class="checkbox">
+            <input type="checkbox" id="admin_execution_log_auto" />
+            Auto refresh
+          </label>
           <button type="button" id="admin_copy_log">Copy all</button>
           <button type="button" id="admin_copy_selection">Copy selection</button>
           <button type="button" id="toggle_admin_execution_log_panel" class="panel-toggle" aria-label="Collapse execution log panel" title="Collapse/Expand">▾</button>
@@ -232,6 +236,10 @@
             <option value="web-access">Web Access</option>
           </select>
           <button type="button" id="admin_refresh_system_log">Refresh</button>
+          <label class="checkbox">
+            <input type="checkbox" id="admin_system_log_auto" />
+            Auto refresh
+          </label>
           <button type="button" id="admin_copy_system_log">Copy all</button>
           <button type="button" id="admin_copy_system_selection">Copy selection</button>
           <button type="button" id="admin_delete_system_log" class="btn btn-danger">Delete</button>
@@ -239,6 +247,31 @@
         </div>
       </div>
       <pre id="admin_system_log_output" class="log-output">No logs yet.</pre>
+    </section>
+
+    <section class="card log-card">
+      <div class="log-header">
+        <h2>Database Editor</h2>
+        <div class="log-actions">
+          <label class="inline">
+            <span>Table</span>
+            <select id="admin_db_table_selector">
+              {% for table_name in editable_tables %}
+                <option value="{{ table_name }}">{{ table_name }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <button type="button" id="admin_db_reload_table" class="btn btn-primary">Refresh table</button>
+          <button type="button" id="admin_db_cancel_changes" class="btn btn-primary">Cancel</button>
+          <button type="button" id="admin_db_update_changes" class="btn btn-danger">Update</button>
+        </div>
+      </div>
+      <div class="table-scroll history-scroll" id="admin_db_editor_wrapper">
+        <table id="admin_db_editor_table">
+          <thead><tr><th>Loading…</th></tr></thead>
+          <tbody><tr><td>Select a table to edit.</td></tr></tbody>
+        </table>
+      </div>
     </section>
 
   </main>
@@ -320,14 +353,21 @@
     const adminCopySelectionButton = document.getElementById("admin_copy_selection");
     const toggleAdminExecutionLogPanelButton = document.getElementById("toggle_admin_execution_log_panel");
     const adminLogOutput = document.getElementById("admin_log_output");
+    const adminExecutionLogAuto = document.getElementById("admin_execution_log_auto");
     const adminSystemLogSource = document.getElementById("admin_system_log_source");
     const adminRefreshSystemLogButton = document.getElementById("admin_refresh_system_log");
+    const adminSystemLogAuto = document.getElementById("admin_system_log_auto");
     const adminClearSystemLogButton = document.getElementById("admin_clear_system_log");
     const adminCopySystemLogButton = document.getElementById("admin_copy_system_log");
     const adminCopySystemSelectionButton = document.getElementById("admin_copy_system_selection");
     const adminDeleteSystemLogButton = document.getElementById("admin_delete_system_log");
     const toggleAdminSystemLogPanelButton = document.getElementById("toggle_admin_system_log_panel");
     const adminSystemLogOutput = document.getElementById("admin_system_log_output");
+    const adminDbTableSelector = document.getElementById("admin_db_table_selector");
+    const adminDbReloadTableButton = document.getElementById("admin_db_reload_table");
+    const adminDbCancelChangesButton = document.getElementById("admin_db_cancel_changes");
+    const adminDbUpdateChangesButton = document.getElementById("admin_db_update_changes");
+    const adminDbEditorTable = document.getElementById("admin_db_editor_table");
     const inputsTotalSizeLabel = document.getElementById("inputs_total_size");
     const runsTotalSizeLabel = document.getElementById("runs_total_size");
 
@@ -584,6 +624,16 @@
         .catch(() => renderAdminLog("", adminLogOutput));
     }
 
+    function fetchAdminActiveStatus() {
+      return fetch(`/admin/runs/active_status?_=${Date.now()}`)
+        .then((res) => res.json())
+        .then((data) => {
+          if (!data.ok) return false;
+          return Boolean(data.has_active_tasks);
+        })
+        .catch(() => false);
+    }
+
     function fetchAdminSystemLog() {
       const source = adminSystemLogSource?.value || "app";
       fetch(`/logs/system?source=${encodeURIComponent(source)}`)
@@ -610,6 +660,147 @@
         .then((data) => { if (data.ok) renderAdminLog("", adminSystemLogOutput); })
         .catch(() => {});
     });
+
+    let adminDbSnapshot = [];
+    let adminDbCurrentPrimaryKeys = [];
+    let adminBackgroundRefreshTimer = null;
+    let adminHasActiveTasks = false;
+
+    function normalizeDbCellValue(value) {
+      if (value === null || value === undefined) return "";
+      if (typeof value === "object") return JSON.stringify(value);
+      return String(value);
+    }
+
+    function buildPrimaryKeyMap(row) {
+      const pkMap = {};
+      adminDbCurrentPrimaryKeys.forEach((pk) => {
+        pkMap[pk] = row[pk];
+      });
+      return pkMap;
+    }
+
+    function renderAdminDbTable(columns, rows, primaryKeys) {
+      if (!adminDbEditorTable) return;
+      adminDbCurrentPrimaryKeys = Array.isArray(primaryKeys) ? primaryKeys : [];
+      adminDbSnapshot = rows.map((row) => ({ ...row }));
+
+      if (!columns || columns.length === 0) {
+        adminDbEditorTable.innerHTML = "<thead><tr><th>No columns</th></tr></thead><tbody><tr><td>Table has no columns.</td></tr></tbody>";
+        return;
+      }
+
+      const thead = `<thead><tr>${columns.map((column) => `<th>${column}</th>`).join("")}</tr></thead>`;
+      const bodyRows = rows.map((row) => {
+        const pkMap = buildPrimaryKeyMap(row);
+        return `<tr data-pk='${JSON.stringify(pkMap).replace(/'/g, "&#39;")}'>${columns.map((column) => {
+          const isPk = adminDbCurrentPrimaryKeys.includes(column);
+          const value = normalizeDbCellValue(row[column]).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+          if (isPk) return `<td><input type="text" class="admin-db-cell" data-column="${column}" value="${value}" disabled /></td>`;
+          return `<td><input type="text" class="admin-db-cell" data-column="${column}" value="${value}" /></td>`;
+        }).join("")}</tr>`;
+      }).join("");
+
+      const tbody = rows.length > 0 ? `<tbody>${bodyRows}</tbody>` : `<tbody><tr><td colspan="${columns.length}">No rows.</td></tr></tbody>`;
+      adminDbEditorTable.innerHTML = `${thead}${tbody}`;
+    }
+
+    function loadAdminDbTable() {
+      const table = adminDbTableSelector?.value;
+      if (!table) return;
+      fetch(`/admin/database/table_data?table=${encodeURIComponent(table)}&_=${Date.now()}`)
+        .then((res) => res.json())
+        .then((data) => {
+          if (!data.ok) {
+            renderAdminDbTable([], [], []);
+            return;
+          }
+          renderAdminDbTable(data.columns || [], data.rows || [], data.primary_keys || []);
+        })
+        .catch(() => renderAdminDbTable([], [], []));
+    }
+
+    function collectDbRowUpdates() {
+      const updates = [];
+      const rows = adminDbEditorTable?.querySelectorAll("tbody tr[data-pk]") || [];
+      rows.forEach((tr, idx) => {
+        const original = adminDbSnapshot[idx] || {};
+        const changedValues = {};
+        tr.querySelectorAll(".admin-db-cell").forEach((input) => {
+          const column = input.dataset.column;
+          if (!column || adminDbCurrentPrimaryKeys.includes(column)) return;
+          const nextValue = input.value;
+          const originalValue = normalizeDbCellValue(original[column]);
+          if (nextValue !== originalValue) changedValues[column] = nextValue;
+        });
+        if (Object.keys(changedValues).length > 0) {
+          const pkMap = JSON.parse(tr.dataset.pk || "{}");
+          updates.push({ primary_keys: pkMap, updates: changedValues });
+        }
+      });
+      return updates;
+    }
+
+    function applyAdminDbUpdates() {
+      const table = adminDbTableSelector?.value;
+      if (!table) return;
+      const rowUpdates = collectDbRowUpdates();
+      if (rowUpdates.length === 0) return;
+
+      Promise.all(rowUpdates.map((rowUpdate) => {
+        return fetch("/admin/database/table_update", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            table,
+            primary_keys: rowUpdate.primary_keys,
+            updates: rowUpdate.updates
+          })
+        });
+      })).then(() => loadAdminDbTable());
+    }
+
+    const clearAdminBackgroundRefreshTimer = () => {
+      if (adminBackgroundRefreshTimer) {
+        clearTimeout(adminBackgroundRefreshTimer);
+        adminBackgroundRefreshTimer = null;
+      }
+    };
+
+    const shouldAdminPollBackground = () => {
+      return Boolean(adminExecutionLogAuto?.checked || adminSystemLogAuto?.checked || adminHasActiveTasks);
+    };
+
+    const scheduleAdminBackgroundRefresh = () => {
+      clearAdminBackgroundRefreshTimer();
+      if (!shouldAdminPollBackground()) return;
+      adminBackgroundRefreshTimer = setTimeout(runAdminBackgroundRefreshCycle, 3000);
+    };
+
+    function runAdminBackgroundRefreshCycle() {
+      fetchAdminActiveStatus()
+        .then((hasActiveTasks) => {
+          adminHasActiveTasks = hasActiveTasks;
+          if (adminExecutionLogAuto?.checked) fetchAdminRunLog();
+          if (adminSystemLogAuto?.checked) fetchAdminSystemLog();
+        })
+        .finally(scheduleAdminBackgroundRefresh);
+    }
+
+    adminExecutionLogAuto?.addEventListener("change", () => {
+      if (adminExecutionLogAuto.checked) fetchAdminRunLog();
+      scheduleAdminBackgroundRefresh();
+    });
+
+    adminSystemLogAuto?.addEventListener("change", () => {
+      if (adminSystemLogAuto.checked) fetchAdminSystemLog();
+      scheduleAdminBackgroundRefresh();
+    });
+
+    adminDbTableSelector?.addEventListener("change", loadAdminDbTable);
+    adminDbReloadTableButton?.addEventListener("click", loadAdminDbTable);
+    adminDbCancelChangesButton?.addEventListener("click", loadAdminDbTable);
+    adminDbUpdateChangesButton?.addEventListener("click", applyAdminDbUpdates);
 
     toggleAdminExecutionLogPanelButton?.addEventListener("click", () => {
       adminLogOutput?.classList.toggle("hidden");
@@ -643,6 +834,8 @@
     updateSelectionSizeLabels();
     fetchAdminRunLog();
     fetchAdminSystemLog();
+    loadAdminDbTable();
+    runAdminBackgroundRefreshCycle();
 
 
   </script>

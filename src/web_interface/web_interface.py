@@ -2078,6 +2078,26 @@ def admin_logs_by_run(request: Request, run_id: int):
     conn.close()
     return JSONResponse({"log": row["output_log"] if row else ""}, headers=NO_CACHE_HEADERS)
 
+
+@app.get("/admin/runs/active_status", tags=["Administration"])
+def admin_runs_active_status(request: Request):
+    try:
+        require_admin(request)
+    except PermissionError:
+        return JSONResponse({"ok": False, "has_active_tasks": False}, headers=NO_CACHE_HEADERS)
+
+    conn = get_conn()
+    row = conn.execute(
+        """
+        SELECT COUNT(1) AS active_count
+        FROM task_runs
+        WHERE LOWER(COALESCE(status, '')) IN ('running', 'queued', 'canceling')
+        """
+    ).fetchone()
+    conn.close()
+    active_count = int(row["active_count"] or 0) if row else 0
+    return JSONResponse({"ok": True, "has_active_tasks": active_count > 0}, headers=NO_CACHE_HEADERS)
+
 @app.get("/runs/list", tags=["Runs & Logs"])
 def runs_list(request: Request):
     try:
@@ -2519,6 +2539,8 @@ def admin_panel(request: Request):
         row["status_display"] = format_task_status(row.get("status") or "")
         row["size_mb"] = format_mb(run_sizes.get(row["id"], 0))
 
+    editable_tables = ["users", "sessions", "task_runs", "inputs_repository", "user_settings"]
+
     return templates.TemplateResponse(
         "admin.html",
         {
@@ -2531,6 +2553,7 @@ def admin_panel(request: Request):
             "inputs_total_size": get_inputs_repository_total_size(),
             "admin_settings": get_admin_settings(),
             "tool_meta": tool_meta,
+            "editable_tables": editable_tables,
         },
     )
 
@@ -2621,6 +2644,83 @@ async def admin_import_database(request: Request, backup_file: UploadFile = File
         await backup_file.close()
 
     return RedirectResponse("/admin", status_code=302)
+
+
+@app.get("/admin/database/table_data", tags=["Administration"])
+def admin_database_table_data(request: Request, table: str):
+    try:
+        require_admin(request)
+    except PermissionError:
+        return JSONResponse({"ok": False, "columns": [], "rows": [], "primary_keys": []}, headers=NO_CACHE_HEADERS)
+
+    allowed_tables = {"users", "sessions", "task_runs", "inputs_repository", "user_settings"}
+    if table not in allowed_tables:
+        return JSONResponse({"ok": False, "columns": [], "rows": [], "primary_keys": []}, headers=NO_CACHE_HEADERS)
+
+    conn = get_conn()
+    pragma_rows = conn.execute(f"PRAGMA table_info({table})").fetchall()
+    columns = [row["name"] for row in pragma_rows]
+    primary_keys = [row["name"] for row in pragma_rows if int(row["pk"] or 0) > 0]
+    rows = [dict(row) for row in conn.execute(f"SELECT * FROM {table} ORDER BY ROWID DESC").fetchall()]
+    conn.close()
+
+    return JSONResponse(
+        {
+            "ok": True,
+            "columns": columns,
+            "rows": rows,
+            "primary_keys": primary_keys,
+        },
+        headers=NO_CACHE_HEADERS,
+    )
+
+
+@app.post("/admin/database/table_update", tags=["Administration"])
+async def admin_database_table_update(request: Request):
+    try:
+        require_admin(request)
+    except PermissionError:
+        return {"ok": False}
+
+    payload = await request.json()
+    table = str(payload.get("table") or "").strip()
+    primary_keys = payload.get("primary_keys") or {}
+    updates = payload.get("updates") or {}
+
+    allowed_tables = {"users", "sessions", "task_runs", "inputs_repository", "user_settings"}
+    if table not in allowed_tables or not isinstance(primary_keys, dict) or not isinstance(updates, dict) or not updates:
+        return {"ok": False}
+
+    conn = get_conn()
+    pragma_rows = conn.execute(f"PRAGMA table_info({table})").fetchall()
+    allowed_columns = {row["name"] for row in pragma_rows}
+    pk_ordered = [row["name"] for row in pragma_rows if int(row["pk"] or 0) > 0]
+    if not pk_ordered:
+        conn.close()
+        return {"ok": False}
+
+    if not set(primary_keys.keys()).issubset(allowed_columns):
+        conn.close()
+        return {"ok": False}
+    if not set(updates.keys()).issubset(allowed_columns):
+        conn.close()
+        return {"ok": False}
+
+    where_columns = [col for col in pk_ordered if col in primary_keys]
+    if not where_columns:
+        conn.close()
+        return {"ok": False}
+
+    set_clause = ", ".join(f"{col} = ?" for col in updates)
+    where_clause = " AND ".join(f"{col} = ?" for col in where_columns)
+    query = f"UPDATE {table} SET {set_clause} WHERE {where_clause}"
+
+    params: list[Any] = [updates[col] for col in updates]
+    params.extend(primary_keys[col] for col in where_columns)
+    conn.execute(query, tuple(params))
+    conn.commit()
+    conn.close()
+    return {"ok": True}
 
 
 @app.post("/admin/users/create", tags=["Administration"])
