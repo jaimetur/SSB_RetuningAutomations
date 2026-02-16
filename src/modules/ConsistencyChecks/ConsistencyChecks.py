@@ -813,7 +813,7 @@ class ConsistencyChecks:
                 return None
 
             try:
-                wanted = {"Category", "SubCategory", "Metric", "Value"}
+                wanted = {"Category", "SubCategory", "Metric", "Value", "Tips", "Notes"}
                 df = pd.read_excel(x_path, sheet_name="SummaryAudit", usecols=lambda c: c in wanted, engine="openpyxl")
             except Exception as e:
                 print(f"{module_name} {market_tag} [WARNING] Could not read 'SummaryAudit' sheet from {label} audit Excel '{path}': {e}.")
@@ -841,7 +841,14 @@ class ConsistencyChecks:
         if isinstance(post_df, pd.DataFrame):
             if "Value" not in post_df.columns:
                 post_df["Value"] = pd.NA
-            post_df = post_df.loc[:, [c for c in cmp_cols if c in post_df.columns]].copy()
+            # Backward compatibility: some exports may still use Notes instead of Tips
+            if "Tips" not in post_df.columns and "Notes" in post_df.columns:
+                post_df["Tips"] = post_df["Notes"]
+
+            keep_post_cols = [c for c in cmp_cols if c in post_df.columns]
+            if "Tips" in post_df.columns:
+                keep_post_cols.append("Tips")
+            post_df = post_df.loc[:, keep_post_cols].copy()
 
         if pre_df is None and post_df is None:
             return None
@@ -866,6 +873,13 @@ class ConsistencyChecks:
         pre_df = pre_df.rename(columns={"Value": "Value_Pre"})
         post_df = post_df.rename(columns={"Value": "Value_Post"})
 
+        # Keep a single Tips column from POST SummaryAudit
+        tips_df = None
+        if "Tips" in post_df.columns:
+            key_cols = [c for c in ["Category", "SubCategory", "Metric"] if c in post_df.columns and c in pre_df.columns]
+            if key_cols:
+                tips_df = post_df[key_cols + ["Tips"]].drop_duplicates(subset=key_cols, keep="first")
+
         # Common columns to merge on (all shared columns except the value columns)
         common_cols = [
             c for c in pre_df.columns
@@ -888,6 +902,17 @@ class ConsistencyChecks:
                 sort=False,
             )
 
+            if tips_df is not None:
+                tips_keys = [c for c in ["Category", "SubCategory", "Metric"] if c in merged.columns and c in tips_df.columns]
+                if tips_keys:
+                    merged = pd.merge(
+                        merged,
+                        tips_df,
+                        on=tips_keys,
+                        how="left",
+                        sort=False,
+                    )
+
         print(f"{module_name} {market_tag} [INFO] Using PRE and POST 'SummaryAudit' sheets from 'ConfigurationAudit' module to generate 'SummaryAuditComparisson' sheet....")
 
         # Add numeric difference column at the end: Value_Pre - Value_Post
@@ -900,6 +925,16 @@ class ConsistencyChecks:
 
         try:
             cols = [c for c in merged.columns if c != "Value_Diff"] + ["Value_Diff"]
+
+            # Keep Tips as a single column right after Value_Post (and before Value_Diff)
+            if "Tips" in cols:
+                cols = [c for c in cols if c != "Tips"]
+                if "Value_Post" in cols:
+                    idx_post = cols.index("Value_Post")
+                    cols = cols[:idx_post + 1] + ["Tips"] + cols[idx_post + 1:]
+                else:
+                    cols.append("Tips")
+
             merged = merged[cols]
         except Exception:
             pass
@@ -1573,4 +1608,3 @@ class ConsistencyChecks:
                     shutil.rmtree(tmp_dir_cell, ignore_errors=True)
             except Exception:
                 pass
-
