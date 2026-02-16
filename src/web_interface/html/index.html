@@ -1822,30 +1822,6 @@
       refreshRunsTable({ updateExecutionLogPanel: true });
     }
 
-    logRunSelector?.addEventListener("change", fetchLogByRun);
-    refreshLogButton?.addEventListener("click", manualRefreshExecutionLogPanel);
-    fetchLogByRun();
-    fetchSystemLog();
-    scheduleSystemLogRefresh();
-    refreshInputsRepository();
-    refreshRunsTable({ updateExecutionLogPanel: false }).finally(() => {
-      scheduleBackgroundRefresh();
-    });
-    populateInputScopeSelector();
-    populateRunScopeSelector();
-
-    if (inputsTotalSizeLabel) inputsTotalSizeLabel.dataset.totalSize = "{{ inputs_total_size }}";
-    if (runsTotalSizeLabel) runsTotalSizeLabel.dataset.totalSize = "{{ total_runs_size }}";
-
-    applyScopeFilter("#inputs_panel_table", (row) => row?.cells?.[2]?.textContent?.trim() || "", selectUserInputsCombo?.value);
-    applyScopeFilter("#runs_panel_table", (row) => row?.dataset?.runUser || currentUsername, selectUserRunsCombo?.value);
-
-    document.addEventListener("change", (event) => {
-      const target = event.target;
-      if (target && (target.classList?.contains("input-checkbox") || target.classList?.contains("run-checkbox"))) updateSelectionSizeLabels();
-    });
-    updateSelectionSizeLabels();
-
     const clearBackgroundRefreshTimer = () => {
       if (backgroundRefreshTimer) {
         clearTimeout(backgroundRefreshTimer);
@@ -1920,6 +1896,31 @@
       scheduleSystemLogRefresh();
       scheduleBackgroundRefresh();
     });
+
+    logRunSelector?.addEventListener("change", fetchLogByRun);
+    refreshLogButton?.addEventListener("click", manualRefreshExecutionLogPanel);
+
+    document.addEventListener("change", (event) => {
+      const target = event.target;
+      if (target && (target.classList?.contains("input-checkbox") || target.classList?.contains("run-checkbox"))) updateSelectionSizeLabels();
+    });
+
+    fetchLogByRun();
+    fetchSystemLog();
+    scheduleSystemLogRefresh();
+    refreshInputsRepository();
+    refreshRunsTable({ updateExecutionLogPanel: false }).finally(() => {
+      scheduleBackgroundRefresh();
+    });
+    populateInputScopeSelector();
+    populateRunScopeSelector();
+
+    if (inputsTotalSizeLabel) inputsTotalSizeLabel.dataset.totalSize = "{{ inputs_total_size }}";
+    if (runsTotalSizeLabel) runsTotalSizeLabel.dataset.totalSize = "{{ total_runs_size }}";
+
+    applyScopeFilter("#inputs_panel_table", (row) => row?.cells?.[2]?.textContent?.trim() || "", selectUserInputsCombo?.value);
+    applyScopeFilter("#runs_panel_table", (row) => row?.dataset?.runUser || currentUsername, selectUserRunsCombo?.value);
+    updateSelectionSizeLabels();
 
   </script>
 </body>
