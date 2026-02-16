@@ -6,7 +6,8 @@ import re
 import shutil
 import tempfile
 from typing import List, Tuple, Optional, Dict
-from openpyxl.styles import Font
+from openpyxl.styles import Font, PatternFill
+from openpyxl.utils import get_column_letter
 import pandas as pd
 
 from src.utils.utils_io import find_log_files, read_text_file, to_long_path, pretty_path
@@ -988,6 +989,10 @@ class ConfigurationAudit:
                                         return set()
                                     return {v.strip() for v in txt.split(",") if v.strip()}
 
+                                def _normalized_priority_values(cell_value: str) -> set[str]:
+                                    values = _split_unique_values(cell_value)
+                                    return values if values else {"-"}
+
                                 def _build_step1(row: pd.Series) -> str:
                                     sync_val = str(row.get(sync_col, "")).strip().upper() if sync_col else ""
                                     if sync_val == "UNSYNCHRONIZED":
@@ -999,35 +1004,38 @@ class ConfigurationAudit:
                                     if old_cells == 0 and old_gu_rel == 0 and old_nr_rel == 0:
                                         return "SkipNoRels"
 
-                                    old_cell_resel = str(row.get("NRFreqRelation to old N77A SSB cellReselPrio", "")).strip()
-                                    new_cell_resel = str(row.get("NRFreqRelation to new N77A SSB cellReselPrio", "")).strip()
-                                    if old_cell_resel and new_cell_resel and _split_unique_values(old_cell_resel) == _split_unique_values(new_cell_resel):
-                                        return "Step1Done"
-
                                     old_gu = int(row.get("GUtranFreqRelation to old N77A SSB", 0) or 0)
                                     new_gu = int(row.get("GUtranFreqRelation to new N77A SSB", 0) or 0)
                                     old_nr = int(row.get("NRFreqRelation to old N77A SSB", 0) or 0)
                                     new_nr = int(row.get("NRFreqRelation to new N77A SSB", 0) or 0)
+
+                                    old_cell_resel = _normalized_priority_values(row.get("NRFreqRelation to old N77A SSB cellReselPrio", ""))
+                                    new_cell_resel = _normalized_priority_values(row.get("NRFreqRelation to new N77A SSB cellReselPrio", ""))
+                                    old_endc = _split_unique_values(row.get("GUtranFreqRelation to old N77A SSB EndcPrio", ""))
+                                    new_endc = _split_unique_values(row.get("GUtranFreqRelation to new N77A SSB EndcPrio", ""))
+
+                                    if old_gu == new_gu and old_nr == new_nr and old_cell_resel == new_cell_resel and old_endc != new_endc:
+                                        return "Step1Done"
                                     if old_gu > new_gu or old_nr > new_nr:
                                         return "Step1"
-                                    return ""
+                                    return "Step1Review"
 
                                 def _build_step2b(row: pd.Series) -> str:
                                     old_cells = int(row.get("N77A old SSB cells", 0) or 0)
+                                    old_gu_rel = int(row.get("GUtranFreqRelation to old N77A SSB", 0) or 0)
                                     new_cells = int(row.get("N77A new SSB cells", 0) or 0)
                                     if old_cells > 0:
                                         return "Step2b"
-                                    if old_cells == 0 and new_cells > 0:
+                                    if old_cells == 0 and old_gu_rel == 0 and new_cells > 0:
                                         return "Step2bDone"
-                                    if old_cells == 0 and new_cells == 0:
+                                    if old_cells == 0 and old_gu_rel == 0 and new_cells == 0:
                                         return "Step2bNA"
                                     return "Step2bReview"
 
                                 def _build_step2ac(row: pd.Series) -> str:
                                     old_cells = int(row.get("N77A old SSB cells", 0) or 0)
                                     old_gu_rel = int(row.get("GUtranFreqRelation to old N77A SSB", 0) or 0)
-                                    old_nr_rel = int(row.get("NRFreqRelation to old N77A SSB", 0) or 0)
-                                    if old_cells == 0 and old_gu_rel == 0 and old_nr_rel == 0:
+                                    if old_cells == 0 and old_gu_rel == 0:
                                         return "SkipNoRels"
 
                                     old_endc = _split_unique_values(row.get("GUtranFreqRelation to old N77A SSB EndcPrio", ""))
@@ -1143,6 +1151,156 @@ class ConfigurationAudit:
                                 # Apply header color + auto-fit to all sheets
                                 # Optimization: default autofit only scans the first N rows (handled inside style_headers_autofilter_and_autofit)
                                 style_headers_autofilter_and_autofit(writer, freeze_header=True, align="left", enable_a1_hyperlink=True, hyperlink_sheet="SummaryAudit", category_sheet_map=candidate_to_final_sheet)
+
+                            # MeContext additional conditional formatting (based on slide requirements)
+                            try:
+                                me_sheet_name = candidate_to_final_sheet.get("MeContext", "MeContext")
+                                me_df = written_sheet_dfs.get(me_sheet_name)
+                                ws_me = writer.sheets.get(me_sheet_name)
+
+                                if me_df is not None and ws_me is not None and not me_df.empty:
+                                    me_cols = list(me_df.columns)
+                                    me_col_map = {str(c): i + 1 for i, c in enumerate(me_cols)}
+
+                                    def _xl_col(col_name: str) -> str | None:
+                                        idx = me_col_map.get(col_name)
+                                        return get_column_letter(idx) if idx else None
+
+                                    def _add_fmt_equals_xlsx(col_target: str, col_ref: str, hex_color: str) -> None:
+                                        ct = _xl_col(col_target)
+                                        cr = _xl_col(col_ref)
+                                        if not ct or not cr:
+                                            return
+                                        ws_me.conditional_format(
+                                            1,
+                                            me_col_map[col_target] - 1,
+                                            len(me_df),
+                                            me_col_map[col_target] - 1,
+                                            {
+                                                "type": "formula",
+                                                "criteria": f"=${ct}2=${cr}2",
+                                                "format": writer.book.add_format({"bg_color": hex_color}),
+                                            },
+                                        )
+
+                                    if excel_engine == "xlsxwriter":
+                                        fmt_yellow = writer.book.add_format({"bg_color": "#FFF2CC"})
+                                        fmt_green = writer.book.add_format({"bg_color": "#C6EFCE"})
+                                        fmt_red = writer.book.add_format({"bg_color": "#FFC7CE"})
+                                        fmt_gray = writer.book.add_format({"bg_color": "#D9D9D9"})
+
+                                        for col_name in [
+                                            "N77 Cells",
+                                            "N77A old SSB cells",
+                                            "NRFreqRelation to old N77A SSB",
+                                            "GUtranFreqRelation to old N77A SSB",
+                                        ]:
+                                            idx = me_col_map.get(col_name)
+                                            if idx:
+                                                ws_me.conditional_format(1, idx - 1, len(me_df), idx - 1, {"type": "cell", "criteria": ">", "value": 0, "format": fmt_yellow})
+
+                                        _add_fmt_equals_xlsx("N77A new SSB cells", "N77A old SSB cells", "#C6EFCE")
+                                        _add_fmt_equals_xlsx("NRFreqRelation to new N77A SSB", "NRFreqRelation to old N77A SSB", "#C6EFCE")
+                                        _add_fmt_equals_xlsx("GUtranFreqRelation to new N77A SSB", "GUtranFreqRelation to old N77A SSB", "#C6EFCE")
+                                        _add_fmt_equals_xlsx("NRFreqRelation to new N77A SSB cellReselPrio", "NRFreqRelation to old N77A SSB cellReselPrio", "#C6EFCE")
+
+                                        nr_new = _xl_col("NRFreqRelation to new N77A SSB cellReselPrio")
+                                        nr_old = _xl_col("NRFreqRelation to old N77A SSB cellReselPrio")
+                                        if nr_new and nr_old:
+                                            ws_me.conditional_format(1, me_col_map["NRFreqRelation to new N77A SSB cellReselPrio"] - 1, len(me_df), me_col_map["NRFreqRelation to new N77A SSB cellReselPrio"] - 1, {"type": "formula", "criteria": f"=AND(${nr_new}2<>\"\",${nr_old}2<>\"\",${nr_new}2<>${nr_old}2)", "format": fmt_red})
+
+                                        _add_fmt_equals_xlsx("GUtranFreqRelation to new N77A SSB cellReselPrio", "NRFreqRelation to old N77A SSB cellReselPrio", "#C6EFCE")
+                                        gu_new_resel = _xl_col("GUtranFreqRelation to new N77A SSB cellReselPrio")
+                                        if gu_new_resel and nr_old:
+                                            ws_me.conditional_format(1, me_col_map["GUtranFreqRelation to new N77A SSB cellReselPrio"] - 1, len(me_df), me_col_map["GUtranFreqRelation to new N77A SSB cellReselPrio"] - 1, {"type": "formula", "criteria": f"=AND(${gu_new_resel}2<>\"\",${nr_old}2<>\"\",${gu_new_resel}2<>${nr_old}2)", "format": fmt_red})
+
+                                        gu_old_endc = _xl_col("GUtranFreqRelation to old N77A SSB EndcPrio")
+                                        gu_new_endc = _xl_col("GUtranFreqRelation to new N77A SSB EndcPrio")
+                                        if gu_old_endc and gu_new_endc:
+                                            ws_me.conditional_format(1, me_col_map["GUtranFreqRelation to new N77A SSB EndcPrio"] - 1, len(me_df), me_col_map["GUtranFreqRelation to new N77A SSB EndcPrio"] - 1, {"type": "formula", "criteria": f"=AND(${gu_new_endc}2<>\"\",${gu_old_endc}2<>\"\",${gu_new_endc}2=${gu_old_endc}2)", "format": fmt_red})
+
+                                        step1_col = _xl_col("Step1")
+                                        if step1_col:
+                                            ws_me.conditional_format(1, me_col_map["Step1"] - 1, len(me_df), me_col_map["Step1"] - 1, {"type": "formula", "criteria": f"=${step1_col}2=\"SkipNoRels\"", "format": fmt_gray})
+
+                                        step2ac_col = _xl_col("Step2ac")
+                                        if step2ac_col:
+                                            ws_me.conditional_format(1, me_col_map["Step2ac"] - 1, len(me_df), me_col_map["Step2ac"] - 1, {"type": "formula", "criteria": f"=ISNUMBER(SEARCH(\"Review\",${step2ac_col}2))", "format": fmt_red})
+                                            ws_me.conditional_format(1, me_col_map["Step2ac"] - 1, len(me_df), me_col_map["Step2ac"] - 1, {"type": "formula", "criteria": f"=${step2ac_col}2=\"SkipNoRels\"", "format": fmt_gray})
+                                    else:
+                                        from openpyxl.formatting.rule import FormulaRule, CellIsRule
+
+                                        for col_name in [
+                                            "N77 Cells",
+                                            "N77A old SSB cells",
+                                            "NRFreqRelation to old N77A SSB",
+                                            "GUtranFreqRelation to old N77A SSB",
+                                        ]:
+                                            cl = _xl_col(col_name)
+                                            if cl:
+                                                ws_me.conditional_formatting.add(
+                                                    f"{cl}2:{cl}{len(me_df)+1}",
+                                                    CellIsRule(operator="greaterThan", formula=["0"], stopIfTrue=False, fill=PatternFill(start_color="FFF2CC", end_color="FFF2CC", fill_type="solid")),
+                                                )
+
+                                        def _add_fmt_equals_openpyxl(col_target: str, col_ref: str, rgb: str) -> None:
+                                            ct = _xl_col(col_target)
+                                            cr = _xl_col(col_ref)
+                                            if not ct or not cr:
+                                                return
+                                            ws_me.conditional_formatting.add(
+                                                f"{ct}2:{ct}{len(me_df)+1}",
+                                                FormulaRule(formula=[f"=${ct}2=${cr}2"], stopIfTrue=False, fill=PatternFill(start_color=rgb, end_color=rgb, fill_type="solid")),
+                                            )
+
+                                        _add_fmt_equals_openpyxl("N77A new SSB cells", "N77A old SSB cells", "C6EFCE")
+                                        _add_fmt_equals_openpyxl("NRFreqRelation to new N77A SSB", "NRFreqRelation to old N77A SSB", "C6EFCE")
+                                        _add_fmt_equals_openpyxl("GUtranFreqRelation to new N77A SSB", "GUtranFreqRelation to old N77A SSB", "C6EFCE")
+                                        _add_fmt_equals_openpyxl("NRFreqRelation to new N77A SSB cellReselPrio", "NRFreqRelation to old N77A SSB cellReselPrio", "C6EFCE")
+                                        _add_fmt_equals_openpyxl("GUtranFreqRelation to new N77A SSB cellReselPrio", "NRFreqRelation to old N77A SSB cellReselPrio", "C6EFCE")
+
+                                        nr_new = _xl_col("NRFreqRelation to new N77A SSB cellReselPrio")
+                                        nr_old = _xl_col("NRFreqRelation to old N77A SSB cellReselPrio")
+                                        if nr_new and nr_old:
+                                            ws_me.conditional_formatting.add(
+                                                f"{nr_new}2:{nr_new}{len(me_df)+1}",
+                                                FormulaRule(formula=[f"=AND(${nr_new}2<>\"\",${nr_old}2<>\"\",${nr_new}2<>${nr_old}2)"], stopIfTrue=False, fill=PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid")),
+                                            )
+
+                                        gu_new_resel = _xl_col("GUtranFreqRelation to new N77A SSB cellReselPrio")
+                                        if gu_new_resel and nr_old:
+                                            ws_me.conditional_formatting.add(
+                                                f"{gu_new_resel}2:{gu_new_resel}{len(me_df)+1}",
+                                                FormulaRule(formula=[f"=AND(${gu_new_resel}2<>\"\",${nr_old}2<>\"\",${gu_new_resel}2<>${nr_old}2)"], stopIfTrue=False, fill=PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid")),
+                                            )
+
+                                        gu_old_endc = _xl_col("GUtranFreqRelation to old N77A SSB EndcPrio")
+                                        gu_new_endc = _xl_col("GUtranFreqRelation to new N77A SSB EndcPrio")
+                                        if gu_old_endc and gu_new_endc:
+                                            ws_me.conditional_formatting.add(
+                                                f"{gu_new_endc}2:{gu_new_endc}{len(me_df)+1}",
+                                                FormulaRule(formula=[f"=AND(${gu_new_endc}2<>\"\",${gu_old_endc}2<>\"\",${gu_new_endc}2=${gu_old_endc}2)"], stopIfTrue=False, fill=PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid")),
+                                            )
+
+                                        step1_col = _xl_col("Step1")
+                                        if step1_col:
+                                            ws_me.conditional_formatting.add(
+                                                f"{step1_col}2:{step1_col}{len(me_df)+1}",
+                                                FormulaRule(formula=[f"=${step1_col}2=\"SkipNoRels\""], stopIfTrue=False, fill=PatternFill(start_color="D9D9D9", end_color="D9D9D9", fill_type="solid")),
+                                            )
+
+                                        step2ac_col = _xl_col("Step2ac")
+                                        if step2ac_col:
+                                            ws_me.conditional_formatting.add(
+                                                f"{step2ac_col}2:{step2ac_col}{len(me_df)+1}",
+                                                FormulaRule(formula=[f"=ISNUMBER(SEARCH(\"Review\",${step2ac_col}2))"], stopIfTrue=False, fill=PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid")),
+                                            )
+                                            ws_me.conditional_formatting.add(
+                                                f"{step2ac_col}2:{step2ac_col}{len(me_df)+1}",
+                                                FormulaRule(formula=[f"=${step2ac_col}2=\"SkipNoRels\""], stopIfTrue=False, fill=PatternFill(start_color="D9D9D9", end_color="D9D9D9", fill_type="solid")),
+                                            )
+                            except Exception as ex:
+                                _log_warn(f"PHASE 5.4: Could not apply MeContext conditional formatting: {ex}")
 
 
                         # ------------------------------------------------------------------
