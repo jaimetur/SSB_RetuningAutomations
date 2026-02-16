@@ -2106,6 +2106,29 @@ def admin_logs_by_run(request: Request, run_id: int):
     return JSONResponse({"log": row["output_log"] if row else ""}, headers=NO_CACHE_HEADERS)
 
 
+@app.get("/admin/runs/list", tags=["Administration"])
+def admin_runs_list(request: Request):
+    try:
+        require_admin(request)
+    except PermissionError:
+        return JSONResponse({"ok": False, "items": []}, headers=NO_CACHE_HEADERS)
+
+    conn = get_conn()
+    latest_runs = conn.execute(
+        """
+        SELECT id, module, tool_version, input_name, status, started_at, finished_at, duration_seconds, output_zip, output_log_file, input_dir, output_dir
+        FROM task_runs
+        ORDER BY id DESC
+        """
+    ).fetchall()
+    latest_runs = [dict(row) for row in latest_runs]
+    run_sizes, _ = compute_runs_size(latest_runs)
+    conn.close()
+
+    items = [serialize_run_row(row, run_sizes) for row in latest_runs]
+    return JSONResponse({"ok": True, "items": items}, headers=NO_CACHE_HEADERS)
+
+
 @app.get("/admin/runs/active_status", tags=["Administration"])
 def admin_runs_active_status(request: Request):
     try:

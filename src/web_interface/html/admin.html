@@ -393,6 +393,44 @@
     const dbBackupFileName = document.getElementById("db_backup_file_name");
     const inputsTotalSizeLabel = document.getElementById("inputs_total_size");
     const runsTotalSizeLabel = document.getElementById("runs_total_size");
+    const ADMIN_EXECUTION_AUTO_CHECKED_KEY = "admin_execution_log_auto_checked";
+    const ADMIN_SYSTEM_LOG_AUTO_CHECKED_KEY = "admin_system_log_auto_checked";
+    let adminPersistedExecutionAutoChecked = false;
+    let adminPersistedSystemLogAutoChecked = false;
+    try {
+      adminPersistedExecutionAutoChecked = window.sessionStorage?.getItem(ADMIN_EXECUTION_AUTO_CHECKED_KEY) === "1";
+      adminPersistedSystemLogAutoChecked = window.sessionStorage?.getItem(ADMIN_SYSTEM_LOG_AUTO_CHECKED_KEY) === "1";
+    } catch (_error) {
+      adminPersistedExecutionAutoChecked = false;
+      adminPersistedSystemLogAutoChecked = false;
+    }
+
+    function persistAdminExecutionAutoCheckedState(isChecked) {
+      adminPersistedExecutionAutoChecked = Boolean(isChecked);
+      try {
+        window.sessionStorage?.setItem(ADMIN_EXECUTION_AUTO_CHECKED_KEY, adminPersistedExecutionAutoChecked ? "1" : "0");
+      } catch (_error) {
+        // ignore storage errors
+      }
+    }
+
+    function setAdminExecutionAutoChecked(isChecked) {
+      if (!adminExecutionLogAuto) return;
+      adminExecutionLogAuto.checked = Boolean(isChecked);
+      persistAdminExecutionAutoCheckedState(adminExecutionLogAuto.checked);
+    }
+
+    function persistAdminSystemLogAutoCheckedState(isChecked) {
+      adminPersistedSystemLogAutoChecked = Boolean(isChecked);
+      try {
+        window.sessionStorage?.setItem(ADMIN_SYSTEM_LOG_AUTO_CHECKED_KEY, adminPersistedSystemLogAutoChecked ? "1" : "0");
+      } catch (_error) {
+        // ignore storage errors
+      }
+    }
+
+    if (adminExecutionLogAuto) adminExecutionLogAuto.checked = adminPersistedExecutionAutoChecked;
+    if (adminSystemLogAuto) adminSystemLogAuto.checked = adminPersistedSystemLogAutoChecked;
 
     dbBackupPickFileButton?.addEventListener("click", () => {
       dbBackupFileInput?.click();
@@ -704,28 +742,50 @@
       document.body.removeChild(helper);
     }
 
+    function sortByExecutionOrder(a, b) {
+      return Number(a.id) - Number(b.id);
+    }
+
+    function pickAdminExecutionLogRunId(items, currentRunId) {
+      const currentItem = items.find((item) => String(item.id) === String(currentRunId || ""));
+      const runningItems = items.filter((item) => item.status_lower === "running").slice().sort(sortByExecutionOrder);
+      const cancelingItems = items.filter((item) => item.status_lower === "canceling").slice().sort(sortByExecutionOrder);
+      const queuedItems = items.filter((item) => item.status_lower === "queued").slice().sort(sortByExecutionOrder);
+
+      if (currentItem) {
+        const currentStatus = String(currentItem.status_lower || "").toLowerCase();
+        if (["running", "canceling"].includes(currentStatus)) return String(currentItem.id);
+      }
+      if (runningItems.length > 0) return String(runningItems[0].id);
+      if (cancelingItems.length > 0) return String(cancelingItems[0].id);
+      if (queuedItems.length > 0) return String(queuedItems[0].id);
+      if (currentItem) return String(currentItem.id);
+      return items[0] ? String(items[0].id) : "";
+    }
+
     function fetchAdminRunLog() {
       const runId = adminLogRunSelector?.value;
       if (!runId) {
         renderAdminLog("", adminLogOutput);
         return;
       }
-      fetch(`/admin/logs/by_run/${runId}`)
+      fetch(buildNoCacheUrl(`/admin/logs/by_run/${runId}`), { cache: "no-store" })
         .then((res) => res.json())
-        .then((data) => renderAdminLog(data.log || "", adminLogOutput))
-        .catch(() => renderAdminLog("", adminLogOutput));
+        .then((data) => renderAdminLog(data.log || "", adminLogOutput, { scrollToBottom: adminExecutionLogAuto?.checked }))
+        .catch(() => renderAdminLog("", adminLogOutput, { scrollToBottom: adminExecutionLogAuto?.checked }));
     }
 
     function updateAdminExecutionAutoRefreshAvailability(hasActive) {
       if (!adminExecutionLogAuto) return;
-      const becameActive = Boolean(hasActive && !adminHadActiveTasks);
       adminHadActiveTasks = Boolean(hasActive);
       adminExecutionLogAuto.disabled = !hasActive;
-      if (!hasActive) adminExecutionLogAuto.checked = false;
-      if (becameActive && !adminExecutionLogAuto.checked) {
-        adminExecutionLogAuto.checked = true;
-        fetchAdminRunLog();
+      if (!hasActive) {
+        setAdminExecutionAutoChecked(false);
+        scheduleAdminBackgroundRefresh();
+        return;
       }
+      if (adminExecutionLogAuto.checked) fetchAdminRunLog();
+      persistAdminExecutionAutoCheckedState(adminExecutionLogAuto.checked);
       scheduleAdminBackgroundRefresh();
     }
 
@@ -744,12 +804,26 @@
         });
     }
 
+    function buildNoCacheUrl(baseUrl) {
+      const separator = baseUrl.includes("?") ? "&" : "?";
+      return `${baseUrl}${separator}_=${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    }
+
+    function escapeHtml(value) {
+      return String(value || "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+    }
+
     function fetchAdminSystemLog() {
       const source = adminSystemLogSource?.value || "app";
-      fetch(`/logs/system?source=${encodeURIComponent(source)}`)
+      fetch(buildNoCacheUrl(`/logs/system?source=${encodeURIComponent(source)}`), { cache: "no-store" })
         .then((res) => res.json())
         .then((data) => renderAdminLog(data.log || "", adminSystemLogOutput, { scrollToBottom: adminSystemLogAuto?.checked }))
-        .catch(() => renderAdminLog("", adminSystemLogOutput));
+        .catch(() => renderAdminLog("", adminSystemLogOutput, { scrollToBottom: adminSystemLogAuto?.checked }));
     }
 
     adminLogRunSelector?.addEventListener("change", fetchAdminRunLog);
@@ -913,17 +987,35 @@
       fetchAdminActiveStatus()
         .then((hasActiveTasks) => {
           adminHasActiveTasks = hasActiveTasks;
-          if (adminExecutionLogAuto?.checked) fetchAdminRunLog();
+          if (!adminExecutionLogAuto?.checked) return;
+          fetch(buildNoCacheUrl("/admin/runs/list"), { cache: "no-store" })
+            .then((res) => res.json())
+            .then((data) => {
+              if (!data.ok || !Array.isArray(data.items)) return;
+              const nextRunId = pickAdminExecutionLogRunId(data.items, adminLogRunSelector?.value || "");
+              if (adminLogRunSelector) {
+                adminLogRunSelector.innerHTML = data.items.map((item) => `<option value="${item.id}">${escapeHtml(item.run_label || `#${item.id}`)}</option>`).join("");
+                if (nextRunId) adminLogRunSelector.value = nextRunId;
+              }
+              fetchAdminRunLog();
+            })
+            .catch(() => {});
         })
         .finally(scheduleAdminBackgroundRefresh);
     }
 
     adminExecutionLogAuto?.addEventListener("change", () => {
+      if (adminExecutionLogAuto.checked && !adminHasActiveTasks) {
+        setAdminExecutionAutoChecked(false);
+        return;
+      }
+      persistAdminExecutionAutoCheckedState(adminExecutionLogAuto.checked);
       if (adminExecutionLogAuto.checked) fetchAdminRunLog();
       scheduleAdminBackgroundRefresh();
     });
 
     adminSystemLogAuto?.addEventListener("change", () => {
+      persistAdminSystemLogAutoCheckedState(adminSystemLogAuto.checked);
       if (adminSystemLogAuto.checked) fetchAdminSystemLog();
       scheduleAdminSystemLogRefresh();
       scheduleAdminBackgroundRefresh();

@@ -434,7 +434,6 @@
     let runsRefreshInFlight = false;
     let runsRefreshPromise = null;
     let hasActiveTasks = false;
-    let hadActiveTasks = false;
     let backgroundRefreshTimer = null;
     let systemLogRefreshTimer = null;
     const updateNetworkFrequenciesModule = "update-network-frequencies";
@@ -442,14 +441,18 @@
     let networkFrequenciesRefreshInFlight = null;
     const EXECUTION_AUTO_ENABLE_PENDING_KEY = "execution_log_auto_enable_pending";
     const EXECUTION_AUTO_CHECKED_KEY = "execution_log_auto_checked";
+    const SYSTEM_LOG_AUTO_CHECKED_KEY = "system_log_auto_checked";
     let pendingExecutionAutoEnable = false;
     let persistedExecutionAutoChecked = false;
+    let persistedSystemLogAutoChecked = false;
     try {
       pendingExecutionAutoEnable = window.sessionStorage?.getItem(EXECUTION_AUTO_ENABLE_PENDING_KEY) === "1";
       persistedExecutionAutoChecked = window.sessionStorage?.getItem(EXECUTION_AUTO_CHECKED_KEY) === "1";
+      persistedSystemLogAutoChecked = window.sessionStorage?.getItem(SYSTEM_LOG_AUTO_CHECKED_KEY) === "1";
     } catch (_error) {
       pendingExecutionAutoEnable = false;
       persistedExecutionAutoChecked = false;
+      persistedSystemLogAutoChecked = false;
     }
     const inputsTotalSizeLabel = document.getElementById("inputs_total_size");
     const runsTotalSizeLabel = document.getElementById("runs_total_size");
@@ -524,6 +527,19 @@
 
     if (executionLogAuto) {
       executionLogAuto.checked = persistedExecutionAutoChecked;
+    }
+
+    function persistSystemLogAutoCheckedState(isChecked) {
+      persistedSystemLogAutoChecked = Boolean(isChecked);
+      try {
+        window.sessionStorage?.setItem(SYSTEM_LOG_AUTO_CHECKED_KEY, persistedSystemLogAutoChecked ? "1" : "0");
+      } catch (_error) {
+        // ignore storage errors
+      }
+    }
+
+    if (systemLogAuto) {
+      systemLogAuto.checked = persistedSystemLogAutoChecked;
     }
 
     function toggleInputRows() {
@@ -1259,6 +1275,7 @@
             applyRunStatusSummary([]);
             applyCurrentOrDefaultSort("#runs_panel_table table");
             populateRunScopeSelector();
+            updateExecutionAutoRefreshAvailability(false);
             updateSelectionSizeLabels();
             return { hasActiveTasks: false };
           }
@@ -1869,8 +1886,6 @@
 
     function updateExecutionAutoRefreshAvailability(hasActive) {
       if (!executionLogAuto) return;
-      const becameActive = Boolean(hasActive && !hadActiveTasks);
-      hadActiveTasks = Boolean(hasActive);
       executionLogAuto.disabled = !hasActive;
 
       if (!hasActive) {
@@ -1880,7 +1895,7 @@
         return;
       }
 
-      if ((pendingExecutionAutoEnable || becameActive) && !executionLogAuto.checked) {
+      if (pendingExecutionAutoEnable && !executionLogAuto.checked) {
         setExecutionAutoChecked(true);
         fetchLogByRun();
       }
@@ -1890,12 +1905,17 @@
     }
 
     executionLogAuto?.addEventListener("change", () => {
+      if (executionLogAuto.checked && !hasActiveTasks) {
+        setExecutionAutoChecked(false);
+        return;
+      }
       persistExecutionAutoCheckedState(executionLogAuto.checked);
       if (executionLogAuto.checked) fetchLogByRun();
       scheduleBackgroundRefresh();
     });
 
     systemLogAuto?.addEventListener("change", () => {
+      persistSystemLogAutoCheckedState(systemLogAuto.checked);
       if (systemLogAuto.checked) fetchSystemLog();
       scheduleSystemLogRefresh();
       scheduleBackgroundRefresh();
