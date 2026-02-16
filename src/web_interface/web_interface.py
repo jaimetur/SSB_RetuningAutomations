@@ -875,6 +875,21 @@ def list_inputs_repository() -> list[dict[str, Any]]:
     return items
 
 
+
+
+def list_inputs_uploaders() -> list[str]:
+    conn = get_conn()
+    rows = conn.execute(
+        """
+        SELECT DISTINCT COALESCE(u.username, 'unknown') AS username
+        FROM inputs_repository ir
+        LEFT JOIN users u ON u.id = ir.user_id
+        ORDER BY username COLLATE NOCASE ASC
+        """
+    ).fetchall()
+    conn.close()
+    return [str(row["username"]) for row in rows if row["username"]]
+
 def get_inputs_repository_total_size() -> str:
     conn = get_conn()
     row = conn.execute("SELECT COALESCE(SUM(size_bytes), 0) AS total_size FROM inputs_repository").fetchone()
@@ -1924,7 +1939,7 @@ def inputs_list(request: Request):
         require_user(request)
     except PermissionError:
         return {"ok": False, "items": [], "total_size": format_mb(0)}
-    return {"ok": True, "items": list_inputs_repository(), "total_size": get_inputs_repository_total_size()}
+    return {"ok": True, "items": list_inputs_repository(), "total_size": get_inputs_repository_total_size(), "uploaders": list_inputs_uploaders()}
 
 
 @app.post("/inputs/delete", tags=["Inputs"])

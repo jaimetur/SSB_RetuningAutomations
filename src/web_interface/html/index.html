@@ -213,9 +213,12 @@
         </div>
         <div class="runs-actions">
           <select id="select_user_inputs_combo"><option value="__all__" selected>All Users</option></select>
-          <button type="button" id="select_all_inputs">Select All</button>
-          <button type="button" id="select_none_inputs">Select None</button>
-          <button type="button" id="select_older_inputs">Select Older</button>
+          <select id="inputs_bulk_select_action" aria-label="Bulk input selection">
+            <option value="" selected>Select</option>
+            <option value="all">Select All</option>
+            <option value="none">Select None</option>
+            <option value="older">Select Older</option>
+          </select>
           <button type="button" id="send_selected_inputs" class="btn btn-success">Send to Input</button>
           <button type="button" id="delete_selected_inputs" class="btn btn-danger danger-anchor">Delete Selected</button>
           <button type="button" id="toggle_inputs_panel" class="panel-toggle" aria-label="Collapse inputs panel" title="Collapse/Expand">▾</button>
@@ -267,10 +270,10 @@
         </div>
         <div class="runs-actions">
           <select id="select_user_runs_combo"><option value="{{ user.username }}" selected>{{ user.username }}</option></select>
-          <button type="button" id="select_all_runs">Select All</button>
-          <button type="button" id="select_none_runs">Select None</button>
           <select id="runs_bulk_select_action" aria-label="Bulk run selection">
             <option value="" selected>Select</option>
+            <option value="all">Select All</option>
+            <option value="none">Select None</option>
             <option value="running">Select Running</option>
             <option value="queued">Select Queued</option>
             <option value="error">Select Error</option>
@@ -409,8 +412,6 @@
     const configPicker = document.getElementById("config_picker");
     const selectUserRunsCombo = document.getElementById("select_user_runs_combo");
     const runsBulkSelectAction = document.getElementById("runs_bulk_select_action");
-    const selectAllRunsButton = document.getElementById("select_all_runs");
-    const selectNoneRunsButton = document.getElementById("select_none_runs");
     const stopSelectedRunsButton = document.getElementById("stop_selected_runs");
     const deleteSelectedRunsButton = document.getElementById("delete_selected_runs");
     const runStatusLabel = document.getElementById("run_status");
@@ -423,10 +424,8 @@
     const copySystemLogButton = document.getElementById("copy_system_log");
     const copySystemSelectionButton = document.getElementById("copy_system_selection");
     const toggleSystemLogPanelButton = document.getElementById("toggle_system_log_panel");
-    const selectOlderInputsButton = document.getElementById("select_older_inputs");
+    const inputsBulkSelectAction = document.getElementById("inputs_bulk_select_action");
     const selectUserInputsCombo = document.getElementById("select_user_inputs_combo");
-    const selectAllInputsButton = document.getElementById("select_all_inputs");
-    const selectNoneInputsButton = document.getElementById("select_none_inputs");
     const sendSelectedInputsButton = document.getElementById("send_selected_inputs");
     const deleteSelectedInputsButton = document.getElementById("delete_selected_inputs");
     const olderInputDatePicker = document.getElementById("older_input_date_picker");
@@ -657,7 +656,7 @@
           if (!data.items || data.items.length === 0) {
             tbody.innerHTML = '<tr><td colspan="6">No inputs in repository.</td></tr>';
             applyCurrentOrDefaultSort("#inputs_panel_table table");
-            populateInputScopeSelector();
+            populateInputScopeSelector(data.uploaders || []);
             updateSelectionSizeLabels();
             return;
           }
@@ -680,7 +679,7 @@
           `).join("");
 
           applyCurrentOrDefaultSort("#inputs_panel_table table");
-          populateInputScopeSelector();
+          populateInputScopeSelector(data.uploaders || []);
           applyScopeFilter("#inputs_panel_table", (row) => row?.cells?.[2]?.textContent?.trim() || "", selectUserInputsCombo?.value);
           updateSelectionSizeLabels();
         })
@@ -760,9 +759,10 @@
       }
     }
 
-    function populateInputScopeSelector() {
-      const users = Array.from(document.querySelectorAll("#inputs_panel_table tbody tr"))
+    function populateInputScopeSelector(explicitUsers = []) {
+      const tableUsers = Array.from(document.querySelectorAll("#inputs_panel_table tbody tr"))
         .map((row) => row.cells?.[2]?.textContent?.trim() || "");
+      const users = [...explicitUsers, ...tableUsers];
       populateScopeCombo(selectUserInputsCombo, users, { includeAll: true, fallback: "__all__" });
     }
 
@@ -1484,7 +1484,11 @@
 
     runsBulkSelectAction?.addEventListener("change", () => {
       const action = runsBulkSelectAction.value;
-      if (action === "running") {
+      if (action === "all") {
+        toggleVisibleCheckboxes("#runs_panel_table", ".run-checkbox", true);
+      } else if (action === "none") {
+        toggleVisibleCheckboxes("#runs_panel_table", ".run-checkbox", false);
+      } else if (action === "running") {
         selectRunsByStatuses(["running"]);
       } else if (action === "queued") {
         selectRunsByStatuses(["queued"]);
@@ -1517,13 +1521,6 @@
       updateSelectionSizeLabels();
     });
 
-    selectAllRunsButton?.addEventListener("click", () => {
-      toggleVisibleCheckboxes("#runs_panel_table", ".run-checkbox", true);
-    });
-
-    selectNoneRunsButton?.addEventListener("click", () => {
-      toggleVisibleCheckboxes("#runs_panel_table", ".run-checkbox", false);
-    });
 
     const olderDatePicker = document.getElementById("older_date_picker");
     olderDatePicker?.addEventListener("change", () => {
@@ -1612,19 +1609,21 @@
       return Array.from(document.querySelectorAll(".input-checkbox:checked")).map((box) => Number(box.value));
     }
 
-    selectOlderInputsButton?.addEventListener("click", () => olderInputDatePicker?.showPicker());
-
     selectUserInputsCombo?.addEventListener("change", () => {
       applyScopeFilter("#inputs_panel_table", (row) => row?.cells?.[2]?.textContent?.trim() || "", selectUserInputsCombo.value);
       updateSelectionSizeLabels();
     });
 
-    selectAllInputsButton?.addEventListener("click", () => {
-      toggleVisibleCheckboxes("#inputs_panel_table", ".input-checkbox", true);
-    });
-
-    selectNoneInputsButton?.addEventListener("click", () => {
-      toggleVisibleCheckboxes("#inputs_panel_table", ".input-checkbox", false);
+    inputsBulkSelectAction?.addEventListener("change", () => {
+      const action = inputsBulkSelectAction.value;
+      if (action === "all") {
+        toggleVisibleCheckboxes("#inputs_panel_table", ".input-checkbox", true);
+      } else if (action === "none") {
+        toggleVisibleCheckboxes("#inputs_panel_table", ".input-checkbox", false);
+      } else if (action === "older") {
+        olderInputDatePicker?.showPicker();
+      }
+      inputsBulkSelectAction.value = "";
     });
 
     olderInputDatePicker?.addEventListener("change", () => {
