@@ -44,10 +44,10 @@ The tool automatically adds a **timestamped + versioned suffix** to outputs, whi
 ## 📙 Technical User Guide
 
 You can find the technical user guide in these formats:
-- [Markdown](help/User-Guide-SSB-Retuning-Automations-v0.7.3.md)
-- [Word](help/User-Guide-SSB-Retuning-Automations-v0.7.3.docx?raw=true)
-- [PowerPoint](help/User-Guide-SSB-Retuning-Automations-v0.7.3.pptx?raw=true)
-- [PDF](help/User-Guide-SSB-Retuning-Automations-v0.7.3.pdf?raw=true)
+- [Markdown](help/User-Guide-SSB-Retuning-Automations-v0.7.4.md)
+- [Word](help/User-Guide-SSB-Retuning-Automations-v0.7.4.docx?raw=true)
+- [PowerPoint](help/User-Guide-SSB-Retuning-Automations-v0.7.4.pptx?raw=true)
+- [PDF](help/User-Guide-SSB-Retuning-Automations-v0.7.4.pdf?raw=true)
 
 ---
 
