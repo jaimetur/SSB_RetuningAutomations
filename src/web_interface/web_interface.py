@@ -2104,6 +2104,81 @@ def runs_list(request: Request):
     return JSONResponse({"ok": True, "items": items}, headers=NO_CACHE_HEADERS)
 
 
+def resolve_run_zip_path(conn: sqlite3.Connection, user_id: int, username: str, run_id: int, stored_output_zip: str | None, stored_output_dir: str | None, module: str | None, tool_version: str | None, finished_at_raw: str | None) -> Path | None:
+    """Best-effort locate the zip file for a run even if output folders were renamed manually."""
+    zip_path = Path(stored_output_zip) if stored_output_zip else None
+    if zip_path and zip_path.exists():
+        return zip_path
+
+    user_root = OUTPUTS_DIR / sanitize_component(username)
+    if not user_root.exists() or not user_root.is_dir():
+        return None
+
+    candidates: list[Path] = []
+
+    # 1) If we have a stored zip filename, search it under the user's outputs root.
+    if zip_path is not None:
+        zip_name = zip_path.name
+        try:
+            for found in user_root.rglob(zip_name):
+                if found.is_file() and is_safe_path(OUTPUTS_DIR, found):
+                    candidates.append(found)
+        except OSError:
+            candidates = []
+
+    # 2) Fallback: if output_dir still exists, use any zip inside it.
+    if not candidates and stored_output_dir:
+        out_dir = Path(stored_output_dir)
+        if out_dir.exists() and out_dir.is_dir():
+            try:
+                for found in out_dir.glob("*.zip"):
+                    if found.is_file() and is_safe_path(OUTPUTS_DIR, found):
+                        candidates.append(found)
+            except OSError:
+                candidates = []
+
+    # 3) Last fallback: search by module/version pattern (covers renamed zip filenames).
+    if not candidates:
+        mod = sanitize_component(module or "")
+        ver = sanitize_component(tool_version or "")
+        pattern = f"{mod}_*_v{ver}.zip" if (mod and ver) else "*.zip"
+        try:
+            for found in user_root.rglob(pattern):
+                if found.is_file() and is_safe_path(OUTPUTS_DIR, found):
+                    candidates.append(found)
+        except OSError:
+            candidates = []
+
+    if not candidates:
+        return None
+
+    target_dt = parse_iso_datetime(finished_at_raw) if finished_at_raw else None
+    best: Path
+    if target_dt:
+        target_ts = target_dt.timestamp()
+        try:
+            best = min(candidates, key=lambda p: abs(p.stat().st_mtime - target_ts))
+        except OSError:
+            best = max(candidates, key=lambda p: p.stat().st_mtime, default=candidates[0])
+    else:
+        best = max(candidates, key=lambda p: p.stat().st_mtime)
+
+    if not best.exists():
+        return None
+
+    # Update DB so next downloads are instant and sizes are computed correctly.
+    try:
+        resolved_zip = str(best.resolve())
+        resolved_dir = str(best.parent.resolve())
+    except OSError:
+        resolved_zip = str(best)
+        resolved_dir = str(best.parent)
+
+    conn.execute("UPDATE task_runs SET output_zip = ?, output_dir = ? WHERE id = ? AND user_id = ?", (resolved_zip, resolved_dir, run_id, user_id))
+    conn.commit()
+    return best
+
+
 @app.get("/runs/{run_id}/download", tags=["Runs & Logs"])
 def download_run_output(request: Request, run_id: int):
     try:
@@ -2112,17 +2187,15 @@ def download_run_output(request: Request, run_id: int):
         return PlainTextResponse("", status_code=403)
 
     conn = get_conn()
-    row = conn.execute(
-        "SELECT output_zip FROM task_runs WHERE id = ? AND user_id = ?",
-        (run_id, user["id"]),
-    ).fetchone()
-    conn.close()
-
-    if not row or not row["output_zip"]:
+    row = conn.execute("SELECT module, tool_version, output_zip, output_dir, finished_at FROM task_runs WHERE id = ? AND user_id = ?", (run_id, user["id"])).fetchone()
+    if not row:
+        conn.close()
         return PlainTextResponse("", status_code=404)
 
-    output_zip = Path(row["output_zip"])
-    if not output_zip.exists():
+    output_zip = resolve_run_zip_path(conn, user["id"], user["username"], run_id, row["output_zip"], row["output_dir"], row["module"], row["tool_version"], row["finished_at"])
+    conn.close()
+
+    if not output_zip or not output_zip.exists():
         return PlainTextResponse("", status_code=404)
 
     return FileResponse(output_zip, filename=output_zip.name)
@@ -2136,14 +2209,15 @@ def admin_download_run_output(request: Request, run_id: int):
         return PlainTextResponse("", status_code=403)
 
     conn = get_conn()
-    row = conn.execute("SELECT output_zip FROM task_runs WHERE id = ?", (run_id,)).fetchone()
-    conn.close()
-
-    if not row or not row["output_zip"]:
+    row = conn.execute("SELECT tr.user_id, u.username, tr.module, tr.tool_version, tr.output_zip, tr.output_dir, tr.finished_at FROM task_runs tr JOIN users u ON u.id = tr.user_id WHERE tr.id = ?", (run_id,)).fetchone()
+    if not row:
+        conn.close()
         return PlainTextResponse("", status_code=404)
 
-    output_zip = Path(row["output_zip"])
-    if not output_zip.exists():
+    output_zip = resolve_run_zip_path(conn, int(row["user_id"]), row["username"], run_id, row["output_zip"], row["output_dir"], row["module"], row["tool_version"], row["finished_at"])
+    conn.close()
+
+    if not output_zip or not output_zip.exists():
         return PlainTextResponse("", status_code=404)
 
     return FileResponse(output_zip, filename=output_zip.name)

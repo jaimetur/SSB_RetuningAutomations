@@ -12,6 +12,7 @@
 - #### 🌟 New Features:
   - Added admin DB backup import/export panel and update changelog.
   - Added MeContext workflow and priority columns for ConfigurationAudit.
+  - Fixed Web Interface “Download Zip” links breaking after manual output folder renames by adding a best-effort zip path resolver that searches the user outputs tree, updates stored output_zip/output_dir in SQLite, and reuses the repaired path for subsequent downloads.
 
 - #### 🚀 Enhancements:
   - Moved documentation panels to the end and update label text.
