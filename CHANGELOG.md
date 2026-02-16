@@ -5,7 +5,7 @@
 ---
 
 ## Release: v0.7.2
-### Release Date: 2026-02-15
+### Release Date: 2026-02-16
   
 - #### 🚨 Breaking Changes:
 
