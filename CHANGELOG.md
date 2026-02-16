@@ -24,7 +24,7 @@
   - Final layout adjustment: moved Database Backup to sit immediately before Database Editor in Admin. 
   - Updated the MeContext enriched-columns logic to match the slide changes (new yellow-highlighted parts and removed strikethrough items), and expose a Format column to drive cell coloring when conditions are met.
   - Addded conditional formatting to the output Excel to highlight results (yellow/green/red/gray) for both xlsxwriter and openpyxl.
-  - Adjust log auto-refresh toggles and system-log autoscroll
+  - Adjust log auto-refresh toggles and system-log autoscroll.
 
 - #### 🐛 Bug fixes:
   - Fix a bug where deleting runs in Queued or Running state could remove output folders belonging to other completed runs due to generic fallback output resolution.
