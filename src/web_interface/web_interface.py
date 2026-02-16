@@ -2179,6 +2179,82 @@ def resolve_run_zip_path(conn: sqlite3.Connection, user_id: int, username: str, 
     return best
 
 
+def resolve_run_log_path(conn: sqlite3.Connection, user_id: int, username: str, run_id: int, stored_output_log_file: str | None, stored_output_dir: str | None, module: str | None, tool_version: str | None, finished_at_raw: str | None) -> Path | None:
+    """Best-effort locate the log file for a run even if output folders were renamed manually."""
+    log_path = Path(stored_output_log_file) if stored_output_log_file else None
+    if log_path and log_path.exists():
+        return log_path
+
+    user_root = OUTPUTS_DIR / sanitize_component(username)
+    if not user_root.exists() or not user_root.is_dir():
+        return None
+
+    candidates: list[Path] = []
+
+    # 1) If we have a stored log filename, search it under the user's outputs root.
+    if log_path is not None:
+        log_name = log_path.name
+        try:
+            for found in user_root.rglob(log_name):
+                if found.is_file() and is_safe_path(OUTPUTS_DIR, found):
+                    candidates.append(found)
+        except OSError:
+            candidates = []
+
+    # 2) Fallback: if output_dir still exists, use the newest *.log inside it.
+    if not candidates and stored_output_dir:
+        out_dir = Path(stored_output_dir)
+        if out_dir.exists() and out_dir.is_dir():
+            try:
+                local_logs = [p for p in out_dir.glob("*.log") if p.is_file() and is_safe_path(OUTPUTS_DIR, p)]
+                if local_logs:
+                    candidates.extend(local_logs)
+            except OSError:
+                candidates = []
+
+    # 3) Last fallback: search by common RetuningAutomation log naming.
+    if not candidates:
+        ver = sanitize_component(tool_version or "")
+        patterns = [f"RetuningAutomation_*_v{ver}.log"] if ver else []
+        patterns.extend(["RetuningAutomation_*.log", "*.log"])
+        try:
+            for pattern in patterns:
+                for found in user_root.rglob(pattern):
+                    if found.is_file() and is_safe_path(OUTPUTS_DIR, found):
+                        candidates.append(found)
+        except OSError:
+            candidates = []
+
+    if not candidates:
+        return None
+
+    target_dt = parse_iso_datetime(finished_at_raw) if finished_at_raw else None
+    best: Path
+    if target_dt:
+        target_ts = target_dt.timestamp()
+        try:
+            best = min(candidates, key=lambda p: abs(p.stat().st_mtime - target_ts))
+        except OSError:
+            best = max(candidates, key=lambda p: p.stat().st_mtime, default=candidates[0])
+    else:
+        best = max(candidates, key=lambda p: p.stat().st_mtime)
+
+    if not best.exists():
+        return None
+
+    # Update DB so next downloads are instant.
+    try:
+        resolved_log = str(best.resolve())
+        resolved_dir = str(best.parent.resolve())
+    except OSError:
+        resolved_log = str(best)
+        resolved_dir = str(best.parent)
+
+    conn.execute("UPDATE task_runs SET output_log_file = ?, output_dir = ? WHERE id = ? AND user_id = ?", (resolved_log, resolved_dir, run_id, user_id))
+    conn.commit()
+    return best
+
+
 @app.get("/runs/{run_id}/download", tags=["Runs & Logs"])
 def download_run_output(request: Request, run_id: int):
     try:
@@ -2255,14 +2331,15 @@ def admin_download_run_log(request: Request, run_id: int):
         return PlainTextResponse("", status_code=403)
 
     conn = get_conn()
-    row = conn.execute("SELECT output_log_file FROM task_runs WHERE id = ?", (run_id,)).fetchone()
-    conn.close()
-
-    if not row or not row["output_log_file"]:
+    row = conn.execute("SELECT tr.user_id, u.username, tr.module, tr.tool_version, tr.output_log_file, tr.output_dir, tr.finished_at FROM task_runs tr JOIN users u ON u.id = tr.user_id WHERE tr.id = ?", (run_id,)).fetchone()
+    if not row:
+        conn.close()
         return PlainTextResponse("", status_code=404)
 
-    log_path = Path(row["output_log_file"])
-    if not log_path.exists():
+    log_path = resolve_run_log_path(conn, int(row["user_id"]), row["username"], run_id, row["output_log_file"], row["output_dir"], row["module"], row["tool_version"], row["finished_at"])
+    conn.close()
+
+    if not log_path or not log_path.exists():
         return PlainTextResponse("", status_code=404)
 
     return FileResponse(log_path, filename=log_path.name)
