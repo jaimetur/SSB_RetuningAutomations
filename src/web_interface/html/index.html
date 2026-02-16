@@ -552,6 +552,17 @@
       selectedInputsPostField.value = "";
     }
 
+    function syncCurrentModuleInputsMap() {
+      const moduleValue = moduleSelect?.value;
+      if (!moduleValue) return;
+      if (!moduleInputsMap || typeof moduleInputsMap !== "object") moduleInputsMap = {};
+      moduleInputsMap[moduleValue] = {
+        input: inputFields.input.value || "",
+        input_pre: inputFields.input_pre.value || "",
+        input_post: inputFields.input_post.value || ""
+      };
+    }
+
     function applyModuleInputsFor(moduleValue) {
       if (!moduleValue) return;
       const moduleInputs = moduleInputsMap?.[moduleValue] || {};
@@ -1042,10 +1053,8 @@
       inputFields.allowed_n77_arfcn_post.value = general.allowed_n77_arfcn_post || inputFields.allowed_n77_arfcn_post.value;
       inputFields.ca_freq_filters.value = general.ca_freq_filters || inputFields.ca_freq_filters.value;
       inputFields.cc_freq_filters.value = general.cc_freq_filters || inputFields.cc_freq_filters.value;
-      inputFields.profiles_audit.checked = toBool(general.profiles_audit);
-      inputFields.frequency_audit.checked = toBool(general.frequency_audit);
-      inputFields.export_correction_cmd.checked = toBool(general.export_correction_cmd);
-      inputFields.fast_excel_export.checked = toBool(general.fast_excel_export);
+      // Keep option checkboxes user-scoped and persistent from user settings.
+      // Do not overwrite them from global config load.
       if (general.network_frequencies) updateNetworkFrequencies(parseCsv(general.network_frequencies));
     }
 
@@ -1373,6 +1382,7 @@
 
     let saveTimeout = null;
     function scheduleAutoSave() {
+      syncCurrentModuleInputsMap();
       if (saveTimeout) clearTimeout(saveTimeout);
       saveTimeout = setTimeout(() => {
         fetch("/settings/update", {
@@ -1733,6 +1743,7 @@
     });
 
     moduleSelect.addEventListener("change", () => {
+      syncCurrentModuleInputsMap();
       applyModuleInputsFor(moduleSelect.value);
       toggleInputRows();
       updateModuleAvailability();

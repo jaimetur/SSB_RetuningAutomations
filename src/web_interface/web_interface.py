@@ -101,7 +101,7 @@ def setup_logging() -> logging.Logger:
     if not logger.handlers:
         # Persist application logs across restarts.
         app_handler = RotatingFileHandler(APP_LOG_PATH, maxBytes=2_000_000, backupCount=3)
-        app_handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s", datefmt=LOG_DATETIME_FORMAT))
+        app_handler.setFormatter(logging.Formatter("[%(asctime)s] - [%(levelname)s] - %(message)s", datefmt=LOG_DATETIME_FORMAT))
         logger.addHandler(app_handler)
 
         for name in ("uvicorn", "uvicorn.error"):
@@ -118,7 +118,7 @@ def setup_api_logger() -> logging.Logger:
     if not logger.handlers:
         # Keep API request logs separate from application logs.
         api_handler = RotatingFileHandler(API_LOG_PATH, maxBytes=2_000_000, backupCount=3)
-        api_handler.setFormatter(logging.Formatter("%(asctime)s %(message)s", datefmt=LOG_DATETIME_FORMAT))
+        api_handler.setFormatter(logging.Formatter("[%(asctime)s] - %(message)s", datefmt=LOG_DATETIME_FORMAT))
         logger.addHandler(api_handler)
     return logger
 
@@ -129,7 +129,7 @@ def setup_web_access_logger() -> logging.Logger:
     if not logger.handlers:
         # Keep web access/authentication logs separate from API call logs.
         access_handler = RotatingFileHandler(WEB_ACCESS_LOG_PATH, maxBytes=2_000_000, backupCount=3)
-        access_handler.setFormatter(logging.Formatter("%(asctime)s %(message)s", datefmt=LOG_DATETIME_FORMAT))
+        access_handler.setFormatter(logging.Formatter("[%(asctime)s] - %(message)s", datefmt=LOG_DATETIME_FORMAT))
         logger.addHandler(access_handler)
     return logger
 
@@ -1379,7 +1379,7 @@ async def access_log_middleware(request: Request, call_next):
     elapsed_ms = (time.perf_counter() - start) * 1000
     client = get_client_ip(request)
     api_logger.info(
-        '%s "%s %s" status=%s duration_ms=%.2f',
+        '[%s] - "%s %s" status=%s duration_ms=%.2f',
         client,
         request.method,
         request.url.path,
