@@ -1,7 +1,7 @@
 /* Base layout and typography for the web interface. */
 body{font-family:Arial,sans-serif;background:#e6ebf2;margin:0;padding:0;color:#1b2430}
 body::before{content:"";position:fixed;inset:0;background-image:radial-gradient(circle at 1px 1px,rgba(17,24,39,.08) 1px,transparent 0),radial-gradient(circle at 1px 1px,rgba(17,24,39,.04) 1px,transparent 0);background-size:28px 28px,10px 10px;pointer-events:none;z-index:-1}
-.container{max-width:1300px;margin:2rem auto;padding:0 1rem}
+.container{max-width:1480px;margin:2rem auto;padding:0 1rem}
 .container.small{max-width:500px}
 .card{background:#fff;border-radius:12px;padding:1.4rem 1.6rem;margin-bottom:1rem;box-shadow:0 4px 14px rgba(15,35,66,.08)}
 .topbar{display:flex;justify-content:space-between;align-items:flex-start;gap:1rem}

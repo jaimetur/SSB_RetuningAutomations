@@ -21,6 +21,7 @@
   - Improved get_resource_path() function to accept a base_dr parameter.
   - Refined header meta-spacing/color and reorder documentation links.
   - Included Documentation Links on Web Interface and adjusted panels styles.
+  - Adjusted max-width to 1480px on Web Interface panels.
 
 - #### 🐛 Bug fixes:
   - Fixed the templates_pptx folder.
