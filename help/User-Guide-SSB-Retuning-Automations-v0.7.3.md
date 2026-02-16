@@ -52,6 +52,18 @@ The main execution lives in `src/SSB_RetuningAutomations.py`, where CLI argument
 - Does not generate Excel/PPT.
 - Updates the persisted network frequency value used for filtering and selection in later runs.
 
+#### Detailed implementation notes
+- The module reuses the same input resolver used by the other modules (`ensure_logs_available`), so it can consume either plain folders or folders containing ZIPs without changing operator workflow.
+- It scans **all** detected logs, slices each `SubNetwork` block, and processes only blocks where MO name is exactly `NRFrequency`.
+- Inside each `NRFrequency` block, it reads `arfcnValueNRDl`, keeps only strictly numeric values, deduplicates, and sorts numerically.
+- The resulting list is persisted to `config.cfg` in `network_frequencies` and also loaded in-memory into the `NETWORK_FREQUENCIES` global list.
+- In practice, this module should be executed after collecting representative logs from the network and then only when new frequencies are introduced. For stable markets, running it once is usually enough.
+
+#### Impact on GUI and Web Interface
+- **Desktop GUI**: when launching in GUI mode (no CLI args), the app loads `network_frequencies` from `config.cfg` and uses that list as the selectable values shown to users.
+- **Web Interface**: the backend endpoint loading defaults first tries persisted `network_frequencies`; if empty, it falls back to parsing the hardcoded defaults from `SSB_RetuningAutomations.py`.
+- This means Module 0 is the canonical mechanism to keep both interfaces aligned with real network frequency inventory.
+
 ---
 
 ### 3.2 Module 1 — Configuration Audit & Logs Parser
@@ -232,6 +244,111 @@ Cardinality checks per relation table (per node and/or per cell) to detect overp
 
 ---
 
+### 4.4 Detailed check execution order and gating rules
+1. **MeContext pre-processing**
+   - Computes total nodes and `UNSYNCHRONIZED` nodes.
+   - Builds an exclusion list and filters all other MO dataframes by `NodeId` before running any other checks.
+2. **Node scoping for Pre/Post interpretation**
+   - `NRCellDU` checks run first because they generate the rows used to infer node scope (Pre-retune vs Post-retune).
+   - This scope is reused by relation/externals/termpoint checks to classify targets (`SSB-Pre`, `SSB-Post`, `Unknown`).
+3. **Per-table processors**
+   - NR processors: `NRFrequency`, `NRFreqRelation`, `NRSectorCarrier`, `NRCellRelation`.
+   - LTE processors: `GUtranSyncSignalFrequency`, `GUtranFreqRelation`, `GUtranCellRelation`.
+   - Externals/Termpoints: `ExternalNRCellCU`, `ExternalGUtranCell`, `TermPointToGNodeB`, `TermPointToGNB`, `TermPointToENodeB`.
+   - ENDC/Cardinality/Profile processors follow and append their own rows.
+4. **Resilience model**
+   - If a table is missing/empty: emits `Table not found or empty` metric rows.
+   - If required columns are missing: emits `N/A` rows.
+   - If exceptions occur: emits `ERROR: ...` rows without aborting the full SummaryAudit generation.
+
+### 4.5 Additional columns injected into parsed MO sheets
+Besides SummaryAudit, Module 1 enriches several raw MO sheets with operational columns for execution/cleanup.
+
+#### A) `MeContext` enrichment (main planning helper)
+Additional columns are computed per `NodeId` by aggregating NR/LTE relation tables:
+- Topology and inventory:
+  - `mmWave Cells`, `LowMidBand Cells`, `N77 Cells`
+  - `N77A old SSB cells`, `N77A new SSB cells`
+- Relation counters:
+  - `NRFreqRelation to old N77A SSB`, `NRFreqRelation to new N77A SSB`
+  - `GUtranFreqRelation to old N77A SSB`, `GUtranFreqRelation to new N77A SSB`
+- Priority snapshots (unique consolidated values):
+  - `NRFreqRelation to old N77A SSB cellReselPrio`
+  - `NRFreqRelation to new N77A SSB cellReselPrio`
+  - `GUtranFreqRelation to old N77A SSB cellReselPrio`
+  - `GUtranFreqRelation to new N77A SSB cellReselPrio`
+  - `GUtranFreqRelation to old N77A SSB EndcPrio`
+  - `GUtranFreqRelation to new N77A SSB EndcPrio`
+- Workflow recommendation fields:
+  - `Step1`, `Step2b`, `Step2ac`, `Next Step`, `EndcPrio Next Step`
+
+Operational interpretation:
+- `Step1` focuses on old/new relation parity and reselection-priority convergence.
+- `Step2b` focuses on old/new N77A cell presence.
+- `Step2ac` focuses on ENDC priority transition validation.
+- `Next Step` concatenates pending actions to provide a single execution hint per node.
+
+#### B) `NRCellRelation` and `GUtranCellRelation` enrichment
+Both relation tables are normalized with helper columns used for discrepancy targeting and command generation:
+- `Frequency` extracted from relation references.
+- External endpoint decomposition fields (function/cell identifiers parsed from references).
+- `GNodeB_SSB_Target` classification (`SSB-Pre`/`SSB-Post`/`Unknown`).
+- `Correction_Cmd` prebuilt command text for the rows considered actionable.
+
+#### C) `ExternalNRCellCU` and `ExternalGUtranCell` enrichment
+- Adds `Frequency`, `Termpoint`, `TermpointStatus`, `TermpointConsolidatedStatus`.
+- Adds `GNodeB_SSB_Target` and `Correction_Cmd` for retune remediation flows.
+- For LTE externals, service state (`OUT_OF_SERVICE`) is also reflected in SummaryAudit checks.
+
+#### D) `TermPointToGNodeB` / `TermPointToGNB` enrichment
+- Adds consolidated termpoint health/status fields and `SSB needs update` boolean.
+- Adds `GNodeB_SSB_Target` and generated `Correction_Cmd` when target and frequency logic indicates migration to post-retune SSB.
+
+### 4.6 Key SummaryAudit checks by source table (implementation-level)
+Below is the practical checklist implemented by the processors:
+
+- **NRCellDU**:
+  - Node classification LowMidBand/mmWave/mixed.
+  - N77-in-band detection.
+  - Allowed pre/post SSB-list compliance and out-of-list inconsistencies.
+- **NRFrequency**:
+  - old/new/both/old-without-new presence by node.
+  - values outside expected old/new sets.
+- **NRFreqRelation**:
+  - old/new/both/old-without-new relation presence.
+  - naming-convention checks for auto-created relation IDs.
+  - cell-level old-vs-new parameter mismatch detection.
+  - profile reference transition checks (old profile clones vs expected post clone).
+- **NRSectorCarrier**:
+  - allowed ARFCN list compliance (pre/post).
+  - out-of-list inconsistencies.
+- **NRCellRelation**:
+  - relation counts to old/new targets.
+  - extraction/parsing consistency from `nRFreqRelationRef`.
+- **GUtranSyncSignalFrequency**:
+  - old/new/both/old-without-new LTE presence by node.
+  - out-of-set inconsistencies.
+- **GUtranFreqRelation**:
+  - old/new/both/old-without-new checks.
+  - naming convention validation (`<ssb>-30-20-0-1` style).
+  - old/new cell-level parameter and ENDC priority checks.
+- **GUtranCellRelation**:
+  - relation counts to old/new LTE targets.
+- **ExternalNRCellCU / ExternalGUtranCell**:
+  - old/new external references counts.
+  - target classification and termpoint correlation.
+- **TermPoint tables**:
+  - locked/disabled/unhealthy transport endpoint detection.
+  - alignment with external-cell update needs.
+- **EndcDistrProfile / FreqPrioNR**:
+  - expected old/new + N77B combinations.
+  - unexpected combinations and param discrepancies.
+- **Cardinality checks**:
+  - hard-limit and threshold checks per node/cell relation families.
+  - explicit inconsistency rows when limits are reached/exceeded.
+
+---
+
 ## 5) Consistency Check module in detail
 
 ### 5.1 Filtering by non-retuned nodes
@@ -316,3 +433,11 @@ This guarantees traceability and avoids collisions between runs.
 | 2 Consistency Check          | PRE and POST folders     | 2 Excel + CC commands       | Compare pre/post relations       |
 | 3 Consistency Check (Bulk)   | Multi-market root folder | Module 2 outputs per market | Run bulk comparison              |
 | 4 Final Clean-Up             | Final folder             | Clean-up folder             | Operational final clean-up       |
+
+## 9) Additional documentation recommendations (detected gaps)
+To keep the guide aligned with the real behavior, these areas are also important to document in future iterations:
+- Explicit mapping of each `SummaryAudit` metric to its correction-command export sheet/folder.
+- Full decision table for `Step1/Step2b/Step2ac` outcomes and expected operator actions.
+- Cardinality thresholds per MO (including rationale and vendor constraints).
+- Frequency-audit feature toggle behavior (`frequency_audit`) and which checks are suppressed when disabled.
+- Detailed limitations of reference parsing when vendor naming conventions are not respected.
