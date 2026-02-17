@@ -578,6 +578,8 @@ def build_summary_audit(
 
         df = df.sort_values(by=["_order_"], kind="stable").drop(columns="_order_").reset_index(drop=True)
 
+
+    # Assign Tips to each Metric in SummaryAudit table
     preferred_cols = ["Category", "SubCategory", "Metric", "Value", "ExtraInfo", "Tips"]
     df = df[[c for c in preferred_cols if c in df.columns] + [c for c in df.columns if c not in preferred_cols]]
 
@@ -685,9 +687,9 @@ def build_summary_audit(
     if not df.empty:
         def _tip_for_metric(pair: object) -> str:
             if not isinstance(pair, tuple) or len(pair) != 2:
-                return "Tip to be defined"
+                return "Metric match failed. Tip not found."
             table, metric = pair
-            return tips_by_metric.get((str(table), str(metric)), "Tip to be defined")
+            return tips_by_metric.get((str(table), str(metric)), "Metric match failed. Tip not found")
 
         metric_list = df.get("Metric", "").astype(str).tolist()
         category_list = df["Category"].astype(str).tolist() if "Category" in df.columns else ["MeContext"] * len(metric_list)
