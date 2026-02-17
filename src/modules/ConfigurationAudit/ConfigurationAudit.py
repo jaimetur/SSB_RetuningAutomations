@@ -1014,9 +1014,6 @@ class ConfigurationAudit:
                                     old_endc = _split_unique_values(row.get("GUtranFreqRelation to old N77A SSB EndcPrio", ""))
                                     new_endc = _split_unique_values(row.get("GUtranFreqRelation to new N77A SSB EndcPrio", ""))
 
-                                    # if old_gu == new_gu and old_nr == new_nr and old_cell_resel == new_cell_resel and old_endc != new_endc:
-                                    #     return "Step1Done"
-
                                     cell_resel_same_or_empty = (old_cell_resel == new_cell_resel) or (not old_cell_resel) or (not new_cell_resel)
                                     endc_not_same_or_empty = (old_endc != new_endc) or (not old_endc) or (not new_endc)
                                     if old_gu == new_gu and old_nr == new_nr and cell_resel_same_or_empty and endc_not_same_or_empty:
@@ -1027,13 +1024,12 @@ class ConfigurationAudit:
 
                                 def _build_step2b(row: pd.Series) -> str:
                                     old_cells = int(row.get("N77A old SSB cells", 0) or 0)
-                                    old_gu_rel = int(row.get("GUtranFreqRelation to old N77A SSB", 0) or 0)
                                     new_cells = int(row.get("N77A new SSB cells", 0) or 0)
                                     if old_cells > 0:
                                         return "Step2b"
-                                    if old_cells == 0 and old_gu_rel == 0 and new_cells > 0:
+                                    if old_cells == 0 and new_cells > 0:
                                         return "Step2bDone"
-                                    if old_cells == 0 and old_gu_rel == 0 and new_cells == 0:
+                                    if old_cells == 0 and new_cells == 0:
                                         return "Step2bNA"
                                     return "Step2bReview"
 

@@ -21,6 +21,7 @@
   - Added Panel toggles to all panels in user and admin menus in Web Interface
   - Expanded SummaryAudit tips coverage from provided slide.
   - Changed Step1 logic and delete last column on MeContext table.
+  - Fixed Step2b logic on MeContext table.
   - Deleted some duplicated metrics and rename others in SummaryAudit.
 
 - #### 🐛 Bug fixes:
