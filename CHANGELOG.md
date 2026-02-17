@@ -9,6 +9,7 @@
 
 - #### 🌟 New Features:
   - Added new column `Tips` to SummaryAudit table in ConfigurationAudit and ConsistencyCheck modules to add some tips on different checks. 
+  - Added a new Upload button in Inputs Repository panel to upload a ZIP file containing MOs and/or CSVs. This button allow massive uploads.
 
 - #### 🚀 Enhancements:
   - Changed Subcategory for Metric: `NR nodes with the old N77 SSB (648672) and the new SSB (647328) NRFreqRelation pointing to same mcpcPCellNrFreqRelProfileRef containing old SSB name (from NRFreqRelation table)` from NR Frequency Audit to NR Frequency Inconsistency.
@@ -17,6 +18,7 @@
   - Persist user module inputs/options.
   - Updated log timestamp format in System Logs.
   - Expanded SummaryAudit tips coverage from provided slide.
+  - Added Panel toggles to all panels in user and admin menus in Web Interface
 
 - #### 🐛 Bug fixes:
   - Fixed per-module input persistence for each user.
