@@ -8,7 +8,7 @@
 - #### 🚨 Breaking Changes:
 
 - #### 🌟 New Features:
-  - Added new column `Tips`to SummaryAudit table in ConfigurationAudit and ConsistencyCheck modules to add some tips on different checks. 
+  - Added new column `Tips` to SummaryAudit table in ConfigurationAudit and ConsistencyCheck modules to add some tips on different checks. 
 
 - #### 🚀 Enhancements:
   - Changed Subcategory for Metric: `NR nodes with the old N77 SSB (648672) and the new SSB (647328) NRFreqRelation pointing to same mcpcPCellNrFreqRelProfileRef containing old SSB name (from NRFreqRelation table)` from NR Frequency Audit to NR Frequency Inconsistency.
