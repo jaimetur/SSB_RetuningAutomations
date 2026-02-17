@@ -9,6 +9,7 @@ from pathlib import Path
 from docx import Document
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
+from docx.shared import Pt as DocxPt
 from pptx import Presentation
 from pptx.dml.color import RGBColor
 from pptx.enum.dml import MSO_THEME_COLOR
@@ -387,12 +388,18 @@ def build_docx_from_markdown(md_file: Path, docx_file: Path, version: str) -> No
             if rows:
                 table = doc.add_table(rows=len(rows), cols=len(rows[0]))
                 table.style = "Table Grid"
+                TABLE_BODY_PT = 9
+                TABLE_HEADER_PT = 10
                 for row_idx, row in enumerate(rows):
                     for col_idx, cell in enumerate(row):
                         paragraph = table.cell(row_idx, col_idx).paragraphs[0]
+                        paragraph.text = ""  # limpia el párrafo de la celda
+                        font_pt = TABLE_HEADER_PT if row_idx == 0 else TABLE_BODY_PT
                         for seg, is_bold in markdown_segments(cell):
                             run = paragraph.add_run(seg)
                             run.bold = is_bold or row_idx == 0
+                            run.font.size = Pt(font_pt)
+
             continue
 
         if s.startswith("# "):
@@ -438,9 +445,6 @@ def build_docx_from_markdown(md_file: Path, docx_file: Path, version: str) -> No
     enable_toc_update_on_open(doc)
     update_header_fields(doc, version)
     doc.save(docx_file)
-
-
-
 
 
 def build_pptx_summary(md_file: Path, pptx_file: Path, version: str) -> None:
@@ -598,7 +602,6 @@ def build_pptx_summary(md_file: Path, pptx_file: Path, version: str) -> None:
         if block["type"] == "paragraph":
             return max(1, ceil(len(block["text"]) / 95))
         if block["type"] == "list":
-            # 1 for list header overhead + per item length
             return 1 + sum(max(1, ceil(len(it["text"]) / 95)) for it in block["items"])
         if block["type"] == "table":
             return 6 + len(block["rows"])
@@ -616,7 +619,7 @@ def build_pptx_summary(md_file: Path, pptx_file: Path, version: str) -> None:
             p = cell.text_frame.paragraphs[0]
             p.font.bold = True
             p.font.color.rgb = RGBColor(255, 255, 255)
-            p.font.size = Pt(14)
+            p.font.size = Pt(10)
 
         for row in range(1, len(table.rows)):
             for col in range(len(table.columns)):
@@ -626,28 +629,194 @@ def build_pptx_summary(md_file: Path, pptx_file: Path, version: str) -> None:
                     cell.fill.fore_color.rgb = band_fill
                 p = cell.text_frame.paragraphs[0]
                 p.font.color.rgb = text_dark
-                p.font.size = Pt(12)
+                p.font.size = Pt(9)
+
+    def _set_table_wrap(table) -> None:
+        for row in table.rows:
+            for cell in row.cells:
+                tf = cell.text_frame
+                tf.word_wrap = True
+                tf.margin_left = Pt(2)
+                tf.margin_right = Pt(2)
+                tf.margin_top = Pt(1)
+                tf.margin_bottom = Pt(1)
+
+    def _autosize_table(table, total_w, max_h, body_font_pt=9, header_font_pt=10,
+                       min_col_in=0.9, max_col_in=3.2) -> int:
+        EMU_PER_INCH = 914400
+        EMU_PER_PT = 12700
+
+        nrows = len(table.rows)
+        ncols = len(table.columns)
+
+        max_lens = [1] * ncols
+        for r in range(nrows):
+            for c in range(ncols):
+                txt = (table.cell(r, c).text or "").strip()
+                max_lens[c] = max(max_lens[c], len(txt))
+
+        weights = [max(1.0, ml ** 0.6) for ml in max_lens]
+        wsum = sum(weights) or 1.0
+
+        min_w = int(min_col_in * EMU_PER_INCH)
+        max_w = int(max_col_in * EMU_PER_INCH)
+
+        widths = [int(total_w * (w / wsum)) for w in weights]
+        widths = [max(min_w, min(max_w, cw)) for cw in widths]
+
+        diff = int(total_w - sum(widths))
+        widths[-1] = max(min_w, min(max_w, widths[-1] + diff))
+        diff2 = int(total_w - sum(widths))
+        widths[-1] += diff2
+
+        for c, cw in enumerate(widths):
+            table.columns[c].width = cw
+
+        def _cap_chars(col_w_emu: int, font_pt: float) -> int:
+            col_pt = col_w_emu / EMU_PER_PT
+            return max(6, int(col_pt / (0.55 * font_pt)))
+
+        def _est_lines(txt: str, cap: int) -> int:
+            if not txt:
+                return 1
+            lines = 0
+            for part in txt.splitlines():
+                lines += max(1, ceil(len(part) / cap))
+            return lines
+
+        total_h = 0
+        for r in range(nrows):
+            font_pt = header_font_pt if r == 0 else body_font_pt
+            max_lines = 1
+            for c in range(ncols):
+                cap = _cap_chars(widths[c], font_pt)
+                txt = (table.cell(r, c).text or "").strip()
+                max_lines = max(max_lines, _est_lines(txt, cap))
+
+            # row_h_pt = max_lines * (font_pt * 1.2) + 6
+            row_h_pt = max_lines * (font_pt * 1.05) + 2
+
+            table.rows[r].height = Pt(row_h_pt)
+            total_h += table.rows[r].height
+
+        return total_h
+
+    def _try_add_small_table_below_text(
+        prs: Presentation,
+        slide_title: str,
+        subtitle: str | None,
+        continuation: bool,
+        buffer: list[dict],
+        used: int,
+        max_units: int,
+        rows: list[list[str]],
+        combine_max_data_rows: int,
+        gap,
+        min_text_h,
+        min_table_h,
+    ) -> tuple[bool, list[dict], int, bool]:
+        """
+        Try to place a small table below the current buffered text in the same slide.
+        This is heuristic: it uses 'used/max_units' to estimate how much vertical space the text needs.
+        Returns: (handled, new_buffer, new_used, new_continuation)
+        """
+        if not buffer or not rows or len(rows) < 2:
+            return False, buffer, used, continuation
+
+        header = rows[:1]
+        data = rows[1:]
+        if len(data) > combine_max_data_rows:
+            return False, buffer, used, continuation
+
+        # Estimate available geometry from the layout (no slide created yet).
+        ly = prs.slide_layouts[1]
+        ph = ly.placeholders[1]
+        x0, y0, w0, h0 = ph.left, ph.top, ph.width, ph.height
+
+        # Estimate text height proportionally to 'used/max_units' and clamp it.
+        text_h = int(h0 * min(used, max_units) / max_units)
+        if text_h < int(min_text_h):
+            text_h = int(min_text_h)
+
+        max_text_h = int(h0 - min_table_h - gap)
+        if text_h > max_text_h:
+            return False, buffer, used, continuation
+
+        tbl_y = y0 + text_h + gap
+        tbl_h = (y0 + h0) - tbl_y
+        if tbl_h < int(min_table_h):
+            return False, buffer, used, continuation
+
+        # Create the slide only if we can actually fit the table.
+        slide_local = prs.slides.add_slide(prs.slide_layouts[1])
+
+        # Title + subtitle (same style as normal slides)
+        title_shape = slide_local.shapes.title
+        title_shape.text = slide_title
+        if subtitle:
+            p = title_shape.text_frame.add_paragraph()
+            p.text = subtitle if not continuation else f"{subtitle} (cont.)"
+            p.level = 0
+            p.font.bold = False
+            p.font.size = Pt(20)
+            p.font.color.theme_color = MSO_THEME_COLOR.ACCENT_2
+
+        content = slide_local.shapes.placeholders[1]
+        x, y, w, h = content.left, content.top, content.width, content.height
+
+        # Render buffered text in the template placeholder (keeps template styles).
+        # IMPORTANT: do NOT resize the placeholder height, it can trigger per-character wrapping in some templates.
+        _render_content(content.text_frame, buffer)
+
+        # Add table below (table is added after the text so it sits on top if shapes overlap).
+        chunk = header + data
+        tbl_shape = slide_local.shapes.add_table(len(chunk), len(chunk[0]), x, tbl_y, w, tbl_h)
+
+        table = tbl_shape.table
+
+        for r, row in enumerate(chunk):
+            for c, value in enumerate(row):
+                table.cell(r, c).text = _norm(value)
+
+        _style_table(table)
+        _set_table_wrap(table)
+
+        # Autosize rows/cols and shrink table height so it doesn't occupy all the area
+        total_h = _autosize_table(table, total_w=w, max_h=tbl_h, body_font_pt=9, header_font_pt=10)
+        tbl_shape.height = min(total_h, tbl_h)
+        tbl_shape.top = tbl_y
+
+        # We consumed the buffered text + this table
+        return True, [], 0, True
+
 
     def _add_table_slide(prs: Presentation, slide_title: str, subtitle: str | None, rows: list[list[str]], continuation: bool = False) -> None:
+        # Define Font Size for Headers 2 & 3 (Header 2 and 3 are in the Tittle of the slide)
+        FONT_SIZE_H3 = 20
+
         slide = prs.slides.add_slide(prs.slide_layouts[1])
-        slide.shapes.title.text = slide_title
 
-        tf = slide.shapes.placeholders[1].text_frame
-        tf.clear()
-
-        # Subtitle on table slides too (small)
+        title_shape = slide.shapes.title
+        title_shape.text = slide_title
         if subtitle:
-            p0 = tf.paragraphs[0]
-            p0.text = subtitle if not continuation else f"{subtitle} (cont.)"
-            p0.level = 0
-            p0.font.bold = True
-            p0.font.size = Pt(18)
-        else:
-            # ensure we have a first paragraph ready even if no subtitle
-            tf.paragraphs[0].text = ""
+            p = title_shape.text_frame.add_paragraph()
+            p.text = subtitle if not continuation else f"{subtitle} (cont.)"
+            p.level = 0
+            p.font.bold = False
+            p.font.size = Pt(FONT_SIZE_H3)
+            p.font.color.theme_color = MSO_THEME_COLOR.ACCENT_2
 
         content = slide.shapes.placeholders[1]
         x, y, w, h = content.left, content.top, content.width, content.height
+
+        # Important: don't leave it empty, otherwise PowerPoint shows "Click to add text"
+        tf = content.text_frame
+        tf.clear()
+        p0 = tf.paragraphs[0]
+        p0.text = " "
+        p0.font.size = Pt(1)
+        p0.font.color.rgb = RGBColor(255, 255, 255)
+
         tbl_shape = slide.shapes.add_table(len(rows), len(rows[0]), x, y, w, h)
         table = tbl_shape.table
 
@@ -656,10 +825,20 @@ def build_pptx_summary(md_file: Path, pptx_file: Path, version: str) -> None:
                 table.cell(r, c).text = _norm(value)
 
         _style_table(table)
+        _set_table_wrap(table)
+
+        total_h = _autosize_table(table, total_w=w, max_h=h, body_font_pt=9, header_font_pt=10)
+        tbl_shape.height = min(total_h, h)
+        tbl_shape.top = y
 
     def _render_content(tf, blocks: list[dict]) -> None:
         from pptx.oxml.ns import qn as pptx_qn
         from pptx.oxml.xmlchemy import OxmlElement as PptxOxmlElement
+
+        # Define Font Size for Normal paragraph, lists and Headers 4 (Header 2 and 3 are in the Tittle of the slide)
+        FONT_SIZE_H4 = 16
+        FONT_SIZE_PARAGRAPH = 14
+        FONT_SIZE_LISTS = 14
 
         def _set_bullets(p, enabled: bool) -> None:
             pPr = p._p.get_or_add_pPr()
@@ -685,7 +864,7 @@ def build_pptx_summary(md_file: Path, pptx_file: Path, version: str) -> None:
                 p.level = 0
                 _set_bullets(p, enabled=False)
                 p.font.bold = True
-                p.font.size = Pt(16)
+                p.font.size = Pt(FONT_SIZE_H4)
                 continue
 
             if block["type"] == "paragraph":
@@ -694,7 +873,7 @@ def build_pptx_summary(md_file: Path, pptx_file: Path, version: str) -> None:
                 p.text = block["text"]
                 p.level = 0
                 _set_bullets(p, enabled=False)
-                p.font.size = Pt(15)
+                p.font.size = Pt(FONT_SIZE_PARAGRAPH)
                 continue
 
             if block["type"] == "list":
@@ -704,7 +883,7 @@ def build_pptx_summary(md_file: Path, pptx_file: Path, version: str) -> None:
 
                     nesting = int(it.get("level", 0))
                     p.level = 1 + nesting
-                    p.font.size = Pt(15)
+                    p.font.size = Pt(FONT_SIZE_LISTS)
 
                     if block["ordered"]:
                         marker = it.get("marker") or f"{idx}."
@@ -726,19 +905,23 @@ def build_pptx_summary(md_file: Path, pptx_file: Path, version: str) -> None:
     slide.placeholders[1].text = f"SSB Retuning Automations (v{version})"
 
     max_units = 20
+    MAX_TABLE_DATA_ROWS = 12  # simple split: header + 12 rows per slide
+
+    GAP = Pt(6)
+    MIN_TEXT_H = Pt(70)
+    MIN_TABLE_H = Pt(160)
+    COMBINE_MAX_DATA_ROWS = 6  # Only try to combine small tables (header excluded)
 
     for section in sections:
         slide_title = section["title"]
         blocks = section["blocks"]
 
-        # Group blocks by ### (h3). Each group becomes one or more slides.
         groups: list[dict] = []
         current_subtitle: str | None = None
         current_blocks: list[dict] = []
 
         for b in blocks:
             if b["type"] == "h3":
-                # flush previous group
                 if current_subtitle is not None or current_blocks:
                     groups.append({"subtitle": current_subtitle, "blocks": current_blocks})
                 current_subtitle = b["text"]
@@ -753,7 +936,6 @@ def build_pptx_summary(md_file: Path, pptx_file: Path, version: str) -> None:
             subtitle = g["subtitle"]
             gblocks = g["blocks"]
 
-            # paginate blocks for this group
             buffer: list[dict] = []
             used = 0
             continuation = False
@@ -762,7 +944,6 @@ def build_pptx_summary(md_file: Path, pptx_file: Path, version: str) -> None:
                 nonlocal buffer, used, continuation
                 slide_local = prs.slides.add_slide(prs.slide_layouts[1])
 
-                # Title = ## (slide title) + ### (subtitle)
                 title_shape = slide_local.shapes.title
                 title_shape.text = slide_title
                 if subtitle:
@@ -773,7 +954,6 @@ def build_pptx_summary(md_file: Path, pptx_file: Path, version: str) -> None:
                     p.font.size = Pt(20)
                     p.font.color.theme_color = MSO_THEME_COLOR.ACCENT_2
 
-                # Body content (NO subtitle here)
                 _render_content(slide_local.shapes.placeholders[1].text_frame, buffer)
 
                 buffer = []
@@ -785,10 +965,52 @@ def build_pptx_summary(md_file: Path, pptx_file: Path, version: str) -> None:
                 b = gblocks[i]
 
                 if b["type"] == "table":
+                    rows = b["rows"] or []
+                    if not rows:
+                        i += 1
+                        continue
+
+                    # Try to place a small table below the current buffered text (same slide)
+                    handled, buffer, used, continuation = _try_add_small_table_below_text(
+                        prs=prs,
+                        slide_title=slide_title,
+                        subtitle=subtitle,
+                        continuation=continuation,
+                        buffer=buffer,
+                        used=used,
+                        max_units=max_units,
+                        rows=rows,
+                        combine_max_data_rows=COMBINE_MAX_DATA_ROWS,
+                        gap=GAP,
+                        min_text_h=MIN_TEXT_H,
+                        min_table_h=MIN_TABLE_H,
+                    )
+                    if handled:
+                        i += 1
+                        continue
+
+                    # Normal behavior: keep order stable (text slide first, then table slides)
                     if buffer:
                         flush()
-                    _add_table_slide(prs, slide_title, subtitle, b["rows"], continuation=continuation)
-                    continuation = True
+
+                    header = rows[:1]
+                    data = rows[1:] if len(rows) > 1 else []
+
+                    if not data:
+                        _add_table_slide(prs, slide_title, subtitle, rows, continuation=continuation)
+                        continuation = True
+                    else:
+                        for start in range(0, len(data), MAX_TABLE_DATA_ROWS):
+                            chunk = header + data[start:start + MAX_TABLE_DATA_ROWS]
+                            _add_table_slide(
+                                prs,
+                                slide_title,
+                                subtitle,
+                                chunk,
+                                continuation=(continuation or start > 0),
+                            )
+                        continuation = True
+
                     i += 1
                     continue
 
@@ -804,6 +1026,7 @@ def build_pptx_summary(md_file: Path, pptx_file: Path, version: str) -> None:
                 flush()
 
     prs.save(pptx_file)
+
 
 
 def build_pdf_from_markdown(md_file: Path, pdf_file: Path) -> None:
@@ -905,7 +1128,6 @@ if __name__ == "__main__":
     if not try_update_docx_fields_and_export_pdf(paths["docx"], paths["pdf"]):
         build_pdf_from_markdown(paths["md"], paths["pdf"])
     cleanup_old_versioned_guides(paths)
-
 
     print(f"Using markdown: {paths['md']}")
     print(f"Generated: {paths['docx']}")
