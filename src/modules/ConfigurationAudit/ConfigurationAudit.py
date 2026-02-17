@@ -1034,9 +1034,8 @@ class ConfigurationAudit:
                                     return "Step2bReview"
 
                                 def _build_step2ac(row: pd.Series) -> str:
-                                    old_cells = int(row.get("N77A old SSB cells", 0) or 0)
                                     old_gu_rel = int(row.get("GUtranFreqRelation to old N77A SSB", 0) or 0)
-                                    if old_cells == 0 and old_gu_rel == 0:
+                                    if old_gu_rel == 0:
                                         return "SkipNoRels"
 
                                     old_endc = _split_unique_values(row.get("GUtranFreqRelation to old N77A SSB EndcPrio", ""))
