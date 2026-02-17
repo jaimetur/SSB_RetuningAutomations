@@ -1041,7 +1041,7 @@ class ConfigurationAudit:
 
                                     old_endc = _split_unique_values(row.get("GUtranFreqRelation to old N77A SSB EndcPrio", ""))
                                     new_endc = _split_unique_values(row.get("GUtranFreqRelation to new N77A SSB EndcPrio", ""))
-                                    if old_endc == {"2"} and new_endc == {"1"}:
+                                    if old_endc == {"2"} and (new_endc == {"1"} or not new_endc):
                                         return "Step2ac"
                                     if old_endc == {"1"} and new_endc == {"2"}:
                                         return "Step2cDone"
