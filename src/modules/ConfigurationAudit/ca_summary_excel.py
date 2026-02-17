@@ -586,6 +586,9 @@ def build_summary_audit(
     expected_old_rel_id = f"{n77_ssb_pre}-30-20-0-1"
     expected_new_rel_id = f"{n77_ssb_post}-30-20-0-1"
 
+    allowed_pre_str = ", ".join(str(v) for v in sorted(allowed_n77_ssb_pre_set))
+    allowed_post_str = ", ".join(str(v) for v in sorted(allowed_n77_ssb_post_set))
+
     # Tips column (requested in SummaryAudit slide updates)
     tips_by_metric: Dict[tuple[str, str], str] = {
         ("MeContext", f"Total unique nodes (from MeContext table)"): "MeContext table to create lists of sites for implementation",
