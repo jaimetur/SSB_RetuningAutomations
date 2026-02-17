@@ -282,15 +282,7 @@ def process_gu_freq_rel(df_gu_freq_rel, is_old, add_row, n77_ssb_pre, is_new, n7
                     add_row(
                         "GUtranFreqRelation",
                         "LTE Frequency Audit",
-                        f"LTE nodes with GUtranFreqRelationId {expected_old_rel_id} and {expected_new_rel_id}",
-                        len(nodes_cells_both),
-                        ", ".join(nodes_cells_both),
-                    )
-
-                    add_row(
-                        "GUtranFreqRelation",
-                        "LTE Frequency Audit",
-                        f"LTE nodes with GUtranFreqRelationId {expected_old_rel_id} but without {expected_new_rel_id}",
+                        f"LTE nodes with with some cells missing relations to new SSB  {expected_new_rel_id}",
                         len(nodes_cells_old_without_new),
                         ", ".join(nodes_cells_old_without_new),
                     )

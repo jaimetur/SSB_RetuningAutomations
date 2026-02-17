@@ -18,8 +18,10 @@
   - Support nodes where some N77 cells are in the retuning frequency list but others are not.
   - Persist user module inputs/options.
   - Updated log timestamp format in System Logs.
-  - Expanded SummaryAudit tips coverage from provided slide.
   - Added Panel toggles to all panels in user and admin menus in Web Interface
+  - Expanded SummaryAudit tips coverage from provided slide.
+  - Changed Step1 logic and delete last column on MeContext table.
+  - Deleted some duplicated metrics and rename others in SummaryAudit.
 
 - #### 🐛 Bug fixes:
   - Fixed per-module input persistence for each user.

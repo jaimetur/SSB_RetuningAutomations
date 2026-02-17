@@ -1014,7 +1014,12 @@ class ConfigurationAudit:
                                     old_endc = _split_unique_values(row.get("GUtranFreqRelation to old N77A SSB EndcPrio", ""))
                                     new_endc = _split_unique_values(row.get("GUtranFreqRelation to new N77A SSB EndcPrio", ""))
 
-                                    if old_gu == new_gu and old_nr == new_nr and old_cell_resel == new_cell_resel and old_endc != new_endc:
+                                    # if old_gu == new_gu and old_nr == new_nr and old_cell_resel == new_cell_resel and old_endc != new_endc:
+                                    #     return "Step1Done"
+
+                                    cell_resel_same_or_empty = (old_cell_resel == new_cell_resel) or (not old_cell_resel) or (not new_cell_resel)
+                                    endc_not_same_or_empty = (old_endc != new_endc) or (not old_endc) or (not new_endc)
+                                    if old_gu == new_gu and old_nr == new_nr and cell_resel_same_or_empty and endc_not_same_or_empty:
                                         return "Step1Done"
                                     if old_gu > new_gu or old_nr > new_nr:
                                         return "Step1"
@@ -1055,8 +1060,6 @@ class ConfigurationAudit:
                                     .astype(str)
                                     .apply(lambda r: " + ".join(v for v in r.tolist() if v), axis=1)
                                 )
-
-                                df_me_out["EndcPrio Next Step"] = df_me_out["Step2ac"]
 
                                 # Ensure MeContext is exported with enriched columns
                                 for entry in table_entries:
