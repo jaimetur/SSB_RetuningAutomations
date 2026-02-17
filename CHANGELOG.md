@@ -25,6 +25,7 @@
   - Fixed per-module input persistence for each user.
 
 - #### 📚 Documentation: 
+  - Updated Technical User Guides to include the Check catalog of SummaryAudit table (with tips).
   - Updated README and related docs with all the latest changes.
 
 ---
