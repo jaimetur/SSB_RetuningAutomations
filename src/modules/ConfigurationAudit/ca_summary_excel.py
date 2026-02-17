@@ -687,7 +687,7 @@ def build_summary_audit(
     if not df.empty:
         def _tip_for_metric(pair: object) -> str:
             if not isinstance(pair, tuple) or len(pair) != 2:
-                return "Metric match failed. Tip not found."
+                return "Pair (Category, Metric) is not a Tuple. Cannot match Metric. Tip not found."
             table, metric = pair
             return tips_by_metric.get((str(table), str(metric)), "Metric match failed. Tip not found")
 
