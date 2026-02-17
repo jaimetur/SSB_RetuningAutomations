@@ -30,6 +30,7 @@
 
 - #### 📚 Documentation: 
   - Updated Technical User Guides to include the Check catalog of SummaryAudit table (with tips).
+  - Updated Technical User Guide to include Naming Convention for Inputs.
   - Updated README and related docs with all the latest changes.
 
 ---

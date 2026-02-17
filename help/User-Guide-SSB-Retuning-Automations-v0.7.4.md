@@ -170,15 +170,27 @@ The main execution lives in `src/SSB_RetuningAutomations.py`, where CLI argument
 
 ---
 
-## 4) Configuration Audit module in detail
+## 4) Execution Modes and Versioning
 
-### 4.1 SummaryAudit checks philosophy
+- **GUI mode**: run without CLI arguments.
+- **CLI mode**: run with explicit module and options.
+- **Web Interfacee**: the tool can be run in a server/client infrastructure, accessing the server through a Web Interface where you can unpload your inputs, enqueue different tasks and  export the results when finish..
+
+All Generated artifacts include a versioned suffix: `<timestamp>_v<TOOL_VERSION>`. 
+
+This guarantees traceability and avoids collisions between runs.
+
+---
+
+## 5) Configuration Audit module in detail
+
+### 5.1 SummaryAudit checks philosophy
 SummaryAudit sheet contains a high-level checks table by categories. The flow:
 1. Excludes `UNSYNCHRONIZED` nodes based on `MeContext`.
 2. Evaluates NR, LTE, ENDC, Externals, TermPoints, cardinalities, and profiles.
 3. Records each check as a row (`Category/SubCategory/Metric/Value/ExtraInfo`).
 
-### 4.2 Operational meaning of SummaryAudit rows
+### 5.2 Operational meaning of SummaryAudit rows
 - **Category**: audited technical domain (NR/LTE/ENDC/MeContext/etc.).
 - **SubCategory**: type of analysis (Audit/Inconsistencies/Profiles).
 - **Metric**: specific rule evaluated.
@@ -188,7 +200,7 @@ SummaryAudit sheet contains a high-level checks table by categories. The flow:
   - Text: captured status or error.
 - **ExtraInfo**: list of nodes or bounded detail for troubleshooting.
 
-### 4.3 SummaryAudit checks catalog
+### 5.3 SummaryAudit checks catalog
 
 ### A) MeContext Audit
 **Source tables**: `MeContext`.
@@ -390,7 +402,7 @@ Cardinality checks per relation table (per node and/or per cell) to detect overp
 
 ---
 
-### 4.4 Detailed check execution order and gating rules
+### 5.4 Detailed check execution order and gating rules
 1. **MeContext pre-processing**
    - Computes total nodes and `UNSYNCHRONIZED` nodes.
    - Builds an exclusion list and filters all other MO dataframes by `NodeId` before running any other checks.
@@ -407,7 +419,7 @@ Cardinality checks per relation table (per node and/or per cell) to detect overp
    - If required columns are missing: emits `N/A` rows.
    - If exceptions occur: emits `ERROR: ...` rows without aborting the full SummaryAudit generation.
 
-### 4.5 Additional columns injected into parsed MO sheets
+### 5.5 Additional columns injected into parsed MO sheets
 Besides SummaryAudit, Module 1 enriches several raw MO sheets with operational columns for execution/cleanup.
 
 #### A) `MeContext` enrichment (main planning helper)
@@ -450,7 +462,7 @@ Both relation tables are normalized with helper columns used for discrepancy tar
 - Adds consolidated termpoint health/status fields and `SSB needs update` boolean.
 - Adds `GNodeB_SSB_Target` and generated `Correction_Cmd` when target and frequency logic indicates migration to post-retune SSB.
 
-### 4.6 Key SummaryAudit checks by source table (implementation-level)
+### 5.6 Key SummaryAudit checks by source table (implementation-level)
 Below is the practical checklist implemented by the processors:
 
 - **NRCellDU**:
@@ -495,12 +507,12 @@ Below is the practical checklist implemented by the processors:
 
 ---
 
-## 5) Consistency Check module in detail
+## 6) Consistency Check module in detail
 
-### 5.1 Filtering by non-retuned nodes
+### 6.1 Filtering by non-retuned nodes
 If a POST SummaryAudit exists, the module obtains PRE/POST node lists and can exclude discrepancies whose target points to nodes that did not complete retune, reducing operational noise.
 
-### 5.2 How it detects parameter discrepancies
+### 6.2 How it detects parameter discrepancies
 1. Selects common PRE and POST relations by composite key:
    - GU: typically `NodeId`, `EUtranCellFDDId`, `GUtranCellRelationId`.
    - NR: typically `NodeId`, `NRCellCUId`, `NRCellRelationId`.
@@ -509,7 +521,7 @@ If a POST SummaryAudit exists, the module obtains PRE/POST node lists and can ex
 4. Sets `ParamDiff=True` if at least one column differs.
 5. In GU it ignores `timeOfCreation` and `mobilityStatusNR` to avoid false positives.
 
-### 5.3 How it detects frequency discrepancies
+### 6.3 How it detects frequency discrepancies
 1. Extracts base frequency from relation references (`extract_gu_freq_base` / `extract_nr_freq_base`).
 2. Discrepancy rule:
    - if PRE had `freq_before` or `freq_after`, and POST does **not** end up in `freq_after`, it marks `FreqDiff=True`.
@@ -517,13 +529,13 @@ If a POST SummaryAudit exists, the module obtains PRE/POST node lists and can ex
    - `FreqDiff_SSBPost` (target identified as SSB-Post),
    - `FreqDiff_Unknown` (cannot be associated to a known target).
 
-### 5.4 How it detects neighbor discrepancies
+### 6.4 How it detects neighbor discrepancies
 They are split into three groups:
 - **New relations**: keys present in POST and absent in PRE.
 - **Missing relations**: keys present in PRE and absent in POST.
 - **Discrepancies**: same key in PRE/POST but with parametric or frequency differences.
 
-### 5.5 Content of each ConsistencyChecks output sheet
+### 6.5 Content of each ConsistencyChecks output sheet
 - **Summary**: KPIs per table (PRE/POST volume, discrepancies, new/missing, source files).
 - **SummaryAuditComparisson**: diff of SummaryAudit PRE vs POST metrics (without `ExtraInfo` to keep the comparison clean).
 - **Summary_CellRelation**: KPI per `Freq_Pre/Freq_Post` pair and per technology.
@@ -537,9 +549,23 @@ They are split into three groups:
 
 ---
 
-## 6) Input requirements and operational best practices
+## 7) Quick module reference
 
-- Keep market log exports in a consistent structure (especially for bulk).
+| Module                       | Main input               | Main output                 | Goal                             |
+|------------------------------|--------------------------|-----------------------------|----------------------------------|
+| 0 Update Network Frequencies | Logs folder              | Persisted config            | Update network frequency list    |
+| 1 Configuration Audit        | Logs/ZIP folder          | Excel + PPT + CA commands   | Audit configuration and profiles |
+| 2 Consistency Check          | PRE and POST folders     | 2 Excel + CC commands       | Compare pre/post relations       |
+| 3 Consistency Check (Bulk)   | Multi-market root folder | Module 2 outputs per market | Run bulk comparison              |
+| 4 Final Clean-Up             | Final folder             | Clean-up folder             | Operational final clean-up       |
+
+---
+
+## 8) Input requirements and operational best practices
+
+- Keep market log exports in a consistent structure and following the below naming convention (for both the parent folder and the zip file contining Step0 logs):
+  - Recommended naming convention: `<TIMESTAMP>_Step0_<MARKET_ID>_<MARKET_NAME>_<PHASE>`
+  - Example: `20260217_0507_Step0_MKT188_Omaha_PostStep1/20260217_0507_Step0_MKT188_Omaha_PostStep1.zip`
 - Validate that PRE/POST have the same table granularity and consistent naming.
 - Validate frequency inputs (`n77_ssb_pre`, `n77_ssb_post`, `n77b_ssb`) before batch execution.
 - Correctly configure allowed SSB/ARFCN lists to minimize false positives.
@@ -550,40 +576,8 @@ They are split into three groups:
 
 ---
 
-## 7) Execution Modes and Versioning
-
-- **GUI mode**: run without CLI arguments.
-- **CLI mode**: run with explicit module and options.
-- **Web Interfacee**: the tool can be run in a server/client infrastructure, accessing the server through a Web Interface where you can unpload your inputs, enqueue different tasks and  export the results when finish..
-
-All Generated artifacts include a versioned suffix: `<timestamp>_v<TOOL_VERSION>`. 
-
-This guarantees traceability and avoids collisions between runs.
-
----
-
-## 8) Known limitations and considerations
+## 9) Known limitations and considerations
 
 - The engine depends on log quality and structure: missing columns downgrade checks to `N/A`.
 - Some rules depend on naming conventions in references (NR/GU relation refs).
 - The Final Clean-Up module is prepared to extend operation-specific policies.
-
----
-
-## 8) Quick module reference
-
-| Module                       | Main input               | Main output                 | Goal                             |
-|------------------------------|--------------------------|-----------------------------|----------------------------------|
-| 0 Update Network Frequencies | Logs folder              | Persisted config            | Update network frequency list    |
-| 1 Configuration Audit        | Logs/ZIP folder          | Excel + PPT + CA commands   | Audit configuration and profiles |
-| 2 Consistency Check          | PRE and POST folders     | 2 Excel + CC commands       | Compare pre/post relations       |
-| 3 Consistency Check (Bulk)   | Multi-market root folder | Module 2 outputs per market | Run bulk comparison              |
-| 4 Final Clean-Up             | Final folder             | Clean-up folder             | Operational final clean-up       |
-
-## 9) Additional documentation recommendations (detected gaps)
-To keep the guide aligned with the real behavior, these areas are also important to document in future iterations:
-- Explicit mapping of each `SummaryAudit` metric to its correction-command export sheet/folder.
-- Full decision table for `Step1/Step2b/Step2ac` outcomes and expected operator actions.
-- Cardinality thresholds per MO (including rationale and vendor constraints).
-- Frequency-audit feature toggle behavior (`frequency_audit`) and which checks are suppressed when disabled.
-- Detailed limitations of reference parsing when vendor naming conventions are not respected.
