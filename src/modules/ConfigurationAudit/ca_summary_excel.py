@@ -609,14 +609,14 @@ def build_summary_audit(
         ("NRSectorCarrier", f"NR nodes with N77 ARCFN in Post-Retune allowed list ({allowed_post_str}) (from NRSectorCarrier table)"): "Nodes with Step2b completed",
         ("NRSectorCarrier", f"NR nodes with N77 ARCFN not in Pre/Post Retune allowed lists (from NRSectorCarrier table)"): "These nodes must be checked in preparation phase and confirm if any special action needed",
 
-        ("NRFreqRelation", f"NR nodes with the old N77 SSB ({n77_ssb_pre}) (from NRFrequency table)"): "Tip to be defined",
-        ("NRFreqRelation", f"NR nodes with the new N77 SSB ({n77_ssb_post}) (from NRFrequency table)"): "Tip to be defined",
-        ("NRFreqRelation", f"NR nodes with both, the old N77 SSB ({n77_ssb_pre}) and the new N77 SSB ({n77_ssb_post}) (from NRFrequency table)"): "Tip to be defined",
-        ("NRFreqRelation", f"NR nodes with the old N77 SSB ({n77_ssb_pre}) but without the new N77 SSB ({n77_ssb_post}) (from NRFrequency table)"): "Tip to be defined",
+        ("NRFreqRelation", f"NR nodes with the old N77 SSB ({n77_ssb_pre}) (from NRFreqRelation table)"): "Tip to be defined",
+        ("NRFreqRelation", f"NR nodes with the new N77 SSB ({n77_ssb_post}) (from NRFreqRelation table)"): "Tip to be defined",
+        ("NRFreqRelation", f"NR nodes with both, the old N77 SSB ({n77_ssb_pre}) and the new N77 SSB ({n77_ssb_post}) (from NRFreqRelation table)"): "Tip to be defined",
+        ("NRFreqRelation", f"NR nodes with the old N77 SSB ({n77_ssb_pre}) but without the new N77 SSB ({n77_ssb_post}) (from NRFreqRelation table)"): "Tip to be defined",
         ("NRFreqRelation", f"NR nodes with the old N77 SSB ({n77_ssb_pre}) and the new SSB ({n77_ssb_post}) (from NRFreqRelation table)"): "Need to run Step1 on these nodes",
         ("NRFreqRelation", f"NR nodes with the old N77 SSB ({n77_ssb_pre}) but without new N77 SSB ({n77_ssb_post}) (from NRFreqRelation table)"): "Nodes with any relations Step1 pending",
         ("NRFreqRelation", f"NR nodes with the new N77 SSB ({n77_ssb_post}) NRFreqRelation pointing to mcpcPCellNrFreqRelProfileRef containing new SSB name (cloned) or Other (from NRFreqRelation table)"): "Nodes with Step1 completed",
-        ("NRFreqRelation", f"NR nodes with the N77 SSB not in ({n77_ssb_pre}, {n77_ssb_post}) (from NRFrequency table)"): "Tip to be defined",
+        ("NRFreqRelation", f"NR nodes with the N77 SSB not in ({n77_ssb_pre}, {n77_ssb_post}) (from NRFreqRelation table)"): "Tip to be defined",
         ("NRFreqRelation", f"NR nodes with Auto-created NRFreqRelationId to new N77 SSB ({n77_ssb_post}) but not following VZ naming convention (e.g. with extra characters: 'auto_{n77_ssb_post}')"): "Tip to be defined",
         ("NRFreqRelation", f"NR Nodes with the new N77 SSB ({n77_ssb_post}) and NRFreqRelation reference to McpcPCellNrFreqRelProfile with old SSB before '_' ({n77_ssb_pre}_xxxx) (from NRFreqRelation table)"): "Need to review Step2b execution",
         ("NRFreqRelation", f"NR nodes with the old N77 SSB ({n77_ssb_pre}) and the new SSB ({n77_ssb_post}) NRFreqRelation pointing to same mcpcPCellNrFreqRelProfileRef containing old SSB name (from NRFreqRelation table)"): "Need to run Step1 on these nodes",
@@ -642,8 +642,8 @@ def build_summary_audit(
         ("GUtranCellRelation", f"LTE cellRelations to old N77 SSB"): "Post Step2 some relations pointing to other Mkts could be on old SSB. See details in table",
         ("GUtranCellRelation", f"LTE cellRelations to new N77 SSB"): "Tip to be defined",
 
-        ("ExternalGUtranCell", f"External cells to old N77 SSB ({old_ssb}) (from ExternalNRCellCU)"): "Tip to be defined",
-        ("ExternalGUtranCell", f"External cells to new N77 SSB ({new_ssb}) (from ExternalNRCellCU)"): "Tip to be defined",
+        ("ExternalGUtranCell", f"External cells to old N77 SSB ({old_ssb}) (from ExternalGUtranCell)"): "Tip to be defined",
+        ("ExternalGUtranCell", f"External cells to new N77 SSB ({new_ssb}) (from ExternalGUtranCell)"): "Tip to be defined",
         ("ExternalGUtranCell", f"External cells to old N77 SSB ({old_ssb}) with serviceStatus=OUT_OF_SERVICE (from ExternalGUtranCell)"): "Externals with unavailable TermPoints are not operational for ENDC and might not be updated immediately after Step2",
         ("ExternalGUtranCell", f"External cells to new N77 SSB ({new_ssb}) with serviceStatus=OUT_OF_SERVICE (from ExternalGUtranCell)"): "Tip to be defined",
 
@@ -685,15 +685,56 @@ def build_summary_audit(
     }
 
     if not df.empty:
-        def _tip_for_metric(pair: object) -> str:
-            if not isinstance(pair, tuple) or len(pair) != 2:
-                return "Pair (Category, Metric) is not a Tuple. Cannot match Metric. Tip not found."
-            table, metric = pair
-            return tips_by_metric.get((str(table), str(metric)), "Metric match failed. Tip not found")
+        def _normalize_metric_for_tip_lookup(text: object) -> str:
+            s = str(text or "").strip()
+            s = re.sub(r"\s*\(from [^)]*\)", "", s, flags=re.IGNORECASE)  # Remove "(from ...)" source suffix
+            s = re.sub(r"\s*\((?=[^)]*\d)[^)]*\)", "", s)  # Remove any "(...)" group containing digits (frequencies, ids, lists)
+            s = re.sub(r"\d{3,}(?:-\d+)+", "<id>", s)  # Normalize ids like 648672-30-20-0-1 or ranges 646600-660000
+            s = re.sub(r"\d{3,}", "<n>", s)  # Normalize long numeric values like 648672, 653952, 650006, etc.
+            s = re.sub(r"\s+", " ", s).strip()
+            return s.casefold()
 
-        metric_list = df.get("Metric", "").astype(str).tolist()
-        category_list = df["Category"].astype(str).tolist() if "Category" in df.columns else ["MeContext"] * len(metric_list)
-        df["Tips"] = [_tip_for_metric(p) for p in zip(category_list, metric_list)]
+        def _tip_for_metric(row_tuple: object) -> str:
+            if not isinstance(row_tuple, tuple) or len(row_tuple) != 3:
+                return "Pair (Category, SubCategory, Metric) is not a Tuple. Cannot match Metric. Tip not found."
+
+            category = str(row_tuple[0] or "").strip()
+            subcategory = str(row_tuple[1] or "").strip()
+            metric = str(row_tuple[2] or "").strip()
+
+            # 1) Exact match for (Category, Metric)
+            exact = tips_by_metric.get((category, metric))
+            if exact is not None:
+                return exact
+
+            # 2) Prefix match inside SAME Category only (ignoring variable numeric values)
+            metric_norm = _normalize_metric_for_tip_lookup(metric)
+            best_tip = None
+            best_len = -1
+
+            for (k_cat, k_metric), tip in tips_by_metric.items():
+                if str(k_cat or "").strip() != category:
+                    continue
+                k_norm = _normalize_metric_for_tip_lookup(k_metric)
+                if metric_norm.startswith(k_norm) and len(k_norm) > best_len:
+                    best_tip = tip
+                    best_len = len(k_norm)
+
+            if best_tip is not None:
+                return best_tip
+
+            # 3) Generic tips per SubCategory using keys like ("", "Profiles Inconsistencies")
+            if subcategory:
+                generic = tips_by_metric.get(("", subcategory))
+                if generic is not None:
+                    return generic
+
+            return "Metric match failed. Tip not found"
+
+        category_list = df["Category"].astype(str).tolist() if "Category" in df.columns else [""] * len(df)
+        subcategory_list = df["SubCategory"].astype(str).tolist() if "SubCategory" in df.columns else [""] * len(df)
+        metric_list = df["Metric"].astype(str).tolist() if "Metric" in df.columns else [""] * len(df)
+        df["Tips"] = [_tip_for_metric(t) for t in zip(category_list, subcategory_list, metric_list)]
 
     # Build NR param mismatching dataframe
     df_param_mismatch_nr = pd.DataFrame(param_mismatch_rows_nr, columns=param_mismatch_columns_nr)
