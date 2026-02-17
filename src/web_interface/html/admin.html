@@ -26,18 +26,31 @@
 
 
     <section class="card">
-      <h2>Processing Limits</h2>
+      <div class="runs-header">
+        <h2>Processing Limits</h2>
+        <div class="runs-actions">
+          <button type="button" id="toggle_limits_panel" class="panel-toggle" aria-label="Collapse processing limits panel" title="Collapse/Expand">▾</button>
+        </div>
+      </div>
+      <div id="limits_panel_content">
       <form method="post" action="/admin/settings" class="inline admin-limits-form">
         <label>Max CPU % <input type="number" name="max_cpu_percent" min="10" max="100" value="{{ admin_settings.max_cpu_percent }}" /></label>
         <label>Max Memory % <input type="number" name="max_memory_percent" min="10" max="100" value="{{ admin_settings.max_memory_percent }}" /></label>
         <label>Max parallel tasks <input type="number" name="max_parallel_tasks" min="1" max="8" value="{{ admin_settings.max_parallel_tasks }}" /></label>
         <button type="submit" class="btn btn-primary">Save limits</button>
       </form>
+      </div>
     </section>
 
 
     <section class="card">
-      <h2>Create user</h2>
+      <div class="runs-header">
+        <h2>Create user</h2>
+        <div class="runs-actions">
+          <button type="button" id="toggle_create_user_panel" class="panel-toggle" aria-label="Collapse create user panel" title="Collapse/Expand">▾</button>
+        </div>
+      </div>
+      <div id="create_user_panel_content">
       <form method="post" action="/admin/users/create" class="inline">
         <input type="text" name="username" placeholder="username" required />
         <input type="password" name="password" placeholder="temporary password" required />
@@ -47,6 +60,7 @@
         </select>
         <button type="submit">Create</button>
       </form>
+      </div>
     </section>
 
     <section class="card">
@@ -208,7 +222,13 @@
 
 
     <section class="card">
-      <h2>Database Backup</h2>
+      <div class="runs-header">
+        <h2>Database Backup</h2>
+        <div class="runs-actions">
+          <button type="button" id="toggle_db_backup_panel" class="panel-toggle" aria-label="Collapse database backup panel" title="Collapse/Expand">▾</button>
+        </div>
+      </div>
+      <div id="db_backup_panel_content">
       <div class="db-backup-actions">
         <form method="get" action="/admin/database/export" class="inline">
           <button type="submit" class="btn btn-primary">Export DB Backup</button>
@@ -223,11 +243,13 @@
         </form>
       </div>
       <p class="db-backup-warning"><small>Import replaces the current database file after basic validation.</small></p>
+      </div>
     </section>
 
     <section class="card log-card">
       <div class="log-header">
         <h2>Database Editor</h2>
+        <button type="button" id="toggle_db_editor_panel" class="panel-toggle" aria-label="Collapse database editor panel" title="Collapse/Expand">▾</button>
         <div class="log-actions">
           <label class="inline">
             <select id="admin_db_table_selector">
@@ -242,11 +264,13 @@
           <button type="button" id="admin_db_update_changes" class="btn btn-danger">Update</button>
         </div>
       </div>
+      <div id="db_editor_panel_content">
       <div class="table-scroll history-scroll" id="admin_db_editor_wrapper">
         <table id="admin_db_editor_table">
           <thead><tr><th>Select Table</th></tr></thead>
           <tbody><tr><td>Select a table to edit.</td></tr></tbody>
         </table>
+      </div>
       </div>
     </section>
     <section class="card log-card">
@@ -353,6 +377,14 @@
       });
     });
 
+    const toggleLimitsPanelButton = document.getElementById("toggle_limits_panel");
+    const limitsPanelContent = document.getElementById("limits_panel_content");
+    const toggleCreateUserPanelButton = document.getElementById("toggle_create_user_panel");
+    const createUserPanelContent = document.getElementById("create_user_panel_content");
+    const toggleDbBackupPanelButton = document.getElementById("toggle_db_backup_panel");
+    const dbBackupPanelContent = document.getElementById("db_backup_panel_content");
+    const toggleDbEditorPanelButton = document.getElementById("toggle_db_editor_panel");
+    const dbEditorPanelContent = document.getElementById("db_editor_panel_content");
     const runsBulkSelectAction = document.getElementById("runs_bulk_select_action");
     const selectUserRunsCombo = document.getElementById("select_user_runs_combo");
     const adminStopSelectedRunsButton = document.getElementById("admin_stop_selected_runs");
@@ -522,6 +554,18 @@
         runsTotalSizeLabel.textContent = `Total size: ${formatSizeMb(visibleTotalMb)} · Selected size: ${formatSizeMb(selectedMb)}`;
       }
     }
+
+    function bindPanelToggle(button, panel) {
+      button?.addEventListener("click", () => {
+        panel?.classList.toggle("hidden");
+        if (button) button.textContent = panel?.classList.contains("hidden") ? "▸" : "▾";
+      });
+    }
+
+    bindPanelToggle(toggleLimitsPanelButton, limitsPanelContent);
+    bindPanelToggle(toggleCreateUserPanelButton, createUserPanelContent);
+    bindPanelToggle(toggleDbBackupPanelButton, dbBackupPanelContent);
+    bindPanelToggle(toggleDbEditorPanelButton, dbEditorPanelContent);
 
     function getSelectedRunIds() {
       return Array.from(document.querySelectorAll(".run-checkbox:checked")).map((box) => Number(box.value));

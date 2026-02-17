@@ -49,6 +49,7 @@
             <button type="button" class="browse-button" id="load_config_button">Load config.cfg</button>
             <button type="button" class="browse-button" id="export_config_button">Export config.cfg</button>
           </div>
+          <button type="button" id="toggle_module_panel" class="panel-toggle" aria-label="Collapse module panel" title="Collapse/Expand">▾</button>
         </div>
       </div>
 
@@ -220,11 +221,13 @@
             <option value="older">Select Older</option>
           </select>
           <button type="button" id="send_selected_inputs" class="btn btn-success">Send to Input</button>
+          <button type="button" id="user_upload_inputs" class="btn btn-primary">Upload</button>
           <button type="button" id="delete_selected_inputs" class="btn btn-danger danger-anchor">Delete Selected</button>
           <button type="button" id="toggle_inputs_panel" class="panel-toggle" aria-label="Collapse inputs panel" title="Collapse/Expand">▾</button>
         </div>
       </div>
       <input type="date" id="older_input_date_picker" class="hidden" />
+      <input type="file" id="user_inputs_upload_picker" class="hidden" accept=".zip" multiple />
       <div class="table-scroll history-scroll inputs-scroll" id="inputs_panel_table">
         <table>
           <thead>
@@ -391,6 +394,8 @@
   <!-- JS: unchanged except it no longer references documentation-side -->
   <script>
     const moduleSelect = document.querySelector('select[name="module"]');
+    const moduleForm = document.querySelector(".module-form");
+    const toggleModulePanelButton = document.getElementById("toggle_module_panel");
     const singleInputRow = document.getElementById("single-input-row");
     const prepostInputRows = document.getElementById("prepost-input-rows");
 
@@ -427,6 +432,8 @@
     const inputsBulkSelectAction = document.getElementById("inputs_bulk_select_action");
     const selectUserInputsCombo = document.getElementById("select_user_inputs_combo");
     const sendSelectedInputsButton = document.getElementById("send_selected_inputs");
+    const userUploadInputsButton = document.getElementById("user_upload_inputs");
+    const userInputsUploadPicker = document.getElementById("user_inputs_upload_picker");
     const deleteSelectedInputsButton = document.getElementById("delete_selected_inputs");
     const olderInputDatePicker = document.getElementById("older_input_date_picker");
     const toggleInputsPanelButton = document.getElementById("toggle_inputs_panel");
@@ -587,6 +594,13 @@
       const firstName = first.name || "uploaded_input";
       const dot = firstName.lastIndexOf(".");
       return (dot > 0 ? firstName.slice(0, dot) : firstName) || "uploaded_input";
+    }
+
+    function getZipBaseName(fileName) {
+      const raw = String(fileName || "uploaded_input.zip").split("/").pop() || "uploaded_input.zip";
+      const dot = raw.lastIndexOf(".");
+      const stem = dot > 0 ? raw.slice(0, dot) : raw;
+      return stem.trim() || "uploaded_input";
     }
 
     function buildBatchListHtml(items) {
@@ -921,6 +935,80 @@
       });
     });
 
+    async function processInputsUploadQueue(items, opts = {}) {
+      const options = {
+        moduleValue: moduleSelect.value,
+        kindValue: "input",
+        onItemUploaded: null,
+        ...opts
+      };
+
+      for (const item of items) {
+        let response = await uploadZip([item.file], options.moduleValue, options.kindValue, item.inputName, false, item.parentFolderName || "");
+        if (!response?.ok && response?.error === "already_exists") {
+          const overwriteResponse = await showModal({
+            title: "Input already exists",
+            message: `Input ${response.existing_name} already exists. Overwrite?`,
+            confirmText: "Accept",
+            cancelText: "Cancel"
+          });
+          if (!overwriteResponse.ok) continue;
+          response = await uploadZip([item.file], options.moduleValue, options.kindValue, item.inputName, true, item.parentFolderName || "");
+        }
+        if (response?.ok && response.path && typeof options.onItemUploaded === "function") {
+          options.onItemUploaded(response, item);
+        }
+      }
+      await refreshInputsRepository();
+    }
+
+    userUploadInputsButton?.addEventListener("click", () => userInputsUploadPicker?.click());
+
+    userInputsUploadPicker?.addEventListener("change", async () => {
+      const files = Array.from(userInputsUploadPicker.files || []).filter((file) => /\.zip$/i.test(file.name || ""));
+      if (!files.length) {
+        userInputsUploadPicker.value = "";
+        return;
+      }
+
+      if (files.length === 1) {
+        const defaultInputName = inferParentFolderName(files) || "uploaded_input";
+        const modalInput = await showModal({
+          title: "Input name",
+          message: "Confirm Input name for this zip upload.",
+          confirmText: "Accept",
+          cancelText: "Cancel",
+          showInput: true,
+          inputValue: defaultInputName
+        });
+        if (!modalInput.ok) {
+          userInputsUploadPicker.value = "";
+          return;
+        }
+        const selectedInputName = String(modalInput.value || "").trim() || defaultInputName;
+        processInputsUploadQueue([{ file: files[0], inputName: selectedInputName, parentFolderName: defaultInputName }]).finally(() => {
+          userInputsUploadPicker.value = "";
+        });
+        return;
+      }
+
+      const warning = await showModal({
+        title: "Bulk upload",
+        message: "Each Input name will use the uploaded zip filename (without extension). Uploads will continue in background.",
+        confirmText: "Accept",
+        cancelText: "Cancel"
+      });
+      if (!warning.ok) {
+        userInputsUploadPicker.value = "";
+        return;
+      }
+
+      const items = files.map((file) => ({ file, inputName: getZipBaseName(file.name), parentFolderName: "" }));
+      processInputsUploadQueue(items).finally(() => {
+        userInputsUploadPicker.value = "";
+      });
+    });
+
     Object.entries(uploadInputs).forEach(([inputId, inputElement]) => {
       inputElement.addEventListener("change", async () => {
         const files = inputElement.files;
@@ -931,7 +1019,37 @@
         const kindValue = button ? button.dataset.kind : "";
         if (!targetInput || !kindValue) return;
 
-        const inferredParentFolderName = inferParentFolderName(Array.from(files));
+        const fileList = Array.from(files);
+        const onlyZipFiles = fileList.every((file) => /\.zip$/i.test(file.name || ""));
+
+        if (fileList.length > 1 && onlyZipFiles) {
+          const warning = await showModal({
+            title: "Bulk upload",
+            message: "Each Input name will use each zip filename (without extension). Uploads will continue in background.",
+            confirmText: "Accept",
+            cancelText: "Cancel"
+          });
+          if (!warning.ok) {
+            inputElement.value = "";
+            return;
+          }
+
+          targetInput.value = "Uploading...";
+          const queueItems = fileList.map((file) => ({ file, inputName: getZipBaseName(file.name), parentFolderName: "" }));
+          processInputsUploadQueue(queueItems, {
+            moduleValue: moduleSelect.value,
+            kindValue,
+            onItemUploaded: (response) => {
+              targetInput.value = response.path;
+              scheduleAutoSave();
+            }
+          })
+            .catch(() => { targetInput.value = ""; })
+            .finally(() => { inputElement.value = ""; });
+          return;
+        }
+
+        const inferredParentFolderName = inferParentFolderName(fileList);
         const defaultInputName = inferredParentFolderName || "uploaded_input";
         const modalInput = await showModal({
           title: "Input name",
@@ -1720,6 +1838,11 @@
           }
           return refreshInputsRepository();
         });
+    });
+
+    toggleModulePanelButton?.addEventListener("click", () => {
+      moduleForm?.classList.toggle("hidden");
+      toggleModulePanelButton.textContent = moduleForm?.classList.contains("hidden") ? "▸" : "▾";
     });
 
     toggleRunsPanelButton?.addEventListener("click", () => {
