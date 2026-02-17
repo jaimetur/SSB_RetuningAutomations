@@ -1398,9 +1398,9 @@
       field.addEventListener("input", scheduleAutoSave);
     });
 
-    loadConfigButton.addEventListener("click", () => configPicker.click());
+    loadConfigButton?.addEventListener("click", () => configPicker?.click());
 
-    configPicker.addEventListener("change", () => {
+    configPicker?.addEventListener("change", () => {
       const file = configPicker.files[0];
       if (!file) return;
       const reader = new FileReader();
@@ -1412,9 +1412,9 @@
       reader.readAsText(file);
     });
 
-    exportConfigButton.addEventListener("click", () => { window.location.href = "/config/export"; });
+    exportConfigButton?.addEventListener("click", () => { window.location.href = "/config/export"; });
 
-    changePasswordButton.addEventListener("click", async () => {
+    changePasswordButton?.addEventListener("click", async () => {
       const response = await showModal({
         title: "Change password",
         message: "Enter a new password:",
@@ -1452,8 +1452,8 @@
       document.body.removeChild(helper);
     }
 
-    copyLogButton.addEventListener("click", () => copyToClipboard(logOutput.textContent || ""));
-    copySelectionButton.addEventListener("click", () => {
+    copyLogButton?.addEventListener("click", () => copyToClipboard(logOutput?.textContent || ""));
+    copySelectionButton?.addEventListener("click", () => {
       const selection = window.getSelection();
       if (selection) copyToClipboard(selection.toString());
     });
@@ -1471,10 +1471,10 @@
     function getTargetFiltersInput() {
       return freqTargetSelect.value === "cc" ? ccFiltersInput : caFiltersInput;
     }
-    freqAddButton.addEventListener("click", () => addToFilters(getTargetFiltersInput()));
-    freqRemoveButton.addEventListener("click", () => removeFromFilters(getTargetFiltersInput()));
-    freqClearButton.addEventListener("click", () => clearFilters(getTargetFiltersInput()));
-    selectAllButton.addEventListener("click", selectAllFrequencies);
+    freqAddButton?.addEventListener("click", () => addToFilters(getTargetFiltersInput()));
+    freqRemoveButton?.addEventListener("click", () => removeFromFilters(getTargetFiltersInput()));
+    freqClearButton?.addEventListener("click", () => clearFilters(getTargetFiltersInput()));
+    selectAllButton?.addEventListener("click", selectAllFrequencies);
 
     function getSelectedRunIds() {
       return Array.from(document.querySelectorAll(".run-checkbox:checked")).map((box) => Number(box.value));
@@ -1742,7 +1742,7 @@
       toggleInputsPanelButton.textContent = inputsPanelTable?.classList.contains("hidden") ? "▸" : "▾";
     });
 
-    moduleSelect.addEventListener("change", () => {
+    moduleSelect?.addEventListener("change", () => {
       syncCurrentModuleInputsMap();
       applyModuleInputsFor(moduleSelect.value);
       toggleInputRows();
@@ -1752,7 +1752,7 @@
     updateModuleAvailability();
 
     const moduleForm = document.querySelector(".module-form");
-    moduleForm.addEventListener("submit", async (event) => {
+    moduleForm?.addEventListener("submit", async (event) => {
       event.preventDefault();
       if (isModuleBlocked()) { updateModuleAvailability(); return; }
 

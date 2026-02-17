@@ -2155,9 +2155,10 @@ def admin_runs_list(request: Request):
     conn = get_conn()
     latest_runs = conn.execute(
         """
-        SELECT id, module, tool_version, input_name, status, started_at, finished_at, duration_seconds, output_zip, output_log_file, input_dir, output_dir
-        FROM task_runs
-        ORDER BY id DESC
+        SELECT tr.id, u.username, tr.module, tr.tool_version, tr.input_name, tr.status, tr.started_at, tr.finished_at, tr.duration_seconds, tr.output_zip, tr.output_log_file, tr.input_dir, tr.output_dir
+        FROM task_runs tr
+        JOIN users u ON u.id = tr.user_id
+        ORDER BY tr.id DESC
         """
     ).fetchall()
     latest_runs = [dict(row) for row in latest_runs]
@@ -3123,7 +3124,6 @@ async def release_notes(request: Request, user=Depends(get_current_user)):
     changelog_md = changelog_path.read_text(encoding="utf-8", errors="replace") if changelog_path.exists() else "CHANGELOG.md not found at /app/CHANGELOG.md"
     tool_meta = load_tool_metadata()
     return templates.TemplateResponse("release_notes.html", {"request": request, "tool_meta": tool_meta, "user": user, "changelog_md": changelog_md})
-
 
 
 
