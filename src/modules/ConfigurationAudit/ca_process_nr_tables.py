@@ -83,26 +83,30 @@ def process_nr_cell_du(df_nr_cell_du, add_row, allowed_n77_ssb_pre_set, allowed_
                     n77_nodes = sorted(n77_rows[node_col].astype(str).unique())
                     add_row("NRCellDU", "NR Frequency Audit", "NR nodes with N77 SSB in band (646600-660000) (from NRCellDU table)", len(n77_nodes), ", ".join(n77_nodes))
 
-                    # NR nodes with at least one N77 SSB in Pre-Retune allowed list (from NRCellDU table)
+                    # NR nodes whose ALL N77 SSBs are in Pre-Retune allowed list (from NRCellDU table)
                     if allowed_n77_ssb_pre_set:
                         grouped_n77 = n77_rows.groupby(node_col)[ssb_col]
 
-                        def any_n77_ssb_in_pre(series: pd.Series) -> bool:
-                            freqs = {f for f in series.map(parse_int_frequency) if f is not None}
-                            return bool(freqs & allowed_n77_ssb_pre_set)
+                        def all_n77_ssb_in_pre(series: pd.Series) -> bool:
+                            freqs = series.map(parse_int_frequency)
+                            freqs_valid = {f for f in freqs if f is not None}
+                            # Node must have at least one valid N77 SSB and ALL of them in allowed_n77_ssb_pre_set
+                            return bool(freqs_valid) and freqs_valid.issubset(allowed_n77_ssb_pre_set)
 
-                        pre_nodes = sorted(str(node) for node, series in grouped_n77 if any_n77_ssb_in_pre(series))
+                        pre_nodes = sorted(str(node) for node, series in grouped_n77 if all_n77_ssb_in_pre(series))
                         allowed_pre_str = ", ".join(str(v) for v in sorted(allowed_n77_ssb_pre_set))
                         add_row("NRCellDU", "NR Frequency Audit", f"NR nodes with N77 SSB in Pre-Retune allowed list ({allowed_pre_str}) (from NRCellDU table)", len(pre_nodes), ", ".join(pre_nodes))
 
                     if allowed_n77_ssb_post_set:
                         grouped_n77 = n77_rows.groupby(node_col)[ssb_col]
 
-                        def any_n77_ssb_in_post(series: pd.Series) -> bool:
-                            freqs = {f for f in series.map(parse_int_frequency) if f is not None}
-                            return bool(freqs & allowed_n77_ssb_post_set)
+                        def all_n77_ssb_in_post(series: pd.Series) -> bool:
+                            freqs = series.map(parse_int_frequency)
+                            freqs_valid = {f for f in freqs if f is not None}
+                            # Node must have at least one valid N77 SSB and ALL of them in allowed_n77_ssb_post_set
+                            return bool(freqs_valid) and freqs_valid.issubset(allowed_n77_ssb_post_set)
 
-                        post_nodes = sorted(str(node) for node, series in grouped_n77 if any_n77_ssb_in_post(series))
+                        post_nodes = sorted(str(node) for node, series in grouped_n77 if all_n77_ssb_in_post(series))
                         allowed_post_str = ", ".join(str(v) for v in sorted(allowed_n77_ssb_post_set))
                         add_row("NRCellDU", "NR Frequency Audit", f"NR nodes with N77 SSB in Post-Retune allowed list ({allowed_post_str}) (from NRCellDU table)", len(post_nodes), ", ".join(post_nodes))
 
@@ -526,25 +530,17 @@ def process_nr_sector_carrier(df_nr_sector_carrier, add_row, allowed_n77_arfcn_p
                 n77_nodes = sorted(n77_rows[node_col].astype(str).unique())
                 add_row("NRSectorCarrier", "NR Frequency Audit", "NR nodes with N77 ARCFN in band (646600-660000) (from NRSectorCarrier table)", len(n77_nodes), ", ".join(n77_nodes))
 
-                # NR nodes with at least one N77 ARCFN in Pre-Retune allowed list (from NRSectorCarrier table)
+                # NR nodes whose ALL N77 ARCFNs are in Pre-Retune allowed list (from NRSectorCarrier table)
                 if allowed_n77_arfcn_pre_set:
                     grouped_n77 = n77_rows.groupby(node_col)[arfcn_col]
-                    pre_nodes = sorted(
-                        str(node)
-                        for node, series in grouped_n77
-                        if bool({f for f in series.map(parse_int_frequency) if f is not None} & set(allowed_n77_arfcn_pre_set))
-                    )
+                    pre_nodes = sorted(str(node) for node, series in grouped_n77 if all_n77_arfcn_in_pre(series))
                     allowed_pre_str = ", ".join(str(v) for v in sorted(allowed_n77_arfcn_pre_set))
                     add_row("NRSectorCarrier", "NR Frequency Audit", f"NR nodes with N77 ARCFN in Pre-Retune allowed list ({allowed_pre_str}) (from NRSectorCarrier table)", len(pre_nodes), ", ".join(pre_nodes))
 
-                # NR nodes with at least one N77 ARCFN in Post-Retune allowed list (from NRSectorCarrier table)
+                # NR nodes whose ALL N77 ARCFNs are in Post-Retune allowed list (from NRSectorCarrier table)
                 if allowed_n77_arfcn_post_set:
                     grouped_n77 = n77_rows.groupby(node_col)[arfcn_col]
-                    post_nodes = sorted(
-                        str(node)
-                        for node, series in grouped_n77
-                        if bool({f for f in series.map(parse_int_frequency) if f is not None} & set(allowed_n77_arfcn_post_set))
-                    )
+                    post_nodes = sorted(str(node) for node, series in grouped_n77 if all_n77_arfcn_in_post(series))
                     allowed_post_str = ", ".join(str(v) for v in sorted(allowed_n77_arfcn_post_set))
                     add_row("NRSectorCarrier", "NR Frequency Audit", f"NR nodes with N77 ARCFN in Post-Retune allowed list ({allowed_post_str}) (from NRSectorCarrier table)", len(post_nodes), ", ".join(post_nodes))
 
