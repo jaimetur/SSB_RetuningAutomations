@@ -1874,8 +1874,7 @@
     toggleInputRows();
     updateModuleAvailability();
 
-    const moduleForm = document.querySelector(".module-form");
-    moduleForm.addEventListener("submit", async (event) => {
+    moduleForm?.addEventListener("submit", async (event) => {
       event.preventDefault();
       if (isModuleBlocked()) { updateModuleAvailability(); return; }
 
