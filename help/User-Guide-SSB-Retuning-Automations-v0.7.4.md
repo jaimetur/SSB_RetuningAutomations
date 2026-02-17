@@ -1,6 +1,73 @@
 # Technical User Guide — SSB Retuning Automations
 
-## 1) Tool overview
+## 1) Service overview
+
+SSB Retuning Automations parses network logs, performs ConfigurationAudit checks, optionally compares PRE/POST states with ConsistencyChecks, and generates Excel deliverables and correction command exports.
+This document provides the official user-facing documentation for the SSB Retuning Automations tool. It explains how to prepare inputs, how each module behaves, which execution modes are available, and how to interpret all generated outputs.
+
+### 1.1 Two Steps approach + Final Clean-Up
+
+#### Step1, before SSB retune including neighboring sites
+- New GUtranSyncSignalFrequency/GUtranFreqRelation and NRFrequency/NRFreqRelation instances following VZ naming convention added manually before SSB retune. Nodes of all NR and LTE bands with FreqRelations to the retuned frequency are considered.
+- NrFreqRel profiles containing new SSB names
+- Low PRIO for new SSB: endcB1MeasPriority 2->1, to mitigate the impact in retune borders
+- Add new SSB to FreqPrioNR and EndcDistrProfile.MandatoryGUtranFreqRef
+
+#### Step2, SSB retune cluster
+- SSB retune NR N77 cells in a cluster
+- NrCell, NrFreqRel and EUtranFreqRel profiles containing new SSB names
+- Replace old SSB on EndcDistrProfile gUtranFreqRef and MandatoryGUtranFreqRef
+- Normal PRIO for new SSB: endcB1MeasPriority 2
+- Low PRIO for old SSB: endcB1MeasPriority 2->1, to mitigate the impact in retune borders
+- Step2 Cleanup, Relations and ExternalCell that failed to update automatically
+  - Lock/unlock Termpoints
+  - Set ExternalCell Frequency
+  - Delete and re-create CellRelations
+  - Remove CellRelations that ANR might have added due to outage during SSB retune
+
+#### Final Cleanup (after all clusters done in a region and no borders with old SSB)
+- There should not be any CellRelation pointing to old SSB Freq
+- Remove old SSB GUtranSyncSignalFrequency/GUtranFreqRelation and NRFrequency/NRFreqRelation
+- Remove NrCell, NrFreqRel and EUtranFreqRel profiles containing old SSB names
+- Update SSB in Relations that failed to update automatically (unavailableTermpoints)
+- Remove CellRelations that ANR might have added due to outage during SSB retune
+
+### 1.2 Coexistence of old & new SSB:
+Coexistence of old/new SSB will split UE measurements in 2 frequencies. A cell ranked 3rd might become 1st after the split, increasing the risk of connecting to overshooting cells. 
+- To handle this, suggest setting lower priority for the SSB not collocated to minimize potential issues due to overshooting
+- Retune cluster sites with low priority to old SSB (priority change on Step2)
+- Neighboring sites with low priority to new SSB
+- UEs camping on neighboring sites to retune cluster will not try to reselect or add ENDC on new SSB (lower priority)
+- UEs camping on border sites in retune cluster will not try to reselect or add ENDC on old SSB (lower priority)
+- Step1 will add FreqRelation to new SSB in retune + neighboring clusters 
+- Step2 will not remove FreqRelation to old SSB
+- ENDC and Mobility allowed in border and neighboring sites with existing CellRelations
+
+### 1.3 Clusters definition and pre-checks
+For each ENM identify retune+border clusters with markets being planned on different nights 
+- Step0 all markets: Pre-checks export with all relevant MOs and params in retune+border clusters, including cellRelation. Evaluate the number of MOs and anticipate any additions that might be needed to the scripts for different markets
+- Step1 all clusters and neighboring markets to create all definitions needed for Old & new SSB  co-existence:
+  -	New GUtranSyncSignalFrequency/GUtranFreqRelation and NRFrequency/NRFreqRelation instances following VZ naming convention will be added manually before SSB retune
+  -	Mobility/Anchoring lower PRIO for new SSB: endcB1MeasPriority 0, cellReselectionSubPriority 0  (TBC)
+  -	Add new SSB to FreqPrioNR and EndcDistrProfile.MandatoryGUtranFreqRef
+- Step2, cluster of 1 or more markets each night during maintenance window
+  -	SSB retune
+  -	Mobility/Anchoring lower PRIO for old SSB (TBC endcB1MeasPriority 0, cellReselectionSubPriority 0) , normal priority for new SSB
+  -	Update EndcDistrProfile replacing old SSB in gUtranFreqRef
+  -	Change MCPC profiles containing old SSB names to new SSB names
+- Post Step2 full audit (including cellRelation)
+  -	Additional cellRelation instances might be created during night works, due to outages during SSB retune. 
+  -	Full audit and comparison of CellRelation to detect any additions and flag them for deletion
+- Step2 Cleanup:
+  -	Remove CellRelations that ANR might have added during SSB retune cells locked
+  -	Change MCPC profiles containing old SSB names to new SSB names
+  -	Final cleanup after all clusters done in one ENM and no borders with old SSB (including other vendor areas)
+  -	There should not be any CellRelation pointing to old SSB Freq
+  -	Remove old SSB GUtranSyncSignalFrequency/GUtranFreqRelation and NRFrequency/NRFreqRelation
+  -	Remove MCPC profiles containing old SSB names, not referenced anymore after NRFreqRelation deletion 
+
+
+## 2) Tool overview
 
 **SSB Retuning Automations** is an automation platform for SSB retuning projects that can run in GUI or CLI mode or through a Web Interface (using a server/client infrastructure) and orchestrates five functional modules:
 
@@ -14,33 +81,55 @@ The main execution lives in `src/SSB_RetuningAutomations.py`, where CLI argument
 
 ---
 
-## 2) Repository technical architecture
+## 3) Repository technical architecture
 
-### 2.1 Main files
+### 3.1 Main files
 
-#### 2.1.1 Orchestration core
+#### 3.1.1 Orchestration core
 - `src/SSB_RetuningAutomations.py`: entry point, CLI/GUI parsing, module routing, batch/bulk execution, and versioning.
 
-#### 2.1.2 Main modules files
+#### 3.1.2 Main modules files
 - `src/modules/ConfigurationAudit/ConfigurationAudit.py`: log parsing and audit workbook construction (Excel + PPT).
 - `src/modules/ConfigurationAudit/ca_summary_excel.py`: assembly of `SummaryAudit` and discrepancy dataframes.
 - `src/modules/ConsistencyChecks/ConsistencyChecks.py`: PRE/POST loading, relation comparison, discrepancies, and output export.
 - `src/modules/ProfilesAudit/ProfilesAudit.py`: profiles audit (integrated into module 1).
 - `src/modules/CleanUp/FinalCleanUp.py`: final clean-up (base implementation for extension).
 
-#### 2.1.3 Common layer and utilities
+#### 3.1.3 Common layer and utilities
 - `src/modules/Common/*.py`: correction command logic and shared functions.
 - `src/utils/*.py`: IO, parsing, frequency handling, Excel, pivots, sorting, infrastructure, and timing.
 
 ---
 
-## 3) Inputs, outputs, and content per module
+## 4) Execution Modes and Versioning
 
-### 3.1 Module 0 — Update Network Frequencies
+- **GUI mode**: run without CLI arguments.
+- **CLI mode**: run with explicit module and options.
+- **Web Interfacee**: the tool can be run in a server/client infrastructure, accessing the server through a Web Interface where you can unpload your inputs, enqueue different tasks and  export the results when finish..
+
+All Generated artifacts include a versioned suffix: `<timestamp>_v<TOOL_VERSION>`. 
+
+This guarantees traceability and avoids collisions between runs.
+
+---
+
+## 5) Inputs, outputs, and content per module
+
+### Tool Inputs
+Inputs are folders (or ZIP archives) containing log files. The tool parses the logs into MO tables and runs checks on them. For ConsistencyChecks, provide either explicit PRE and POST folders or a single root folder where PRE/POST runs can be auto-detected.
+
+### Tool Outputs
+Each module generates a dedicated output folder containing Excel reports, logs, and optional correction command exports.
+
+---
+
+## 6) Ccontent per module
+
+### 6.1 Module 0 — Update Network Frequencies
 
 #### Input
 - Input folder (may contain subfolders/ZIPs already supported by the IO layer).
-- Logs with an `NRFrequency` table and the `arfcnValueNRDl` column.
+- Mo logs with an `NRFrequency` table and the `arfcnValueNRDl` column.
 
 #### Process
 1. Scan logs and detects `NRFrequency` blocks.
@@ -66,10 +155,19 @@ The main execution lives in `src/SSB_RetuningAutomations.py`, where CLI argument
 
 ---
 
-### 3.2 Module 1 — Configuration Audit & Logs Parser
+### 6.2 Module 1 — Configuration Audit & Logs Parser
+
+ConfigurationAudit performs a detailed validation of a single configuration snapshot. It parses network logs, builds Managed Object (MO) tables, and evaluates multiple consistency and retuning-related rules.  
+
+ConfigurationAudit validates frequency configuration (SSB/ARFCN), relations, externals, TermPoints, profiles, and cardinality constraints. Results are consolidated in the SummaryAudit sheet.
+
+#### Execution Modes
+ConfigurationAudit can be executed in two main modes:
+-	Normal mode: The user provides a single input folder. The tool runs all checks and generates one audit output.
+-	Batch mode: The user provides a root folder containing multiple Step0 runs. The tool automatically detects valid runs and executes ConfigurationAudit for each one.
 
 #### Inputs
-- Input folder with logs (`.log`, `.logs`, `.txt`) or ZIPs resolvable by utilities.
+- Input folder with MOs logs (`.log`, `.logs`, `.txt`) or ZIPs resolvable by utilities.
 - Frequency parameters:
   - `n77_ssb_pre`
   - `n77_ssb_post`
@@ -93,7 +191,7 @@ The main execution lives in `src/SSB_RetuningAutomations.py`, where CLI argument
 - Folder `ConfigurationAudit_<timestamp>_v<version>/`.
 - Excel file `ConfigurationAudit_<timestamp>_v<version>.xlsx`:
   - Sheets for each parsed MO table.
-  - `SummaryAudit`.
+  - Sheet with a `SummaryAudit` sheet wich contains the audit results.
   - NR/LTE parameter discrepancy sheets.
   - Summary/pivot sheets by frequencies and relations.
 - PPT file `ConfigurationAudit_<timestamp>_v<version>.pptx`.
@@ -108,10 +206,18 @@ The main execution lives in `src/SSB_RetuningAutomations.py`, where CLI argument
 
 ---
 
-### 3.3 Module 2 — Consistency Check (Pre/Post)
+### 6.3 Module 2 — Consistency Check (Pre/Post)
+
+ConsistencyChecks compares PRE and POST relation tables (NRCellRelation and GUtranCellRelation). The comparison uses a stable key per relation (e.g., NodeId + CellId + RelationId).  
+
+The module detects missing relations, new relations, and discrepancies (parameter differences and frequency differences). Results are summarized in the comparison Excel.
+
+#### Execution Modes
+-	Normal (manual PRE/POST): The user explicitly provides PRE and POST input folders.
+-	Batch (auto-detected PRE/POST):The user provides a root folder. The tool automatically selects PRE and POST runs based on timestamps and naming rules.
 
 #### Inputs
-- `input_pre` and `input_post` (or equivalent resolved structure).
+- `input_pre` and `input_post` folders. Both folders should contains MOs logs (`.log`, `.logs`, `.txt`) or ZIPs resolvable by utilities.
 - Frequencies `n77_ssb_pre` and `n77_ssb_post`.
 - Optional reference to PRE and POST `ConfigurationAudit` to enrich target classification.
 - Optional list of frequency filters (`cc_freq_filters`).
@@ -139,9 +245,21 @@ The main execution lives in `src/SSB_RetuningAutomations.py`, where CLI argument
   - optional `GU_all`, `NR_all`.
 - `Correction_Cmd_CC/` with commands per type (new/missing/discrepancies).
 
+#### Missing Relations
+A relation is classified as MISSING in POST when its key exists in PRE but does not exist in POST. In code terms: Missing = PRE_keys − POST_keys.
+
+#### New Relations
+A relation is classified as NEW in POST when its key exists in POST but does not exist in PRE. In code terms: New = POST_keys − PRE_keys.
+
+#### Parameters Discrepancies
+A relation is classified as a DISCREPANCY when the key exists in both PRE and POST, but one or more audited parameters differ. The tool compares shared columns, excluding technical columns (Pre/Post, Date), key columns, and the detected frequency column.
+
+#### Frequency Discrepancies (SSB)
+Frequency discrepancies are identified by extracting a normalized base frequency (Freq_Pre / Freq_Post) and applying retuning rules. Typical rule: if a relation has the target frequency in PRE (or already has POST) but POST does not contain the expected POST frequency, it is flagged for frequency discrepancy handling
+
 ---
 
-### 3.4 Module 3 — Consistency Check Bulk
+### 6.4 Module 3 — Consistency Check Bulk
 
 #### Inputs
 - Root folder with subfolders like `yyyymmdd_hhmm_step0` (optionally nested by market).
@@ -157,7 +275,7 @@ The main execution lives in `src/SSB_RetuningAutomations.py`, where CLI argument
 
 ---
 
-### 3.5 Module 4 — Final Clean-Up
+### 6.5 Module 4 — Final Clean-Up
 
 #### Inputs
 - Final retune working folder.
@@ -170,27 +288,15 @@ The main execution lives in `src/SSB_RetuningAutomations.py`, where CLI argument
 
 ---
 
-## 4) Execution Modes and Versioning
+## 7) Configuration Audit module in detail
 
-- **GUI mode**: run without CLI arguments.
-- **CLI mode**: run with explicit module and options.
-- **Web Interfacee**: the tool can be run in a server/client infrastructure, accessing the server through a Web Interface where you can unpload your inputs, enqueue different tasks and  export the results when finish..
-
-All Generated artifacts include a versioned suffix: `<timestamp>_v<TOOL_VERSION>`. 
-
-This guarantees traceability and avoids collisions between runs.
-
----
-
-## 5) Configuration Audit module in detail
-
-### 5.1 SummaryAudit checks philosophy
+### 7.1 SummaryAudit checks philosophy
 SummaryAudit sheet contains a high-level checks table by categories. The flow:
 1. Excludes `UNSYNCHRONIZED` nodes based on `MeContext`.
 2. Evaluates NR, LTE, ENDC, Externals, TermPoints, cardinalities, and profiles.
 3. Records each check as a row (`Category/SubCategory/Metric/Value/ExtraInfo`).
 
-### 5.2 Operational meaning of SummaryAudit rows
+### 7.2 Operational meaning of SummaryAudit rows
 - **Category**: audited technical domain (NR/LTE/ENDC/MeContext/etc.).
 - **SubCategory**: type of analysis (Audit/Inconsistencies/Profiles).
 - **Metric**: specific rule evaluated.
@@ -200,7 +306,7 @@ SummaryAudit sheet contains a high-level checks table by categories. The flow:
   - Text: captured status or error.
 - **ExtraInfo**: list of nodes or bounded detail for troubleshooting.
 
-### 5.3 SummaryAudit checks catalog
+### 7.3 SummaryAudit checks catalog
 
 ### A) MeContext Audit
 **Source tables**: `MeContext`.
@@ -402,7 +508,7 @@ Cardinality checks per relation table (per node and/or per cell) to detect overp
 
 ---
 
-### 5.4 Detailed check execution order and gating rules
+### 7.4 Detailed check execution order and gating rules
 1. **MeContext pre-processing**
    - Computes total nodes and `UNSYNCHRONIZED` nodes.
    - Builds an exclusion list and filters all other MO dataframes by `NodeId` before running any other checks.
@@ -419,7 +525,7 @@ Cardinality checks per relation table (per node and/or per cell) to detect overp
    - If required columns are missing: emits `N/A` rows.
    - If exceptions occur: emits `ERROR: ...` rows without aborting the full SummaryAudit generation.
 
-### 5.5 Additional columns injected into parsed MO sheets
+### 7.5 Additional columns injected into parsed MO sheets
 Besides SummaryAudit, Module 1 enriches several raw MO sheets with operational columns for execution/cleanup.
 
 #### A) `MeContext` enrichment (main planning helper)
@@ -462,7 +568,7 @@ Both relation tables are normalized with helper columns used for discrepancy tar
 - Adds consolidated termpoint health/status fields and `SSB needs update` boolean.
 - Adds `GNodeB_SSB_Target` and generated `Correction_Cmd` when target and frequency logic indicates migration to post-retune SSB.
 
-### 5.6 Key SummaryAudit checks by source table (implementation-level)
+### 7.6 Key SummaryAudit checks by source table (implementation-level)
 Below is the practical checklist implemented by the processors:
 
 - **NRCellDU**:
@@ -507,12 +613,12 @@ Below is the practical checklist implemented by the processors:
 
 ---
 
-## 6) Consistency Check module in detail
+## 8) Consistency Check module in detail
 
-### 6.1 Filtering by non-retuned nodes
+### 8.1 Filtering by non-retuned nodes
 If a POST SummaryAudit exists, the module obtains PRE/POST node lists and can exclude discrepancies whose target points to nodes that did not complete retune, reducing operational noise.
 
-### 6.2 How it detects parameter discrepancies
+### 8.2 How it detects parameter discrepancies
 1. Selects common PRE and POST relations by composite key:
    - GU: typically `NodeId`, `EUtranCellFDDId`, `GUtranCellRelationId`.
    - NR: typically `NodeId`, `NRCellCUId`, `NRCellRelationId`.
@@ -521,7 +627,7 @@ If a POST SummaryAudit exists, the module obtains PRE/POST node lists and can ex
 4. Sets `ParamDiff=True` if at least one column differs.
 5. In GU it ignores `timeOfCreation` and `mobilityStatusNR` to avoid false positives.
 
-### 6.3 How it detects frequency discrepancies
+### 8.3 How it detects frequency discrepancies
 1. Extracts base frequency from relation references (`extract_gu_freq_base` / `extract_nr_freq_base`).
 2. Discrepancy rule:
    - if PRE had `freq_before` or `freq_after`, and POST does **not** end up in `freq_after`, it marks `FreqDiff=True`.
@@ -529,13 +635,13 @@ If a POST SummaryAudit exists, the module obtains PRE/POST node lists and can ex
    - `FreqDiff_SSBPost` (target identified as SSB-Post),
    - `FreqDiff_Unknown` (cannot be associated to a known target).
 
-### 6.4 How it detects neighbor discrepancies
+### 8.4 How it detects neighbor discrepancies
 They are split into three groups:
 - **New relations**: keys present in POST and absent in PRE.
 - **Missing relations**: keys present in PRE and absent in POST.
 - **Discrepancies**: same key in PRE/POST but with parametric or frequency differences.
 
-### 6.5 Content of each ConsistencyChecks output sheet
+### 8.5 Content of each ConsistencyChecks output sheet
 - **Summary**: KPIs per table (PRE/POST volume, discrepancies, new/missing, source files).
 - **SummaryAuditComparisson**: diff of SummaryAudit PRE vs POST metrics (without `ExtraInfo` to keep the comparison clean).
 - **Summary_CellRelation**: KPI per `Freq_Pre/Freq_Post` pair and per technology.
@@ -549,7 +655,7 @@ They are split into three groups:
 
 ---
 
-## 7) Quick module reference
+## 9) Quick module reference
 
 | Module                       | Main input               | Main output                 | Goal                             |
 |------------------------------|--------------------------|-----------------------------|----------------------------------|
@@ -561,7 +667,7 @@ They are split into three groups:
 
 ---
 
-## 8) Inputs Naming Convention
+## 10) Inputs Naming Convention
 
 - Keep market log exports in a consistent structure and following the below naming convention (for both the parent folder and the zip file contining Step0 logs):
   - Recommended naming convention for folders and zips: **`<TIMESTAMP>_Step0_<MARKET_ID>_<MARKET_NAME>_<PHASE>`**
@@ -574,7 +680,7 @@ They are split into three groups:
 
 ---
 
-## 9) Operational Best Practices
+## 11) Operational Best Practices
 
 - Validate that PRE/POST have the same table granularity and consistent naming.
 - Validate frequency inputs (`n77_ssb_pre`, `n77_ssb_post`, `n77b_ssb`) before batch execution.
@@ -586,7 +692,7 @@ They are split into three groups:
 
 ---
 
-## 10) Known limitations and considerations
+## 12) Known limitations and considerations
 
 - The engine depends on log quality and structure: missing columns downgrade checks to `N/A`.
 - Some rules depend on naming conventions in references (NR/GU relation refs).

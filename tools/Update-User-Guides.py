@@ -332,6 +332,7 @@ def build_docx_from_markdown(md_file: Path, docx_file: Path, version: str) -> No
         remove_from_anchor_to_end(doc, anchor)
 
     seen_heading1 = False  # Track if we've already written the first Heading 1 (## ...)
+    # last_was_blank = False
 
     i = 0
     while i < len(lines):
@@ -364,7 +365,10 @@ def build_docx_from_markdown(md_file: Path, docx_file: Path, version: str) -> No
                 i += 1
                 continue
 
-            doc.add_paragraph("")
+            # if not last_was_blank:
+            #     doc.add_paragraph("")
+            #     last_was_blank = True
+
             i += 1
             continue
 
@@ -374,6 +378,8 @@ def build_docx_from_markdown(md_file: Path, docx_file: Path, version: str) -> No
             while i < len(lines) and not lines[i].strip():
                 i += 1
             continue
+
+        # last_was_blank = False
 
         t = s.strip()
         if t.startswith("| ") and t.endswith(" |") and i + 1 < len(lines) and is_table_separator(lines[i + 1]):
