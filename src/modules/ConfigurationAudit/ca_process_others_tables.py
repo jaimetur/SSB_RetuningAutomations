@@ -25,7 +25,7 @@ def process_endc_distr_profile(df_endc_distr_profile, n77_ssb_pre, n77_ssb_post,
                 expected_new = str(n77_ssb_post)
                 expected_n77b = str(n77b_ssb)
 
-                # Nodes with GUtranSyncSignalFrequency containing old_arfcn and n77b_ssb (from EndcDistrProfile table)
+                # Nodes with GUtranSyncSignalFrequency containing old_arfcn and n77b_ssb
                 mask_old_pair = freq_sets.map(
                     lambda s: (expected_old in s) and (expected_n77b in s)
                 )
@@ -36,12 +36,12 @@ def process_endc_distr_profile(df_endc_distr_profile, n77_ssb_pre, n77_ssb_post,
                 add_row(
                     "EndcDistrProfile",
                     "ENDC Audit",
-                    f"Nodes with gUtranFreqRef containing the old N77 SSB ({n77_ssb_pre}) and the N77B SSB ({n77b_ssb}) (from EndcDistrProfile table)",
+                    f"Nodes with gUtranFreqRef containing the old N77 SSB ({n77_ssb_pre}) and the N77B SSB ({n77b_ssb})",
                     len(old_nodes),
                     ", ".join(old_nodes),
                 )
 
-                # Nodes with GUtranSyncSignalFrequency containing new_arfcn and n77b_ssb (from EndcDistrProfile table)
+                # Nodes with GUtranSyncSignalFrequency containing new_arfcn and n77b_ssb
                 mask_new_pair = freq_sets.map(
                     lambda s: (expected_new in s) and (expected_n77b in s)
                 )
@@ -52,15 +52,15 @@ def process_endc_distr_profile(df_endc_distr_profile, n77_ssb_pre, n77_ssb_post,
                 add_row(
                     "EndcDistrProfile",
                     "ENDC Audit",
-                    f"Nodes with gUtranFreqRef containing the new N77 SSB ({n77_ssb_post}) and the N77B SSB ({n77b_ssb}) (from EndcDistrProfile table)",
+                    f"Nodes with gUtranFreqRef containing the new N77 SSB ({n77_ssb_post}) and the N77B SSB ({n77b_ssb})",
                     len(new_nodes),
                     ", ".join(new_nodes),
                 )
 
                 # Inconsistencies:
-                # - rows where neither old_arfcn nor new_arfcn is present (from EndcDistrProfile table)
+                # - rows where neither old_arfcn nor new_arfcn is present
                 #   OR
-                # - rows where n77b_ssb is not present (from EndcDistrProfile table)
+                # - rows where n77b_ssb is not present
                 mask_inconsistent = freq_sets.map(
                     lambda s: ((expected_old not in s and expected_new not in s) or (expected_n77b not in s))
                 )
@@ -83,7 +83,7 @@ def process_endc_distr_profile(df_endc_distr_profile, n77_ssb_pre, n77_ssb_post,
                     add_row(
                         "EndcDistrProfile",
                         "ENDC Audit",
-                        f"Nodes with mandatoryGUtranFreqRef containing the old N77 SSB ({n77_ssb_pre}) and the N77B SSB ({n77b_ssb}) (from EndcDistrProfile table)",
+                        f"Nodes with mandatoryGUtranFreqRef containing the old N77 SSB ({n77_ssb_pre}) and the N77B SSB ({n77b_ssb})",
                         len(mandatory_old_nodes),
                         ", ".join(mandatory_old_nodes),
                     )
@@ -94,7 +94,7 @@ def process_endc_distr_profile(df_endc_distr_profile, n77_ssb_pre, n77_ssb_post,
                     add_row(
                         "EndcDistrProfile",
                         "ENDC Audit",
-                        f"Nodes with mandatoryGUtranFreqRef containing the new N77 SSB ({n77_ssb_post}) and the N77B SSB ({n77b_ssb}) (from EndcDistrProfile table)",
+                        f"Nodes with mandatoryGUtranFreqRef containing the new N77 SSB ({n77_ssb_post}) and the N77B SSB ({n77b_ssb})",
                         len(mandatory_new_nodes),
                         ", ".join(mandatory_new_nodes),
                     )
@@ -105,7 +105,7 @@ def process_endc_distr_profile(df_endc_distr_profile, n77_ssb_pre, n77_ssb_post,
                     add_row(
                         "EndcDistrProfile",
                         "ENDC Inconsistencies",
-                        f"Nodes with gUtranFreqRef not containing N77 SSBs ({n77_ssb_pre} or {n77_ssb_post}) together with N77B SSB ({n77b_ssb}) (from EndcDistrProfile table)",
+                        f"Nodes with gUtranFreqRef not containing N77 SSBs ({n77_ssb_pre} or {n77_ssb_post}) together with N77B SSB ({n77b_ssb})",
                         len(bad_nodes),
                         ", ".join(bad_nodes),
                     )
@@ -119,7 +119,7 @@ def process_endc_distr_profile(df_endc_distr_profile, n77_ssb_pre, n77_ssb_post,
                     add_row(
                         "EndcDistrProfile",
                         "ENDC Inconsistencies",
-                        f"Nodes with mandatoryGUtranFreqRef not empty and not containing N77 SSBs ({n77_ssb_pre} or {n77_ssb_post}) together with N77B SSB ({n77b_ssb}) (from EndcDistrProfile table)",
+                        f"Nodes with mandatoryGUtranFreqRef not empty and not containing N77 SSBs ({n77_ssb_pre} or {n77_ssb_post}) together with N77B SSB ({n77b_ssb})",
                         len(mandatory_bad_nodes),
                         ", ".join(mandatory_bad_nodes),
                     )
@@ -183,7 +183,7 @@ def process_freq_prio_nr(df_freq_prio_nr, n77_ssb_pre, n77_ssb_post, add_row, no
                 add_row(
                     "FreqPrioNR",
                     "ENDC Audit",
-                    f"LTE nodes with the old N77 SSB ({old_ssb}) but without the new N77 SSB ({new_ssb}) (from FreqPrioNR table)",
+                    f"LTE nodes with the old N77 SSB ({old_ssb}) but without the new N77 SSB ({new_ssb})",
                     len(nodes_old_only),
                     ", ".join(nodes_old_only),
                 )
@@ -192,7 +192,7 @@ def process_freq_prio_nr(df_freq_prio_nr, n77_ssb_pre, n77_ssb_post, add_row, no
                 add_row(
                     "FreqPrioNR",
                     "ENDC Audit",
-                    f"LTE nodes with both, the old N77 SSB ({old_ssb}) and the new N77 SSB ({new_ssb}) (from FreqPrioNR table)",
+                    f"LTE nodes with both, the old N77 SSB ({old_ssb}) and the new N77 SSB ({new_ssb})",
                     len(nodes_both),
                     ", ".join(nodes_both),
                 )
@@ -277,43 +277,43 @@ def process_freq_prio_nr(df_freq_prio_nr, n77_ssb_pre, n77_ssb_post, add_row, no
                     ", ".join(mismatching_nodes),
                 )
 
-                # Keep only N77 rows (from FreqPrioNR table)
+                # Keep only N77 rows
                 mask_n77 = work[freq_col].map(is_n77_from_string)
                 n77_work = work.loc[mask_n77].copy()
 
                 if not n77_work.empty:
-                    # N77 nodes with RATFreqPrioId = "fwa" (from FreqPrioNR table)
+                    # N77 nodes with RATFreqPrioId = "fwa"
                     mask_fwa = n77_work[ratfreqprio_col] == "fwa"
                     fwa_nodes = sorted(n77_work.loc[mask_fwa, node_col].astype(str).unique())
 
                     add_row(
                         "FreqPrioNR",
                         "ENDC Audit",
-                        "NR nodes with RATFreqPrioId = 'fwa' in N77 band (from FreqPrioNR table)",
+                        "NR nodes with RATFreqPrioId = 'fwa' in N77 band",
                         len(fwa_nodes),
                         ", ".join(fwa_nodes),
                     )
 
-                    # N77 nodes with RATFreqPrioId = "publicsafety" (from FreqPrioNR table)
+                    # N77 nodes with RATFreqPrioId = "publicsafety"
                     mask_publicsafety = n77_work[ratfreqprio_col] == "publicsafety"
                     publicsafety_nodes = sorted(n77_work.loc[mask_publicsafety, node_col].astype(str).unique())
 
                     add_row(
                         "FreqPrioNR",
                         "ENDC Audit",
-                        "NR nodes with RATFreqPrioId = 'publicsafety' in N77 band (from FreqPrioNR table)",
+                        "NR nodes with RATFreqPrioId = 'publicsafety' in N77 band",
                         len(publicsafety_nodes),
                         ", ".join(publicsafety_nodes),
                     )
 
-                    # N77 nodes with any RATFreqPrioId different from "fwa" / "publicsafety" (from FreqPrioNR table)
+                    # N77 nodes with any RATFreqPrioId different from "fwa" / "publicsafety"
                     mask_other = ~(mask_fwa | mask_publicsafety)
                     other_nodes = sorted(n77_work.loc[mask_other, node_col].astype(str).unique())
 
                     add_row(
                         "FreqPrioNR",
                         "ENDC Inconsistencies",
-                        "NR nodes with RATFreqPrioId different from 'fwa'/'publicsafety' in N77 band (from FreqPrioNR table)",
+                        "NR nodes with RATFreqPrioId different from 'fwa'/'publicsafety' in N77 band",
                         len(other_nodes),
                         ", ".join(other_nodes),
                     )

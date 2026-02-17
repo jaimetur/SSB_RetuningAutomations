@@ -63,13 +63,13 @@ def process_nr_cell_du(df_nr_cell_du, add_row, allowed_n77_ssb_pre_set, allowed_
                         elif has_mmwave and has_lowmid:
                             mixed_nodes.append(node_str)
 
-                    add_row("NRCellDU", "NR Frequency Audit", "NR Nodes with ssbFrequency (from NRCellDU table)", len(nodes_with_nr_cells), ", ".join(nodes_with_nr_cells))
-                    add_row("NRCellDU", "NR Frequency Audit", "NR LowMidBand Nodes (from NRCellDU table)", len(lowmid_nodes), ", ".join(sorted(lowmid_nodes)))
-                    add_row("NRCellDU", "NR Frequency Audit", "NR mmWave Nodes (from NRCellDU table)", len(mmwave_nodes), ", ".join(sorted(mmwave_nodes)))
+                    add_row("NRCellDU", "NR Frequency Audit", "NR Nodes with ssbFrequency", len(nodes_with_nr_cells), ", ".join(nodes_with_nr_cells))
+                    add_row("NRCellDU", "NR Frequency Audit", "NR LowMidBand Nodes", len(lowmid_nodes), ", ".join(sorted(lowmid_nodes)))
+                    add_row("NRCellDU", "NR Frequency Audit", "NR mmWave Nodes", len(mmwave_nodes), ", ".join(sorted(mmwave_nodes)))
 
                     # Optional: nodes having both LowMidBand and mmWave cells
                     if mixed_nodes:
-                        add_row("NRCellDU", "NR Frequency Audit", "NR Nodes with both LowMidBand and mmWave NR cells (from NRCellDU table)", len(mixed_nodes), ", ".join(sorted(mixed_nodes)))
+                        add_row("NRCellDU", "NR Frequency Audit", "NR Nodes with both LowMidBand and mmWave NR cells", len(mixed_nodes), ", ".join(sorted(mixed_nodes)))
 
                 # ------------------------------------------------------------------
                 # Existing N77 logic (kept as it was)
@@ -79,11 +79,11 @@ def process_nr_cell_du(df_nr_cell_du, add_row, allowed_n77_ssb_pre_set, allowed_
                 n77_rows = work.loc[mask_n77].copy()
 
                 if not n77_rows.empty:
-                    # NR Frequency Audit: NR nodes with N77 SSB in band (646600-660000) (from NRCellDU table)
+                    # NR Frequency Audit: NR nodes with N77 SSB in band (646600-660000)
                     n77_nodes = sorted(n77_rows[node_col].astype(str).unique())
-                    add_row("NRCellDU", "NR Frequency Audit", "NR nodes with N77 SSB in band (646600-660000) (from NRCellDU table)", len(n77_nodes), ", ".join(n77_nodes))
+                    add_row("NRCellDU", "NR Frequency Audit", "NR nodes with N77 SSB in band (646600-660000)", len(n77_nodes), ", ".join(n77_nodes))
 
-                    # NR nodes whose ALL N77 SSBs are in Pre-Retune allowed list (from NRCellDU table)
+                    # NR nodes whose ALL N77 SSBs are in Pre-Retune allowed list
                     if allowed_n77_ssb_pre_set:
                         grouped_n77 = n77_rows.groupby(node_col)[ssb_col]
 
@@ -95,7 +95,7 @@ def process_nr_cell_du(df_nr_cell_du, add_row, allowed_n77_ssb_pre_set, allowed_
 
                         pre_nodes = sorted(str(node) for node, series in grouped_n77 if all_n77_ssb_in_pre(series))
                         allowed_pre_str = ", ".join(str(v) for v in sorted(allowed_n77_ssb_pre_set))
-                        add_row("NRCellDU", "NR Frequency Audit", f"NR nodes with N77 SSB in Pre-Retune allowed list ({allowed_pre_str}) (from NRCellDU table)", len(pre_nodes), ", ".join(pre_nodes))
+                        add_row("NRCellDU", "NR Frequency Audit", f"NR nodes with N77 SSB in Pre-Retune allowed list ({allowed_pre_str})", len(pre_nodes), ", ".join(pre_nodes))
 
                     if allowed_n77_ssb_post_set:
                         grouped_n77 = n77_rows.groupby(node_col)[ssb_col]
@@ -108,7 +108,7 @@ def process_nr_cell_du(df_nr_cell_du, add_row, allowed_n77_ssb_pre_set, allowed_
 
                         post_nodes = sorted(str(node) for node, series in grouped_n77 if all_n77_ssb_in_post(series))
                         allowed_post_str = ", ".join(str(v) for v in sorted(allowed_n77_ssb_post_set))
-                        add_row("NRCellDU", "NR Frequency Audit", f"NR nodes with N77 SSB in Post-Retune allowed list ({allowed_post_str}) (from NRCellDU table)", len(post_nodes), ", ".join(post_nodes))
+                        add_row("NRCellDU", "NR Frequency Audit", f"NR nodes with N77 SSB in Post-Retune allowed list ({allowed_post_str})", len(post_nodes), ", ".join(post_nodes))
 
                     if allowed_n77_ssb_pre_set or allowed_n77_ssb_post_set:
                         allowed_union = set(allowed_n77_ssb_pre_set) | set(allowed_n77_ssb_post_set)
@@ -126,9 +126,9 @@ def process_nr_cell_du(df_nr_cell_du, add_row, allowed_n77_ssb_pre_set, allowed_
                         unique_pairs = sorted({(str(r[node_col]).strip(), str(r[ssb_col]).strip()) for _, r in bad_rows.iterrows()})
                         extra = "; ".join(f"{node}: {ssb}" for node, ssb in unique_pairs)
 
-                        add_row("NRCellDU", "NR Frequency Inconsistencies", "NR nodes with N77 SSB not in Pre/Post Retune allowed lists (from NRCellDU table)", len(bad_nodes), extra)
+                        add_row("NRCellDU", "NR Frequency Inconsistencies", "NR nodes with N77 SSB not in Pre/Post Retune allowed lists", len(bad_nodes), extra)
                     else:
-                        add_row("NRCellDU", "NR Frequency Inconsistencies", "NR nodes with N77 SSB not in Pre/Post Retune allowed lists (no pre/post allowed lists configured) (from NRCellDU table)", "N/A")
+                        add_row("NRCellDU", "NR Frequency Inconsistencies", "NR nodes with N77 SSB not in Pre/Post Retune allowed lists (no pre/post allowed lists configured)", "N/A")
                 else:
                     add_row("NRCellDU", "NR Frequency Audit", "NRCellDU table has no N77 rows", 0)
             else:
@@ -156,30 +156,30 @@ def process_nr_freq(df_nr_freq, has_value, add_row, is_old, n77_ssb_pre, is_new,
                 if not n77_work.empty:
                     grouped = n77_work.groupby(node_col)[arfcn_col]
 
-                    # NR Frequency Audit: ALL nodes (not only N77) with any non-empty SSB (from NRFrequency table)
+                    # NR Frequency Audit: ALL nodes (not only N77) with any non-empty SSB
                     all_nodes_with_freq = sorted(df_nr_freq.loc[df_nr_freq[arfcn_col].map(has_value), node_col].astype(str).unique())
-                    add_row("NRFrequency", "NR Frequency Audit", f"NR nodes with N77 SSB defined (from NRFrequency table)", len(all_nodes_with_freq), ", ".join(all_nodes_with_freq))
+                    add_row("NRFrequency", "NR Frequency Audit", f"NR nodes with N77 SSB defined", len(all_nodes_with_freq), ", ".join(all_nodes_with_freq))
 
                     old_nodes = sorted(str(node) for node, series in grouped if any(is_old(v) for v in series))
-                    add_row("NRFrequency", "NR Frequency Audit", f"NR nodes with the old N77 SSB ({n77_ssb_pre}) (from NRFrequency table)", len(old_nodes), ", ".join(old_nodes))
+                    add_row("NRFrequency", "NR Frequency Audit", f"NR nodes with the old N77 SSB ({n77_ssb_pre})", len(old_nodes), ", ".join(old_nodes))
 
-                    # NR Frequency Audit: NR nodes with the new N77 SSB (from NRFrequency table)
+                    # NR Frequency Audit: NR nodes with the new N77 SSB
                     new_nodes = sorted(str(node) for node, series in grouped if any(is_new(v) for v in series))
-                    add_row("NRFrequency", "NR Frequency Audit", f"NR nodes with the new N77 SSB ({n77_ssb_post}) (from NRFrequency table)", len(new_nodes), ", ".join(new_nodes))
+                    add_row("NRFrequency", "NR Frequency Audit", f"NR nodes with the new N77 SSB ({n77_ssb_post})", len(new_nodes), ", ".join(new_nodes))
 
-                    # NEW: check nodes that have old_ssb and also new_ssb vs those missing the new_arfcn (from NRFrequency table)
+                    # NEW: check nodes that have old_ssb and also new_ssb vs those missing the new_arfcn
                     old_set = set(old_nodes)
                     new_set = set(new_nodes)
 
                     nodes_old_and_new = sorted(old_set & new_set)
-                    add_row("NRFrequency", "NR Frequency Audit", f"NR nodes with both, the old N77 SSB ({n77_ssb_pre}) and the new N77 SSB ({n77_ssb_post}) (from NRFrequency table)", len(nodes_old_and_new), ", ".join(nodes_old_and_new))
+                    add_row("NRFrequency", "NR Frequency Audit", f"NR nodes with both, the old N77 SSB ({n77_ssb_pre}) and the new N77 SSB ({n77_ssb_post})", len(nodes_old_and_new), ", ".join(nodes_old_and_new))
 
                     nodes_old_without_new = sorted(old_set - new_set)
-                    add_row("NRFrequency", "NR Frequency Audit", f"NR nodes with the old N77 SSB ({n77_ssb_pre}) but without the new N77 SSB ({n77_ssb_post}) (from NRFrequency table)", len(nodes_old_without_new), ", ".join(nodes_old_without_new))
+                    add_row("NRFrequency", "NR Frequency Audit", f"NR nodes with the old N77 SSB ({n77_ssb_pre}) but without the new N77 SSB ({n77_ssb_post})", len(nodes_old_without_new), ", ".join(nodes_old_without_new))
 
-                    # NR Frequency Inconsistencies: NR nodes with the N77 SSB not in (old_freq, new_freq) (from NRFrequency table)
+                    # NR Frequency Inconsistencies: NR nodes with the N77 SSB not in (old_freq, new_freq)
                     not_old_not_new_nodes = sorted(str(node) for node, series in grouped if series_only_not_old_not_new(series))
-                    add_row("NRFrequency", "NR Frequency Inconsistencies", f"NR nodes with the N77 SSB not in ({n77_ssb_pre}, {n77_ssb_post}) (from NRFrequency table)", len(not_old_not_new_nodes), ", ".join(not_old_not_new_nodes))
+                    add_row("NRFrequency", "NR Frequency Inconsistencies", f"NR nodes with the N77 SSB not in ({n77_ssb_pre}, {n77_ssb_post})", len(not_old_not_new_nodes), ", ".join(not_old_not_new_nodes))
                 else:
                     add_row("NRFrequency", "NR Frequency Audit", "NRFrequency table has no N77 rows", 0)
             else:
@@ -207,26 +207,26 @@ def process_nr_freq_rel(df_nr_freq_rel, is_old, add_row, n77_ssb_pre, is_new, n7
                 if not n77_work.empty:
                     grouped = n77_work.groupby(node_col)[arfcn_col]
 
-                    # NR Frequency Audit: NR nodes with the old N77 SSB (from NRFreqRelation table)
+                    # NR Frequency Audit: NR nodes with the old N77 SSB
                     old_nodes = sorted(str(node) for node, series in grouped if any(is_old(v) for v in series))
-                    add_row("NRFreqRelation", "NR Frequency Audit", f"NR nodes with the old N77 SSB ({n77_ssb_pre}) (from NRFreqRelation table)", len(old_nodes), ", ".join(old_nodes))
+                    add_row("NRFreqRelation", "NR Frequency Audit", f"NR nodes with the old N77 SSB ({n77_ssb_pre})", len(old_nodes), ", ".join(old_nodes))
 
                     new_nodes = sorted(str(node) for node, series in grouped if any(is_new(v) for v in series))
-                    add_row("NRFreqRelation", "NR Frequency Audit", f"NR nodes with the new N77 SSB ({n77_ssb_post}) (from NRFreqRelation table)", len(new_nodes), ", ".join(new_nodes))
+                    add_row("NRFreqRelation", "NR Frequency Audit", f"NR nodes with the new N77 SSB ({n77_ssb_post})", len(new_nodes), ", ".join(new_nodes))
 
                     # NEW: node-level check old_ssb vs new_ssb presence
                     old_set = set(old_nodes)
                     new_set = set(new_nodes)
 
                     nodes_old_and_new = sorted(old_set & new_set)
-                    add_row("NRFreqRelation", "NR Frequency Audit", f"NR nodes with both, the old N77 SSB ({n77_ssb_pre}) and the new N77 SSB ({n77_ssb_post}) (from NRFreqRelation table)", len(nodes_old_and_new), ", ".join(nodes_old_and_new))
+                    add_row("NRFreqRelation", "NR Frequency Audit", f"NR nodes with both, the old N77 SSB ({n77_ssb_pre}) and the new N77 SSB ({n77_ssb_post})", len(nodes_old_and_new), ", ".join(nodes_old_and_new))
 
                     nodes_old_without_new = sorted(old_set - new_set)
-                    add_row("NRFreqRelation", "NR Frequency Audit", f"NR nodes with the old N77 SSB ({n77_ssb_pre}) but without the new N77 SSB ({n77_ssb_post}) (from NRFreqRelation table)", len(nodes_old_without_new), ", ".join(nodes_old_without_new))
+                    add_row("NRFreqRelation", "NR Frequency Audit", f"NR nodes with the old N77 SSB ({n77_ssb_pre}) but without the new N77 SSB ({n77_ssb_post})", len(nodes_old_without_new), ", ".join(nodes_old_without_new))
 
-                    # NR Frequency Inconsistencies: NR nodes with the SSB not in ({old_ssb}, {new_ssb}) (from NRFreqRelation table)
+                    # NR Frequency Inconsistencies: NR nodes with the SSB not in ({old_ssb}, {new_ssb})
                     not_old_not_new_nodes = sorted(str(node) for node, series in grouped if series_only_not_old_not_new(series))
-                    add_row("NRFreqRelation", "NR Frequency Inconsistencies", f"NR nodes with the N77 SSB not in ({n77_ssb_pre}, {n77_ssb_post}) (from NRFreqRelation table)", len(not_old_not_new_nodes), ", ".join(not_old_not_new_nodes))
+                    add_row("NRFreqRelation", "NR Frequency Inconsistencies", f"NR nodes with the N77 SSB not in ({n77_ssb_pre}, {n77_ssb_post})", len(not_old_not_new_nodes), ", ".join(not_old_not_new_nodes))
 
                     # NEW: nodes where NRFreqRelationId contains new SSB but has extra characters (e.g. 'auto_647328')
                     post_freq_str = str(n77_ssb_post)
@@ -274,8 +274,8 @@ def process_nr_freq_rel(df_nr_freq_rel, is_old, add_row, n77_ssb_pre, is_new, n7
                         nodes_cells_both = sorted(full_n77.loc[full_n77[cell_col].isin(cells_both), node_col].astype(str).unique()) if cells_both else []
                         nodes_cells_old_without_new = sorted(full_n77.loc[full_n77[cell_col].isin(cells_old_without_new), node_col].astype(str).unique()) if cells_old_without_new else []
 
-                        add_row("NRFreqRelation", "NR Frequency Audit", f"NR nodes with the old N77 SSB ({n77_ssb_pre}) and the new SSB ({n77_ssb_post}) (from NRFreqRelation table)", len(nodes_cells_both), ", ".join(nodes_cells_both))
-                        add_row("NRFreqRelation", "NR Frequency Audit", f"NR nodes with the old N77 SSB ({n77_ssb_pre}) but without new N77 SSB ({n77_ssb_post}) (from NRFreqRelation table)", len(nodes_cells_old_without_new), ", ".join(nodes_cells_old_without_new))
+                        add_row("NRFreqRelation", "NR Frequency Audit", f"NR nodes with the old N77 SSB ({n77_ssb_pre}) and the new SSB ({n77_ssb_post})", len(nodes_cells_both), ", ".join(nodes_cells_both))
+                        add_row("NRFreqRelation", "NR Frequency Audit", f"NR nodes with the old N77 SSB ({n77_ssb_pre}) but without new N77 SSB ({n77_ssb_post})", len(nodes_cells_old_without_new), ", ".join(nodes_cells_old_without_new))
 
                         # ----------------------------- NEW: mcpcPCellNrFreqRelProfileRef clone checks (OLD SSB -> NEW SSB) -----------------------------
                         profile_col = resolve_column_case_insensitive(full_n77, ["mcpcPCellNrFreqRelProfileRef"])
@@ -317,7 +317,7 @@ def process_nr_freq_rel(df_nr_freq_rel, is_old, add_row, n77_ssb_pre, is_new, n7
                                 new_rows_all["_prefix_ssb_"] = new_rows_all[profile_col].map(lambda v: extract_ssb_from_profile_ref(v, "prefix"))
                                 nodes_new_ssb_ref_old_profile = sorted(new_rows_all.loc[new_rows_all["_prefix_ssb_"] == n77_ssb_pre, node_col].astype(str).unique())
 
-                            add_row("NRFreqRelation", "NR Frequency Inconsistencies", f"NR Nodes with the new N77 SSB ({n77_ssb_post}) and NRFreqRelation reference to McpcPCellNrFreqRelProfile with old SSB before '_' ({n77_ssb_pre}_xxxx) (from NRFreqRelation table)", len(nodes_new_ssb_ref_old_profile), ", ".join(nodes_new_ssb_ref_old_profile))
+                            add_row("NRFreqRelation", "NR Frequency Inconsistencies", f"NR Nodes with the new N77 SSB ({n77_ssb_post}) and NRFreqRelation reference to McpcPCellNrFreqRelProfile with old SSB before '_' ({n77_ssb_pre}_xxxx)", len(nodes_new_ssb_ref_old_profile), ", ".join(nodes_new_ssb_ref_old_profile))
 
                             # Compare OLD vs NEW by NodeId + NRCellCUId (NRCellRelationId is not expected to match)
                             old_refs_by_node = full_n77.loc[old_mask].groupby(node_col)[profile_col].apply(_collect_unique_refs_from_series)
@@ -363,8 +363,8 @@ def process_nr_freq_rel(df_nr_freq_rel, is_old, add_row, n77_ssb_pre, is_new, n7
                             # NEW: "cloned or Other" should include nodes with both old+new that are NOT in "same old-name profile ref"
                             nodes_cloned_or_other = sorted(set(nodes_old_and_new) - set(nodes_pointing_to_same_profile_ref))
 
-                            add_row("NRFreqRelation", "NR Frequency Inconsistencies", f"NR nodes with the old N77 SSB ({n77_ssb_pre}) and the new SSB ({n77_ssb_post}) NRFreqRelation pointing to same mcpcPCellNrFreqRelProfileRef containing old SSB name (from NRFreqRelation table)", len(nodes_pointing_to_same_profile_ref), ", ".join(nodes_pointing_to_same_profile_ref))
-                            add_row("NRFreqRelation", "NR Frequency Audit", f"NR nodes with the new N77 SSB ({n77_ssb_post}) NRFreqRelation pointing to mcpcPCellNrFreqRelProfileRef containing new SSB name (cloned) or Other (from NRFreqRelation table)", len(nodes_cloned_or_other), ", ".join(nodes_cloned_or_other))
+                            add_row("NRFreqRelation", "NR Frequency Inconsistencies", f"NR nodes with the old N77 SSB ({n77_ssb_pre}) and the new SSB ({n77_ssb_post}) NRFreqRelation pointing to same mcpcPCellNrFreqRelProfileRef containing old SSB name", len(nodes_pointing_to_same_profile_ref), ", ".join(nodes_pointing_to_same_profile_ref))
+                            add_row("NRFreqRelation", "NR Frequency Audit", f"NR nodes with the new N77 SSB ({n77_ssb_post}) NRFreqRelation pointing to mcpcPCellNrFreqRelProfileRef containing new SSB name (cloned) or Other", len(nodes_cloned_or_other), ", ".join(nodes_cloned_or_other))
                         else:
                             add_row("NRFreqRelation", "NR Frequency Inconsistencies", "NRFreqRelation mcpcPCellNrFreqRelProfileRef clone check skipped (mcpcPCellNrFreqRelProfileRef missing)", "N/A")
 
@@ -497,7 +497,7 @@ def process_nr_freq_rel(df_nr_freq_rel, is_old, add_row, n77_ssb_pre, is_new, n7
                         except Exception:
                             bad_nodes_params = []
 
-                        add_row("NRFreqRelation", "NR Frequency Inconsistencies", f"NR nodes with mismatching params (cell-level) between old N77 SSB ({n77_ssb_pre}) and the new N77 SSB ({n77_ssb_post}) (from NRFreqRelation table)", len(bad_nodes_params), ", ".join(bad_nodes_params))
+                        add_row("NRFreqRelation", "NR Frequency Inconsistencies", f"NR nodes with mismatching params (cell-level) between old N77 SSB ({n77_ssb_pre}) and the new N77 SSB ({n77_ssb_post})", len(bad_nodes_params), ", ".join(bad_nodes_params))
 
                     else:
                         add_row("NRFreqRelation", "NR Frequency Audit", "NRFreqRelation cell-level check skipped (NRCellCUId/NRCellId/CellId missing)", "N/A")
@@ -526,23 +526,23 @@ def process_nr_sector_carrier(df_nr_sector_carrier, add_row, allowed_n77_arfcn_p
                 mask_n77 = work[arfcn_col].map(is_n77_from_string)
                 n77_rows = work.loc[mask_n77].copy()
 
-                # NR Frequency Audit: NR nodes with ARCFN in N77 band (646600-660000) (from NRSectorCarrier table)
+                # NR Frequency Audit: NR nodes with ARCFN in N77 band (646600-660000)
                 n77_nodes = sorted(n77_rows[node_col].astype(str).unique())
-                add_row("NRSectorCarrier", "NR Frequency Audit", "NR nodes with N77 ARCFN in band (646600-660000) (from NRSectorCarrier table)", len(n77_nodes), ", ".join(n77_nodes))
+                add_row("NRSectorCarrier", "NR Frequency Audit", "NR nodes with N77 ARCFN in band (646600-660000)", len(n77_nodes), ", ".join(n77_nodes))
 
-                # NR nodes whose ALL N77 ARCFNs are in Pre-Retune allowed list (from NRSectorCarrier table)
+                # NR nodes whose ALL N77 ARCFNs are in Pre-Retune allowed list
                 if allowed_n77_arfcn_pre_set:
                     grouped_n77 = n77_rows.groupby(node_col)[arfcn_col]
                     pre_nodes = sorted(str(node) for node, series in grouped_n77 if all_n77_arfcn_in_pre(series))
                     allowed_pre_str = ", ".join(str(v) for v in sorted(allowed_n77_arfcn_pre_set))
-                    add_row("NRSectorCarrier", "NR Frequency Audit", f"NR nodes with N77 ARCFN in Pre-Retune allowed list ({allowed_pre_str}) (from NRSectorCarrier table)", len(pre_nodes), ", ".join(pre_nodes))
+                    add_row("NRSectorCarrier", "NR Frequency Audit", f"NR nodes with N77 ARCFN in Pre-Retune allowed list ({allowed_pre_str})", len(pre_nodes), ", ".join(pre_nodes))
 
-                # NR nodes whose ALL N77 ARCFNs are in Post-Retune allowed list (from NRSectorCarrier table)
+                # NR nodes whose ALL N77 ARCFNs are in Post-Retune allowed list
                 if allowed_n77_arfcn_post_set:
                     grouped_n77 = n77_rows.groupby(node_col)[arfcn_col]
                     post_nodes = sorted(str(node) for node, series in grouped_n77 if all_n77_arfcn_in_post(series))
                     allowed_post_str = ", ".join(str(v) for v in sorted(allowed_n77_arfcn_post_set))
-                    add_row("NRSectorCarrier", "NR Frequency Audit", f"NR nodes with N77 ARCFN in Post-Retune allowed list ({allowed_post_str}) (from NRSectorCarrier table)", len(post_nodes), ", ".join(post_nodes))
+                    add_row("NRSectorCarrier", "NR Frequency Audit", f"NR nodes with N77 ARCFN in Post-Retune allowed list ({allowed_post_str})", len(post_nodes), ", ".join(post_nodes))
 
                 # NR Frequency Inconsistencies: NR ARCFN not in pre nor post allowed lists
                 if allowed_n77_arfcn_pre_set or allowed_n77_arfcn_post_set:
@@ -561,9 +561,9 @@ def process_nr_sector_carrier(df_nr_sector_carrier, add_row, allowed_n77_arfcn_p
                     unique_pairs = sorted({(str(r[node_col]).strip(), str(r[arfcn_col]).strip()) for _, r in bad_rows.iterrows()})
                     extra = "; ".join(f"{node}: {arfcn}" for node, arfcn in unique_pairs)
 
-                    add_row("NRSectorCarrier", "NR Frequency Inconsistencies", "NR nodes with N77 ARCFN not in Pre/Post Retune allowed lists (from NRSectorCarrier table)", len(bad_nodes), extra)
+                    add_row("NRSectorCarrier", "NR Frequency Inconsistencies", "NR nodes with N77 ARCFN not in Pre/Post Retune allowed lists", len(bad_nodes), extra)
                 else:
-                    add_row("NRSectorCarrier", "NR Frequency Inconsistencies", "NR nodes with N77 ARCFN not in Pre/Post Retune allowed lists (no pre/post allowed lists configured) (from NRSectorCarrier table)", "N/A")
+                    add_row("NRSectorCarrier", "NR Frequency Inconsistencies", "NR nodes with N77 ARCFN not in Pre/Post Retune allowed lists (no pre/post allowed lists configured)", "N/A")
             else:
                 add_row("NRSectorCarrier", "NR Frequency Audit", "NRSectorCarrier table present but required columns missing", "N/A")
         else:
@@ -608,8 +608,8 @@ def process_nr_cell_relation(df_nr_cell_rel, _extract_freq_from_nrfreqrelationre
                 count_old = int((freq_as_int == old_ssb).sum())
                 count_new = int((freq_as_int == new_ssb).sum())
 
-                add_row("NRCellRelation", "NR Frequency Audit", f"NR cellRelations to old N77 SSB ({old_ssb}) (from NRCellRelation table)", count_old)
-                add_row("NRCellRelation", "NR Frequency Audit", f"NR cellRelations to new N77 SSB ({new_ssb}) (from NRCellRelation table)", count_new)
+                add_row("NRCellRelation", "NR Frequency Audit", f"NR cellRelations to old N77 SSB ({old_ssb})", count_old)
+                add_row("NRCellRelation", "NR Frequency Audit", f"NR cellRelations to new N77 SSB ({new_ssb})", count_new)
 
                 # -------------------------------------------------
                 # ExternalGNBCUCPFunction / ExternalNRCellCU (extract from nRCellRef)

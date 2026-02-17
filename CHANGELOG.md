@@ -6,6 +6,7 @@
 ### Release Date: 2026-02-17
   
 - #### 🚨 Breaking Changes:
+  - Removed suffix string `from (MO table)` in all Checks in SummaryAudit sheet.
 
 - #### 🌟 New Features:
   - Added new column `Tips` to SummaryAudit table in ConfigurationAudit and ConsistencyCheck modules to add some tips on different checks. 

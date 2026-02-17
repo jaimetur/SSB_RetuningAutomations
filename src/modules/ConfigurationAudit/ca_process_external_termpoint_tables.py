@@ -54,8 +54,8 @@ def process_external_nr_cell_cu(df_external_nr_cell_cu, n77_ssb_pre, n77_ssb_pos
                 count_old = int((work["Frequency"].astype(str) == old_ssb).sum())
                 count_new = int((work["Frequency"].astype(str) == new_ssb).sum())
 
-                add_row("ExternalNRCellCU", "NR Frequency Audit", f"External cells to old N77 SSB ({old_ssb}) (from ExternalNRCellCU)", count_old)
-                add_row("ExternalNRCellCU", "NR Frequency Audit", f"External cells to new N77 SSB ({new_ssb}) (from ExternalNRCellCU)", count_new)
+                add_row("ExternalNRCellCU", "NR Frequency Audit", f"External cells to old N77 SSB ({old_ssb})", count_old)
+                add_row("ExternalNRCellCU", "NR Frequency Audit", f"External cells to new N77 SSB ({new_ssb})", count_new)
 
                 # =========================
                 # Termpoint
@@ -190,8 +190,8 @@ def process_external_gutran_cell(df_external_gutran_cell, extract_ssb_from_gutra
                 count_old = int((work["Frequency"] == old_ssb).sum())
                 count_new = int((work["Frequency"] == new_ssb).sum())
 
-                add_row("ExternalGUtranCell", "LTE Frequency Audit", f"External cells to old N77 SSB ({old_ssb}) (from ExternalGUtranCell)", count_old)
-                add_row("ExternalGUtranCell", "LTE Frequency Audit", f"External cells to new N77 SSB ({new_ssb}) (from ExternalGUtranCell)", count_new)
+                add_row("ExternalGUtranCell", "LTE Frequency Audit", f"External cells to old N77 SSB ({old_ssb})", count_old)
+                add_row("ExternalGUtranCell", "LTE Frequency Audit", f"External cells to new N77 SSB ({new_ssb})", count_new)
 
                 if status_col:
                     work["_status_norm_"] = work[status_col].map(normalize_state)
@@ -200,8 +200,8 @@ def process_external_gutran_cell(df_external_gutran_cell, extract_ssb_from_gutra
                     count_old_oos = int(((work["Frequency"] == old_ssb) & mask_oos).sum())
                     count_new_oos = int(((work["Frequency"] == new_ssb) & mask_oos).sum())
 
-                    add_row("ExternalGUtranCell", "LTE Frequency Audit", f"External cells to old N77 SSB ({old_ssb}) with serviceStatus=OUT_OF_SERVICE (from ExternalGUtranCell)", count_old_oos, "",)  # keep ExtraInfo empty to avoid huge lists
-                    add_row("ExternalGUtranCell", "LTE Frequency Audit", f"External cells to new N77 SSB ({new_ssb}) with serviceStatus=OUT_OF_SERVICE (from ExternalGUtranCell)", count_new_oos, "",)  # keep ExtraInfo empty to avoid huge lists
+                    add_row("ExternalGUtranCell", "LTE Frequency Audit", f"External cells to old N77 SSB ({old_ssb}) with serviceStatus=OUT_OF_SERVICE", count_old_oos, "",)  # keep ExtraInfo empty to avoid huge lists
+                    add_row("ExternalGUtranCell", "LTE Frequency Audit", f"External cells to new N77 SSB ({new_ssb}) with serviceStatus=OUT_OF_SERVICE", count_new_oos, "",)  # keep ExtraInfo empty to avoid huge lists
                 else:
                     add_row("ExternalGUtranCell", "LTE Frequency Audit", "External cells OUT_OF_SERVICE checks skipped (serviceStatus missing)", "N/A")
             else:
@@ -407,10 +407,10 @@ def process_termpoint_to_gnodeb(df_term_point_to_gnodeb, add_row, df_external_nr
         # SummaryAudit
         # -------------------------------------------------
         if admin_col:
-            add_row("TermPointToGNodeB", "NR Termpoint Audit", "NR to NR TermPoints with administrativeState=LOCKED (from TermPointToGNodeB)", int((admin_norm == "LOCKED").sum()))
+            add_row("TermPointToGNodeB", "NR Termpoint Audit", "NR to NR TermPoints with administrativeState=LOCKED", int((admin_norm == "LOCKED").sum()))
 
         if oper_col:
-            add_row("TermPointToGNodeB", "NR Termpoint Audit", "NR to NR TermPoints with operationalState=DISABLED (from TermPointToGNodeB)", int((oper_norm == "DISABLED").sum()))
+            add_row("TermPointToGNodeB", "NR Termpoint Audit", "NR to NR TermPoints with operationalState=DISABLED", int((oper_norm == "DISABLED").sum()))
 
     except Exception as ex:
         add_row("TermPointToGNodeB", "NR Termpoint Audit", "Error while checking TermPointToGNodeB", f"{type(ex).__name__}: {ex}")
@@ -503,9 +503,9 @@ def process_termpoint_to_gnb(df_term_point_to_gnb, normalize_state, normalize_ip
                 else:
                     count_ip_zero = 0
 
-                add_row("TermPointToGNB", "X2 Termpoint Audit", "LTE to NR TermPoints with administrativeState=LOCKED (from TermPointToGNB)", count_admin_locked)
-                add_row("TermPointToGNB", "X2 Termpoint Audit", "LTE to NR TermPoints with operationalState=DISABLED (from TermPointToGNB)", count_oper_disabled)
-                add_row("TermPointToGNB", "X2 Termpoint Audit", "LTE to NR TermPoints with usedIpAddress=0.0.0.0/:: (from TermPointToGNB)", count_ip_zero)
+                add_row("TermPointToGNB", "X2 Termpoint Audit", "LTE to NR TermPoints with administrativeState=LOCKED", count_admin_locked)
+                add_row("TermPointToGNB", "X2 Termpoint Audit", "LTE to NR TermPoints with operationalState=DISABLED", count_oper_disabled)
+                add_row("TermPointToGNB", "X2 Termpoint Audit", "LTE to NR TermPoints with usedIpAddress=0.0.0.0/::", count_ip_zero)
             else:
                 add_row("TermPointToGNB", "X2 Termpoint Audit", "TermPointToGNB table present but required columns missing (NodeId/ExternalGNBCUCPFunctionId/admin/oper/ip)", "N/A")
         else:
@@ -601,8 +601,8 @@ def process_term_point_to_enodeb(df_term_point_to_enodeb, normalize_state, add_r
                 else:
                     count_oper_disabled = 0
 
-                add_row("TermPointToENodeB", "X2 Termpoint Audit", "NR to LTE TermPoints with administrativeState=LOCKED (from TermPointToENodeB)", count_admin_locked)
-                add_row("TermPointToENodeB", "X2 Termpoint Audit", "NR to LTE TermPoints with operationalState=DISABLED (from TermPointToENodeB)", count_oper_disabled)
+                add_row("TermPointToENodeB", "X2 Termpoint Audit", "NR to LTE TermPoints with administrativeState=LOCKED", count_admin_locked)
+                add_row("TermPointToENodeB", "X2 Termpoint Audit", "NR to LTE TermPoints with operationalState=DISABLED", count_oper_disabled)
             else:
                 add_row("TermPointToENodeB", "X2 Termpoint Audit", "TermPointToENodeB table present but required columns missing (NodeId/ExternalENodeBFunctionId/admin/oper)", "N/A")
         else:

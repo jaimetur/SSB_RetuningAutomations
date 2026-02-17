@@ -27,12 +27,12 @@ def process_gu_sync_signal_freq(df_gu_sync_signal_freq, has_value, add_row, is_o
                 if not valid_rows.empty:
                     valid_rows["_is_mmwave_"] = valid_rows["_arfcn_int_"].between(2_000_000, 2_100_000, inclusive="both")
 
-                    # LTE nodes with GUtranSyncSignalFrequency defined (from GUtranSyncSignalFrequency table)
+                    # LTE nodes with GUtranSyncSignalFrequency defined
                     all_nodes_with_freq = sorted(work.loc[work[arfcn_col].map(has_value), node_col].astype(str).unique())
                     add_row(
                         "GUtranSyncSignalFrequency",
                         "LTE Frequency Audit",
-                        "LTE nodes with GUtranSyncSignalFrequency defined (from GUtranSyncSignalFrequency table)",
+                        "LTE nodes with GUtranSyncSignalFrequency defined",
                         len(all_nodes_with_freq),
                         ", ".join(all_nodes_with_freq),
                     )
@@ -58,14 +58,14 @@ def process_gu_sync_signal_freq(df_gu_sync_signal_freq, has_value, add_row, is_o
                     # add_row(
                     #     "GUtranSyncSignalFrequency",
                     #     "LTE Frequency Audit",
-                    #     "LTE LowMidBand Nodes (from GUtranSyncSignalFrequency table)",
+                    #     "LTE LowMidBand Nodes",
                     #     len(lowmid_nodes),
                     #     ", ".join(sorted(lowmid_nodes)),
                     # )
                     # add_row(
                     #     "GUtranSyncSignalFrequency",
                     #     "LTE Frequency Audit",
-                    #     "LTE mmWave Nodes (from GUtranSyncSignalFrequency table)",
+                    #     "LTE mmWave Nodes",
                     #     len(mmwave_nodes),
                     #     ", ".join(sorted(mmwave_nodes)),
                     # )
@@ -75,7 +75,7 @@ def process_gu_sync_signal_freq(df_gu_sync_signal_freq, has_value, add_row, is_o
                     #     add_row(
                     #         "GUtranSyncSignalFrequency",
                     #         "LTE Frequency Audit",
-                    #         "LTE Nodes with both LowMidBand and mmWave GUtranSyncSignalFrequency SSBs (from GUtranSyncSignalFrequency table)",
+                    #         "LTE Nodes with both LowMidBand and mmWave GUtranSyncSignalFrequency SSBs",
                     #         len(mixed_nodes),
                     #         ", ".join(sorted(mixed_nodes)),
                     #     )
@@ -85,22 +85,22 @@ def process_gu_sync_signal_freq(df_gu_sync_signal_freq, has_value, add_row, is_o
                 # ------------------------------------------------------------------
                 grouped = work.groupby(node_col)[arfcn_col]
 
-                # LTE Frequency Audit: LTE nodes with the old N77 SSB (from GUtranSyncSignalFrequency table)
+                # LTE Frequency Audit: LTE nodes with the old N77 SSB
                 old_nodes = sorted(str(node) for node, series in grouped if any(is_old(v) for v in series))
                 add_row(
                     "GUtranSyncSignalFrequency",
                     "LTE Frequency Audit",
-                    f"LTE nodes with the old N77 SSB ({n77_ssb_pre}) (from GUtranSyncSignalFrequency table)",
+                    f"LTE nodes with the old N77 SSB ({n77_ssb_pre})",
                     len(old_nodes),
                     ", ".join(old_nodes),
                 )
 
-                # LTE Frequency Audit: LTE nodes with the new N77 SSB (from GUtranSyncSignalFrequency table)
+                # LTE Frequency Audit: LTE nodes with the new N77 SSB
                 new_nodes = sorted(str(node) for node, series in grouped if any(is_new(v) for v in series))
                 add_row(
                     "GUtranSyncSignalFrequency",
                     "LTE Frequency Audit",
-                    f"LTE nodes with the new N77 SSB ({n77_ssb_post}) (from GUtranSyncSignalFrequency table)",
+                    f"LTE nodes with the new N77 SSB ({n77_ssb_post})",
                     len(new_nodes),
                     ", ".join(new_nodes),
                 )
@@ -113,7 +113,7 @@ def process_gu_sync_signal_freq(df_gu_sync_signal_freq, has_value, add_row, is_o
                 add_row(
                     "GUtranSyncSignalFrequency",
                     "LTE Frequency Audit",
-                    f"LTE nodes with both, the old N77 SSB ({n77_ssb_pre}) and the new N77 SSB ({n77_ssb_post}) (from GUtranSyncSignalFrequency table)",
+                    f"LTE nodes with both, the old N77 SSB ({n77_ssb_pre}) and the new N77 SSB ({n77_ssb_post})",
                     len(nodes_old_and_new),
                     ", ".join(nodes_old_and_new),
                 )
@@ -122,17 +122,17 @@ def process_gu_sync_signal_freq(df_gu_sync_signal_freq, has_value, add_row, is_o
                 add_row(
                     "GUtranSyncSignalFrequency",
                     "LTE Frequency Audit",
-                    f"LTE nodes with the old N77 SSB ({n77_ssb_pre}) but without the new N77 SSB ({n77_ssb_post}) (from GUtranSyncSignalFrequency table)",
+                    f"LTE nodes with the old N77 SSB ({n77_ssb_pre}) but without the new N77 SSB ({n77_ssb_post})",
                     len(nodes_old_without_new),
                     ", ".join(nodes_old_without_new),
                 )
 
-                # LTE Frequency Inconsistencies: LTE nodes with the SSB not in ({old_arfcn}, {new_arfcn}) (from GUtranSyncSignalFrequency table)
+                # LTE Frequency Inconsistencies: LTE nodes with the SSB not in ({old_arfcn}, {new_arfcn})
                 not_old_not_new_nodes = sorted(str(node) for node, series in grouped if series_only_not_old_not_new(series))
                 add_row(
                     "GUtranSyncSignalFrequency",
                     "LTE Frequency Inconsistencies",
-                    f"LTE nodes with the N77 SSB not in ({n77_ssb_pre}, {n77_ssb_post}) (from GUtranSyncSignalFrequency table)",
+                    f"LTE nodes with the N77 SSB not in ({n77_ssb_pre}, {n77_ssb_post})",
                     len(not_old_not_new_nodes),
                     ", ".join(not_old_not_new_nodes),
                 )
@@ -171,22 +171,22 @@ def process_gu_freq_rel(df_gu_freq_rel, is_old, add_row, n77_ssb_pre, is_new, n7
 
                 grouped = work.groupby(node_col)[arfcn_col]
 
-                # LTE Frequency Audit: LTE nodes with the old N77 SSB (from GUtranFreqRelation table)
+                # LTE Frequency Audit: LTE nodes with the old N77 SSB
                 old_nodes = sorted(str(node) for node, series in grouped if any(is_old(v) for v in series))
                 add_row(
                     "GUtranFreqRelation",
                     "LTE Frequency Audit",
-                    f"LTE nodes with the old N77 SSB ({n77_ssb_pre}) (from GUtranFreqRelation table)",
+                    f"LTE nodes with the old N77 SSB ({n77_ssb_pre})",
                     len(old_nodes),
                     ", ".join(old_nodes),
                 )
 
-                # LTE Frequency Audit: LTE nodes with the new N77 SSB (from GUtranFreqRelation table)
+                # LTE Frequency Audit: LTE nodes with the new N77 SSB
                 new_nodes = sorted(str(node) for node, series in grouped if any(is_new(v) for v in series))
                 add_row(
                     "GUtranFreqRelation",
                     "LTE Frequency Audit",
-                    f"LTE nodes with the new N77 SSB ({n77_ssb_post}) (from GUtranFreqRelation table)",
+                    f"LTE nodes with the new N77 SSB ({n77_ssb_post})",
                     len(new_nodes),
                     ", ".join(new_nodes),
                 )
@@ -199,7 +199,7 @@ def process_gu_freq_rel(df_gu_freq_rel, is_old, add_row, n77_ssb_pre, is_new, n7
                 add_row(
                     "GUtranFreqRelation",
                     "LTE Frequency Audit",
-                    f"LTE nodes with both, the old N77 SSB ({n77_ssb_pre}) and the new N77 SSB ({n77_ssb_post}) (from GUtranFreqRelation table)",
+                    f"LTE nodes with both, the old N77 SSB ({n77_ssb_pre}) and the new N77 SSB ({n77_ssb_post})",
                     len(nodes_old_and_new),
                     ", ".join(nodes_old_and_new),
                 )
@@ -208,17 +208,17 @@ def process_gu_freq_rel(df_gu_freq_rel, is_old, add_row, n77_ssb_pre, is_new, n7
                 add_row(
                     "GUtranFreqRelation",
                     "LTE Frequency Audit",
-                    f"LTE nodes with the old N77 SSB ({n77_ssb_pre}) but without the new SSB ({n77_ssb_post}) (from GUtranFreqRelation table)",
+                    f"LTE nodes with the old N77 SSB ({n77_ssb_pre}) but without the new SSB ({n77_ssb_post})",
                     len(nodes_old_without_new),
                     ", ".join(nodes_old_without_new),
                 )
 
-                # LTE Frequency Inconsistencies: LTE nodes with the SSB not in ({old_ssb}, {new_ssb}) (from GUtranFreqRelation table)
+                # LTE Frequency Inconsistencies: LTE nodes with the SSB not in ({old_ssb}, {new_ssb})
                 not_old_not_new_nodes = sorted(str(node) for node, series in grouped if series_only_not_old_not_new(series))
                 add_row(
                     "GUtranFreqRelation",
                     "LTE Frequency Inconsistencies",
-                    f"LTE nodes with the N77 SSB not in ({n77_ssb_pre}, {n77_ssb_post}) (from GUtranFreqRelation table)",
+                    f"LTE nodes with the N77 SSB not in ({n77_ssb_pre}, {n77_ssb_post})",
                     len(not_old_not_new_nodes),
                     ", ".join(not_old_not_new_nodes),
                 )
@@ -250,12 +250,12 @@ def process_gu_freq_rel(df_gu_freq_rel, is_old, add_row, n77_ssb_pre, is_new, n7
                 add_row(
                     "GUtranFreqRelation",
                     "LTE Frequency Inconsistencies",
-                    f"LTE nodes with Auto-created GUtranFreqRelationId to new N77 SSB ({n77_ssb_post}) but not following VZ naming convention ({n77_ssb_post}-30-20-0-1) (from GUtranFreqRelation table)",
+                    f"LTE nodes with Auto-created GUtranFreqRelationId to new N77 SSB ({n77_ssb_post}) but not following VZ naming convention ({n77_ssb_post}-30-20-0-1)",
                     len(bad_nodes),
                     extra_bad,
                 )
 
-                # NEW: LTE cell-level check using GUtranFreqRelationId strings old_arfcn-30-20-0-1 / new_arfcn-30-20-0-1 (from GUtranFreqRelation table)
+                # NEW: LTE cell-level check using GUtranFreqRelationId strings old_arfcn-30-20-0-1 / new_arfcn-30-20-0-1
                 cell_col_gu = resolve_column_case_insensitive(df_gu_freq_rel, ["EUtranCellFDDId", "EUtranCellId", "CellId", "GUCellId"])
                 expected_old_rel_id = f"{n77_ssb_pre}-30-20-0-1"
                 expected_new_rel_id = f"{n77_ssb_post}-30-20-0-1"
@@ -282,7 +282,7 @@ def process_gu_freq_rel(df_gu_freq_rel, is_old, add_row, n77_ssb_pre, is_new, n7
                     add_row(
                         "GUtranFreqRelation",
                         "LTE Frequency Audit",
-                        f"LTE nodes with GUtranFreqRelationId {expected_old_rel_id} and {expected_new_rel_id} (from GUtranFreqRelation table)",
+                        f"LTE nodes with GUtranFreqRelationId {expected_old_rel_id} and {expected_new_rel_id}",
                         len(nodes_cells_both),
                         ", ".join(nodes_cells_both),
                     )
@@ -290,7 +290,7 @@ def process_gu_freq_rel(df_gu_freq_rel, is_old, add_row, n77_ssb_pre, is_new, n7
                     add_row(
                         "GUtranFreqRelation",
                         "LTE Frequency Audit",
-                        f"LTE nodes with GUtranFreqRelationId {expected_old_rel_id} but without {expected_new_rel_id} (from GUtranFreqRelation table)",
+                        f"LTE nodes with GUtranFreqRelationId {expected_old_rel_id} but without {expected_new_rel_id}",
                         len(nodes_cells_old_without_new),
                         ", ".join(nodes_cells_old_without_new),
                     )
@@ -370,7 +370,7 @@ def process_gu_freq_rel(df_gu_freq_rel, is_old, add_row, n77_ssb_pre, is_new, n7
                     add_row(
                         "GUtranFreqRelation",
                         "LTE Frequency Inconsistencies",
-                        f"LTE nodes with same endcB1MeasPriority in old N77 SSB ({n77_ssb_pre}) and new N77 SSB ({n77_ssb_post}) (from GUtranFreqRelation table)",
+                        f"LTE nodes with same endcB1MeasPriority in old N77 SSB ({n77_ssb_pre}) and new N77 SSB ({n77_ssb_post})",
                         len(nodes_same_prio_list),
                         ", ".join(nodes_same_prio_list),
                     )
@@ -378,7 +378,7 @@ def process_gu_freq_rel(df_gu_freq_rel, is_old, add_row, n77_ssb_pre, is_new, n7
                     add_row(
                         "GUtranFreqRelation",
                         "LTE Frequency Inconsistencies",
-                        f"LTE nodes with mismatching params between GUtranFreqRelationId {n77_ssb_pre} and {n77_ssb_post} (from GUtranFreqRelation table)",
+                        f"LTE nodes with mismatching params between GUtranFreqRelationId {n77_ssb_pre} and {n77_ssb_post}",
                         len(bad_nodes_params_list),
                         ", ".join(bad_nodes_params_list),
                     )
@@ -457,8 +457,8 @@ def process_gu_cell_relation(df_gu_cell_rel, n77_ssb_pre, n77_ssb_post, add_row,
                 count_old = int((freq_as_int == old_ssb).sum())
                 count_new = int((freq_as_int == new_ssb).sum())
 
-                add_row("GUtranCellRelation", "LTE Frequency Audit", f"LTE cellRelations to old N77 SSB ({old_ssb}) (from GUtranCellRelation table)", count_old)
-                add_row("GUtranCellRelation", "LTE Frequency Audit", f"LTE cellRelations to new N77 SSB ({new_ssb}) (from GUtranCellRelation table)", count_new)
+                add_row("GUtranCellRelation", "LTE Frequency Audit", f"LTE cellRelations to old N77 SSB ({old_ssb})", count_old)
+                add_row("GUtranCellRelation", "LTE Frequency Audit", f"LTE cellRelations to new N77 SSB ({new_ssb})", count_new)
 
                 # -------------------------------------------------
                 # ExternalGNodeBFunction / ExternalGUtranCell (extract from nCellRef / neighborCellRef)
