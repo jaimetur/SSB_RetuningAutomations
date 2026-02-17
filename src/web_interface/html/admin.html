@@ -117,11 +117,13 @@
             <option value="none">Select None</option>
             <option value="older">Select Older</option>
           </select>
+          <button type="button" id="admin_upload_inputs" class="btn btn-primary">Upload</button>
           <button type="button" id="delete_selected_inputs" class="btn btn-danger danger-anchor">Delete Selected</button>
           <button type="button" id="toggle_inputs_panel" class="panel-toggle" aria-label="Collapse inputs panel" title="Collapse/Expand">▾</button>
         </div>
       </div>
       <input type="date" id="older_input_date_picker" class="hidden" />
+      <input type="file" id="admin_inputs_upload_picker" class="hidden" accept=".zip" multiple />
       <div class="table-scroll history-scroll inputs-scroll" id="inputs_panel_table">
       <table>
         <thead><tr><th></th><th>Input</th><th>Uploaded by</th><th>Uploaded at</th><th>Size</th></tr></thead>
@@ -359,6 +361,8 @@
     const runsTable = document.getElementById("runs_panel_table");
     const inputsBulkSelectAction = document.getElementById("inputs_bulk_select_action");
     const selectUserInputsCombo = document.getElementById("select_user_inputs_combo");
+    const adminUploadInputsButton = document.getElementById("admin_upload_inputs");
+    const adminInputsUploadPicker = document.getElementById("admin_inputs_upload_picker");
     const deleteSelectedInputsButton = document.getElementById("delete_selected_inputs");
     const olderInputDatePicker = document.getElementById("older_input_date_picker");
     const toggleInputsPanelButton = document.getElementById("toggle_inputs_panel");
@@ -654,6 +658,93 @@
     });
 
 
+    function uploadAdminInputZip(file, inputName, overwrite = false) {
+      const formData = new FormData();
+      formData.append("module", "admin-upload");
+      formData.append("kind", "input");
+      formData.append("session_id", "admin-upload");
+      formData.append("input_name", inputName || "");
+      formData.append("parent_folder_name", "");
+      formData.append("overwrite", overwrite ? "1" : "0");
+      formData.append("files", file, file.name || "input.zip");
+      return fetch("/uploads/zip", { method: "POST", body: formData }).then((res) => res.json());
+    }
+
+    function toInputNameFromZip(fileName) {
+      const raw = String(fileName || "uploaded_input.zip").split("/").pop() || "uploaded_input.zip";
+      const dot = raw.lastIndexOf(".");
+      const stem = dot > 0 ? raw.slice(0, dot) : raw;
+      return stem.trim() || "uploaded_input";
+    }
+
+    async function processAdminUploadQueue(items) {
+      for (const item of items) {
+        let uploadResponse = await uploadAdminInputZip(item.file, item.inputName, false);
+        if (uploadResponse?.ok) continue;
+        if (uploadResponse?.error === "already_exists") {
+          const overwriteAnswer = await showModal({
+            title: "Input already exists",
+            message: `Input ${uploadResponse.existing_name} already exists. Overwrite?`,
+            confirmText: "Accept",
+            cancelText: "Cancel"
+          });
+          if (!overwriteAnswer) continue;
+          uploadResponse = await uploadAdminInputZip(item.file, item.inputName, true);
+        }
+      }
+      await refreshInputsRepository();
+    }
+
+    adminUploadInputsButton?.addEventListener("click", () => adminInputsUploadPicker?.click());
+
+    adminInputsUploadPicker?.addEventListener("change", async () => {
+      const files = Array.from(adminInputsUploadPicker.files || []).filter((file) => /\.zip$/i.test(file.name || ""));
+      if (!files.length) {
+        adminInputsUploadPicker.value = "";
+        return;
+      }
+
+      if (files.length === 1) {
+        const defaultName = toInputNameFromZip(files[0].name);
+        const shouldContinue = await showModal({
+          title: "Input name",
+          message: `Default Input name: ${defaultName}. Do you want to continue and optionally edit it in the next step?`,
+          confirmText: "Accept",
+          cancelText: "Cancel"
+        });
+        if (!shouldContinue) {
+          adminInputsUploadPicker.value = "";
+          return;
+        }
+        const enteredName = window.prompt("Confirm Input name", defaultName);
+        if (enteredName === null) {
+          adminInputsUploadPicker.value = "";
+          return;
+        }
+        const selectedName = String(enteredName || "").trim() || defaultName;
+        processAdminUploadQueue([{ file: files[0], inputName: selectedName }]).finally(() => {
+          adminInputsUploadPicker.value = "";
+        });
+        return;
+      }
+
+      const warningAccepted = await showModal({
+        title: "Bulk upload",
+        message: "Each Input name will match each uploaded zip filename. Uploads will continue in background.",
+        confirmText: "Accept",
+        cancelText: "Cancel"
+      });
+      if (!warningAccepted) {
+        adminInputsUploadPicker.value = "";
+        return;
+      }
+
+      const queueItems = files.map((file) => ({ file, inputName: toInputNameFromZip(file.name) }));
+      processAdminUploadQueue(queueItems).finally(() => {
+        adminInputsUploadPicker.value = "";
+      });
+    });
+
     function getSelectedInputIds() {
       return Array.from(document.querySelectorAll(".input-checkbox:checked")).map((box) => Number(box.value));
     }
@@ -816,6 +907,85 @@
         .replace(/>/g, "&gt;")
         .replace(/"/g, "&quot;")
         .replace(/'/g, "&#39;");
+    }
+
+    function refreshInputsRepository() {
+      return fetch(buildNoCacheUrl("/inputs/list"), { cache: "no-store" })
+        .then((res) => res.json())
+        .then((data) => {
+          if (!data.ok) return;
+          const tbody = document.querySelector("#inputs_panel_table tbody");
+          if (!tbody) return;
+
+          const selectedIds = new Set(Array.from(document.querySelectorAll(".input-checkbox:checked")).map((box) => Number(box.value)));
+          if (!Array.isArray(data.items) || data.items.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5">No inputs yet.</td></tr>';
+            populateScopeCombo(selectUserInputsCombo, "#inputs_panel_table", 2);
+            applyScopeFilter(selectUserInputsCombo, "#inputs_panel_table", 2);
+            updateSelectionSizeLabels();
+            return;
+          }
+
+          tbody.innerHTML = data.items.map((item) => {
+            const checked = selectedIds.has(Number(item.id)) ? "checked" : "";
+            return `
+              <tr>
+                <td><input type="checkbox" class="input-checkbox" value="${escapeHtml(item.id)}" data-uploaded-at="${escapeHtml(item.uploaded_at || "")}" ${checked} /></td>
+                <td>${escapeHtml(item.input_name || "—")}</td>
+                <td>${escapeHtml(item.uploaded_by || "—")}</td>
+                <td>${escapeHtml(item.uploaded_at || "")}</td>
+                <td>${escapeHtml(item.size_mb || "0.00 MB")}</td>
+              </tr>
+            `;
+          }).join("");
+
+          populateScopeCombo(selectUserInputsCombo, "#inputs_panel_table", 2);
+          applyScopeFilter(selectUserInputsCombo, "#inputs_panel_table", 2);
+          updateSelectionSizeLabels();
+        })
+        .catch(() => {});
+    }
+
+    function refreshAdminRunsTable(items) {
+      const tbody = document.querySelector("#runs_panel_table tbody");
+      if (!tbody) return;
+
+      const selectedIds = new Set(Array.from(document.querySelectorAll(".run-checkbox:checked")).map((box) => Number(box.value)));
+      if (!Array.isArray(items) || items.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="13">No runs yet.</td></tr>';
+        populateScopeCombo(selectUserRunsCombo, "#runs_panel_table", 2);
+        applyScopeFilter(selectUserRunsCombo, "#runs_panel_table", 2);
+        updateSelectionSizeLabels();
+        return;
+      }
+
+      tbody.innerHTML = items.map((item) => {
+        const rowClass = item.status_lower === "error" ? "run-error" : (item.status_lower === "success" ? "run-success" : "");
+        const checked = selectedIds.has(Number(item.id)) ? "checked" : "";
+        const outputCell = item.output_zip ? `<a href="/admin/runs/${item.id}/download">Download zip</a>` : "—";
+        const logCell = item.output_log_file ? `<a href="/admin/runs/${item.id}/log">Download log</a>` : "—";
+        return `
+          <tr class="${rowClass}" data-status="${escapeHtml(item.status_lower || "")}">
+            <td><input type="checkbox" class="run-checkbox" value="${escapeHtml(item.id)}" data-start="${escapeHtml(item.started_at || "")}" data-status="${escapeHtml(item.status_lower || "")}" ${checked} /></td>
+            <td>${escapeHtml(item.id)}</td>
+            <td>${escapeHtml(item.username || "—")}</td>
+            <td>${escapeHtml(item.module || "—")}</td>
+            <td>${escapeHtml(item.tool_version || "—")}</td>
+            <td>${escapeHtml(item.input_name || "—")}</td>
+            <td>${escapeHtml(item.status_display || "")}</td>
+            <td>${escapeHtml(item.started_at || "")}</td>
+            <td>${escapeHtml(item.finished_at || "")}</td>
+            <td>${escapeHtml(item.duration_hms || "00:00:00")}</td>
+            <td>${outputCell}</td>
+            <td>${logCell}</td>
+            <td>${escapeHtml(item.size_mb || "0.00 MB")}</td>
+          </tr>
+        `;
+      }).join("");
+
+      populateScopeCombo(selectUserRunsCombo, "#runs_panel_table", 2);
+      applyScopeFilter(selectUserRunsCombo, "#runs_panel_table", 2);
+      updateSelectionSizeLabels();
     }
 
     function fetchAdminSystemLog() {
@@ -987,17 +1157,17 @@
       fetchAdminActiveStatus()
         .then((hasActiveTasks) => {
           adminHasActiveTasks = hasActiveTasks;
-          if (!adminExecutionLogAuto?.checked) return;
-          fetch(buildNoCacheUrl("/admin/runs/list"), { cache: "no-store" })
+          return fetch(buildNoCacheUrl("/admin/runs/list"), { cache: "no-store" })
             .then((res) => res.json())
             .then((data) => {
               if (!data.ok || !Array.isArray(data.items)) return;
+              refreshAdminRunsTable(data.items);
               const nextRunId = pickAdminExecutionLogRunId(data.items, adminLogRunSelector?.value || "");
               if (adminLogRunSelector) {
                 adminLogRunSelector.innerHTML = data.items.map((item) => `<option value="${item.id}">${escapeHtml(item.run_label || `#${item.id}`)}</option>`).join("");
                 if (nextRunId) adminLogRunSelector.value = nextRunId;
               }
-              fetchAdminRunLog();
+              if (adminExecutionLogAuto?.checked) fetchAdminRunLog();
             })
             .catch(() => {});
         })
@@ -1056,11 +1226,12 @@
       }
     });
     updateSelectionSizeLabels();
+    refreshInputsRepository();
+    runAdminBackgroundRefreshCycle();
     fetchAdminRunLog();
     fetchAdminSystemLog();
     loadAdminDbTable();
     scheduleAdminSystemLogRefresh();
-    runAdminBackgroundRefreshCycle();
 
 
   </script>
