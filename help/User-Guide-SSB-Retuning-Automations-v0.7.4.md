@@ -561,11 +561,21 @@ They are split into three groups:
 
 ---
 
-## 8) Input requirements and operational best practices
+## 8) Inputs Naming Convention
 
 - Keep market log exports in a consistent structure and following the below naming convention (for both the parent folder and the zip file contining Step0 logs):
-  - Recommended naming convention: `<TIMESTAMP>_Step0_<MARKET_ID>_<MARKET_NAME>_<PHASE>`
-  - Example: `20260217_0507_Step0_MKT188_Omaha_PostStep1/20260217_0507_Step0_MKT188_Omaha_PostStep1.zip`
+  - Recommended naming convention for folders and zips: **`<TIMESTAMP>_Step0_<MARKET_ID>_<MARKET_NAME>_<PHASE>`**
+  - Example: `20260217_0500_Step0_Mkt188_Omaha_PreStep1/20260217_0500_Step0_Mkt188_Omaha_PreStep1.zip`
+
+  | Naming Convention     | `<TIMESTAMP>_Step0_<MARKET_ID>_<MARKET_NAME>_<PHASE>/<TIMESTAMP>_Step0_<MARKET_ID>_<MARKET_NAME>_<PHASE>.zip` |
+  |-----------------------|---------------------------------------------------------------------------------------------------------------|
+  | **Example PreStep1**  | `20260217_0500_Step0_Mkt188_Omaha_PreStep1/20260217_0500_Step0_Mkt188_Omaha_PreStep1.zip`                     |
+  | **Example PostStep1** | `20260217_0630_Step0_Mkt188_Omaha_PostStep1/20260217_0630_Step0_Mkt188_Omaha_PostStep1.zip`                   |
+
+---
+
+## 9) Operational Best Practices
+
 - Validate that PRE/POST have the same table granularity and consistent naming.
 - Validate frequency inputs (`n77_ssb_pre`, `n77_ssb_post`, `n77b_ssb`) before batch execution.
 - Correctly configure allowed SSB/ARFCN lists to minimize false positives.
@@ -576,7 +586,7 @@ They are split into three groups:
 
 ---
 
-## 9) Known limitations and considerations
+## 10) Known limitations and considerations
 
 - The engine depends on log quality and structure: missing columns downgrade checks to `N/A`.
 - Some rules depend on naming conventions in references (NR/GU relation refs).

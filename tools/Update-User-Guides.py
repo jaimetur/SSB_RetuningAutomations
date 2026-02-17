@@ -375,11 +375,12 @@ def build_docx_from_markdown(md_file: Path, docx_file: Path, version: str) -> No
                 i += 1
             continue
 
-        if s.startswith("| ") and s.endswith(" |") and i + 1 < len(lines) and is_table_separator(lines[i + 1]):
-            rows: list[list[str]] = [parse_table_row(s)]
+        t = s.strip()
+        if t.startswith("| ") and t.endswith(" |") and i + 1 < len(lines) and is_table_separator(lines[i + 1]):
+            rows: list[list[str]] = [parse_table_row(t)]
             i += 2
             while i < len(lines):
-                candidate = lines[i].rstrip()
+                candidate = lines[i].strip()
                 if not (candidate.startswith("| ") and candidate.endswith(" |")):
                     break
                 rows.append(parse_table_row(candidate))
