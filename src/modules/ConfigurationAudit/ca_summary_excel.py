@@ -600,7 +600,7 @@ def build_summary_audit(
         ("NRCellDU", f"NR nodes with N77 SSB in band (646600-660000) (from NRCellDU table)"): "Tip to be defined",
         ("NRCellDU", f"NR nodes with N77 SSB in Pre-Retune allowed list ({allowed_pre_str}) (from NRCellDU table)"): "Nodes with Step2b pending",
         ("NRCellDU", f"NR nodes with N77 SSB in Post-Retune allowed list ({allowed_post_str}) (from NRCellDU table)"): "Nodes with Step2b completed",
-        ("NRCellDU", f"NR nodes with N77 SSB not in Pre/Post Retune allowed lists (from NRCellDU table)"): "These nodes must be checked in preparation phase and confirm if any special action needed",f
+        ("NRCellDU", f"NR nodes with N77 SSB not in Pre/Post Retune allowed lists (from NRCellDU table)"): "These nodes must be checked in preparation phase and confirm if any special action needed",
 
         ("NRSectorCarrier", f"NR nodes with N77 ARCFN in band (646600-660000) (from NRSectorCarrier table)"): "Tip to be defined",
         ("NRSectorCarrier", f"NR nodes with N77 ARCFN in Pre-Retune allowed list ({allowed_pre_str}) (from NRSectorCarrier table)"): "Nodes with Step2b pending",
