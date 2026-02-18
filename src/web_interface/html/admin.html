@@ -640,6 +640,7 @@
       const value = String(rawPattern || "").trim();
       if (!value || value.toLowerCase() === "pattern filter" || value.toLowerCase() === "wildcard filter (*text*)") return true;
       const candidates = [
+        row?.cells?.[2]?.textContent?.trim() || "", // User
         row?.cells?.[3]?.textContent?.trim() || "", // Module
         row?.cells?.[4]?.textContent?.trim() || "", // Version
         row?.cells?.[5]?.textContent?.trim() || "", // Input
