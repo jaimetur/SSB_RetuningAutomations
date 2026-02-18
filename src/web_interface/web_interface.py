@@ -1586,7 +1586,64 @@ def download_user_guide(request: Request, file_format: str, mode: str = "downloa
         if importlib.util.find_spec("markdown") is None:
             return FileResponse(guide_path, filename=guide_path.name)
         markdown_module = importlib.import_module("markdown")
-        html_body = markdown_module.markdown(md_text, extensions=["tables", "fenced_code"])
+        def _normalize_markdown_lists(text: str) -> str:
+            lines = text.splitlines()
+            out = []
+            in_fence = False
+            fence_marker = None
+
+            def is_list_line(s: str) -> bool:
+                return bool(re.match(r"^\s*(?:[-*+]|(?:\d+\.))\s+", s))
+
+            def is_block_boundary(s: str) -> bool:
+                t = s.strip()
+                if not t:
+                    return True
+                if t.startswith(("#", ">", "|")):
+                    return True
+                return False
+
+            def last_nonempty(lst: list[str]) -> str:
+                for prev in reversed(lst):
+                    if prev.strip():
+                        return prev
+                return ""
+
+            for i, line in enumerate(lines):
+                stripped = line.strip()
+
+                if stripped.startswith("```") or stripped.startswith("~~~"):
+                    if in_fence:
+                        in_fence = False
+                        fence_marker = None
+                    else:
+                        in_fence = True
+                        fence_marker = stripped[:3]
+                    out.append(line)
+                    continue
+
+                if in_fence:
+                    out.append(line)
+                    continue
+
+                if is_list_line(stripped):
+                    prev = out[-1] if out else ""
+                    if prev.strip() and (not is_list_line(prev.strip())) and (not is_block_boundary(prev)):
+                        out.append("")
+                    # Normalize sublist indentation: markdown expects 4 spaces or a tab.
+                    if re.match(r"^\s{2}(?:[-*+]|(?:\d+\.))\s+", line):
+                        parent = last_nonempty(out[:-1])
+                        if is_list_line(parent.strip()):
+                            line = " " * 4 + line.lstrip()
+                    out.append(line)
+                    continue
+
+                out.append(line)
+
+            return "\n".join(out)
+
+        md_text = _normalize_markdown_lists(md_text)
+        html_body = markdown_module.markdown(md_text, extensions=["tables", "fenced_code", "sane_lists"])
         html_doc = f"""
 <!doctype html>
 <html lang="en">

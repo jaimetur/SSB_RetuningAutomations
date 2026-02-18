@@ -24,6 +24,7 @@
   - Changed Step2b logic on MeContext table.
   - Changed Step2ac logic on MeContext table.
   - Deleted some duplicated metrics and rename others in SummaryAudit.
+  - Fixed Markdown render for Technical User Guide on Web Interface.
 
 - #### 🐛 Bug fixes:
   - Fixed per-module input persistence for each user.
