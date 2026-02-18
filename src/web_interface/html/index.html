@@ -324,7 +324,7 @@
           {% for r in latest_runs %}
             <tr class="run-row {% if r.status_lower == 'error' %}run-error{% elif r.status_lower == 'success' %}run-success{% elif r.status_lower == 'canceled' %}run-canceled{% endif %}"
                 data-run-id="{{ r.id }}" data-status="{{ r.status_lower }}" data-run-user="{{ r.username or "unknown" }}">
-              <td><input type="checkbox" class="run-checkbox" value="{{ r.id }}" data-start="{{ r.started_at }}" data-status="{{ r.status_lower }}" {% if (r.username or "") != user.username %}disabled title="You can only manage your own runs"{% endif %} /></td>
+              <td><input type="checkbox" class="run-checkbox" value="{{ r.id }}" data-start="{{ r.started_at }}" data-status="{{ r.status_lower }}" /></td>
               <td>{{ r.id }}</td>
               <td>{{ r.module }}</td>
               <td>{{ r.tool_version or '—' }}</td>
@@ -1515,14 +1515,13 @@
 
             const runUser = item.username || "unknown";
             const isOwnRun = runUser === currentUsername;
-            const checked = selectedIds.has(item.id) && isOwnRun ? 'checked' : '';
+            const checked = selectedIds.has(item.id) ? 'checked' : '';
             const outputCell = item.output_zip && isOwnRun ? `<a href="/runs/${item.id}/download">Download zip</a>` : "—";
             const logCell = item.output_log_file && isOwnRun ? `<a href="/runs/${item.id}/log">Download log</a>` : "—";
-            const disabledAttr = isOwnRun ? "" : 'disabled title="You can only manage your own runs"';
 
             return `
               <tr class="${rowClass}" data-run-id="${item.id}" data-status="${item.status_lower}" data-run-user="${escapeHtml(runUser)}">
-                <td><input type="checkbox" class="run-checkbox" value="${item.id}" data-start="${item.started_at}" data-status="${item.status_lower}" ${checked} ${disabledAttr} /></td>
+                <td><input type="checkbox" class="run-checkbox" value="${item.id}" data-start="${item.started_at}" data-status="${item.status_lower}" ${checked} /></td>
                 <td>${escapeHtml(item.id)}</td>
                 <td>${escapeHtml(item.module)}</td>
                 <td>${escapeHtml(item.tool_version || "—")}</td>
