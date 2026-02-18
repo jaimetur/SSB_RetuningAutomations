@@ -190,6 +190,7 @@
             <option value="canceled">Select Cancelled</option>
             <option value="older">Select Older</option>
           </select>
+          <button type="button" id="admin_rerun_selected_runs" class="btn btn-success">Re-Run Selected</button>
           <button type="button" id="admin_stop_selected_runs" class="btn btn-danger">Stop Selected</button>
           <button type="button" id="delete_selected_runs" class="btn btn-danger">Delete Selected</button>
           <button type="button" id="toggle_runs_panel" class="panel-toggle" aria-label="Collapse runs panel" title="Collapse/Expand">▾</button>
@@ -402,6 +403,7 @@
     const dbEditorPanelContent = document.getElementById("db_editor_panel_content");
     const runsBulkSelectAction = document.getElementById("runs_bulk_select_action");
     const selectUserRunsCombo = document.getElementById("select_user_runs_combo");
+    const adminRerunSelectedRunsButton = document.getElementById("admin_rerun_selected_runs");
     const adminStopSelectedRunsButton = document.getElementById("admin_stop_selected_runs");
     const deleteSelectedRunsButton = document.getElementById("delete_selected_runs");
     const toggleRunsPanelButton = document.getElementById("toggle_runs_panel");
@@ -918,6 +920,18 @@
         }).then(() => window.location.reload());
       });
     }
+
+    adminRerunSelectedRunsButton?.addEventListener("click", async () => {
+      const ids = getSelectedRunIds();
+      if (!ids.length) return;
+      const ok = await showModal({ title: "Re-run executions", message: "Queue selected executions as new tasks?", confirmText: "Accept", cancelText: "Cancel" });
+      if (!ok) return;
+      fetch("/admin/runs/rerun", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids })
+      }).then(() => window.location.reload());
+    });
 
     adminStopSelectedRunsButton?.addEventListener("click", async () => {
       const ids = getSelectedRunIds();
