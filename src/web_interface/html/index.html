@@ -213,12 +213,12 @@
           <span class="runs-total" id="inputs_total_size">Total size: {{ inputs_total_size }} · Selected size: 0.00 MB</span>
         </div>
         <div class="runs-actions">
-          <input id="inputs_name_filter_combo" class="combo-filter" list="inputs_name_filter_presets" value="View All" placeholder="View All or pattern (*text*)" aria-label="Input name pattern filter" />
+          <select id="select_user_inputs_combo"><option value="__all__">All Users</option>{% for uploader in input_uploaders %}<option value="{{ uploader }}" {% if uploader == user.username %}selected{% endif %}>{{ uploader }}</option>{% endfor %}{% if user.username not in input_uploaders %}<option value="{{ user.username }}" selected>{{ user.username }}</option>{% endif %}</select>
+          <input id="inputs_name_filter_combo" class="combo-filter" list="inputs_name_filter_presets" value="Pattern Filter" placeholder="Pattern Filter or wildcard (*text*)" aria-label="Input name pattern filter" />
           <datalist id="inputs_name_filter_presets">
-            <option value="View All"></option>
+            <option value="Pattern Filter"></option>
             <option value="*Mkt188*"></option>
           </datalist>
-          <select id="select_user_inputs_combo"><option value="__all__">All Users</option>{% for uploader in input_uploaders %}<option value="{{ uploader }}" {% if uploader == user.username %}selected{% endif %}>{{ uploader }}</option>{% endfor %}{% if user.username not in input_uploaders %}<option value="{{ user.username }}" selected>{{ user.username }}</option>{% endif %}</select>
           <select id="inputs_bulk_select_action" aria-label="Bulk input selection">
             <option value="" selected>Select</option>
             <option value="all">Select All</option>
@@ -789,7 +789,7 @@
 
     function matchesInputNamePattern(inputName, rawPattern) {
       const value = String(rawPattern || "").trim();
-      if (!value || value.toLowerCase() === "view all") return true;
+      if (!value || value.toLowerCase() === "pattern filter") return true;
       const candidate = String(inputName || "");
       if (value.includes("*")) {
         try {
@@ -803,7 +803,7 @@
 
     function applyInputsFilters() {
       const selectedUser = selectUserInputsCombo?.value || "__all__";
-      const pattern = inputsNameFilterCombo?.value || "View All";
+      const pattern = inputsNameFilterCombo?.value || "Pattern Filter";
       document.querySelectorAll('#inputs_panel_table tbody tr').forEach((row) => {
         const rowUser = row?.cells?.[2]?.textContent?.trim() || "";
         const inputName = row?.cells?.[1]?.textContent?.trim() || "";
