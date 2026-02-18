@@ -30,6 +30,7 @@
   - Fixed duplicated System/Application log lines by de-duplicating uvicorn logger handler wiring and propagation. 
   - Fixed connected users status consistency.
   - Fixed Step1 conditions logic on MeContext table.
+  - Fixed Check condution: "LTE nodes with some cells missing relations to new SSB" to avoid exact match on ARFCN column.
 
 - #### 📚 Documentation:
   - Updated Documentation to align with the latest changes.

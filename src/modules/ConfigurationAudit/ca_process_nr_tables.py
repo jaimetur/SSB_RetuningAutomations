@@ -274,7 +274,7 @@ def process_nr_freq_rel(df_nr_freq_rel, is_old, add_row, n77_ssb_pre, is_new, n7
                         nodes_cells_both = sorted(full_n77.loc[full_n77[cell_col].isin(cells_both), node_col].astype(str).unique()) if cells_both else []
                         nodes_cells_old_without_new = sorted(full_n77.loc[full_n77[cell_col].isin(cells_old_without_new), node_col].astype(str).unique()) if cells_old_without_new else []
 
-                        add_row("NRFreqRelation", "NR Frequency Audit", f"NR nodes with with some cells missing relations to new SSB ({n77_ssb_post})", len(nodes_cells_old_without_new), ", ".join(nodes_cells_old_without_new))
+                        add_row("NRFreqRelation", "NR Frequency Audit", f"NR nodes with some cells missing relations to new SSB ({n77_ssb_post})", len(nodes_cells_old_without_new), ", ".join(nodes_cells_old_without_new))
 
                         # ----------------------------- NEW: mcpcPCellNrFreqRelProfileRef clone checks (OLD SSB -> NEW SSB) -----------------------------
                         profile_col = resolve_column_case_insensitive(full_n77, ["mcpcPCellNrFreqRelProfileRef"])
