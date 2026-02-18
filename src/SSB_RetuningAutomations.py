@@ -500,37 +500,41 @@ def gui_config_dialog(
     # Frequencies
     ttk.Separator(frm).grid(row=2, column=0, columnspan=3, sticky="ew", **pad)
     ttk.Label(frm, text="SSB Frequencies:").grid(row=3, column=0, columnspan=3, sticky="w", **pad)
-    ttk.Label(frm, text="N77 SSB Frequency (Pre):").grid(row=4, column=0, sticky="w", **pad)
-    ttk.Entry(frm, textvariable=n77_ssb_pre_var, width=22).grid(row=4, column=1, sticky="w", **pad)
 
-    ttk.Label(frm, text="N77 SSB Frequency (Post):").grid(row=5, column=0, sticky="w", **pad)
-    ttk.Entry(frm, textvariable=n77_ssb_post_var, width=22).grid(row=5, column=1, sticky="w", **pad)
+    ssb_freq_frame = ttk.Frame(frm)
+    ssb_freq_frame.grid(row=4, column=0, columnspan=3, sticky="ew", **pad)
 
-    ttk.Label(frm, text="N77B SSB Frequency:").grid(row=6, column=0, sticky="w", **pad)
-    ttk.Entry(frm, textvariable=n77b_ssb_var, width=22).grid(row=6, column=1, sticky="w", **pad)
+    ttk.Label(ssb_freq_frame, text="N77 SSB Frequency (Pre):").grid(row=0, column=0, sticky="w", padx=(0, 6))
+    ttk.Entry(ssb_freq_frame, textvariable=n77_ssb_pre_var, width=14).grid(row=0, column=1, sticky="w", padx=(0, 14))
+
+    ttk.Label(ssb_freq_frame, text="N77 SSB Frequency (Post):").grid(row=0, column=2, sticky="w", padx=(0, 6))
+    ttk.Entry(ssb_freq_frame, textvariable=n77_ssb_post_var, width=14).grid(row=0, column=3, sticky="w", padx=(0, 14))
+
+    ttk.Label(ssb_freq_frame, text="N77B SSB Frequency:").grid(row=0, column=4, sticky="w", padx=(0, 6))
+    ttk.Entry(ssb_freq_frame, textvariable=n77b_ssb_var, width=14).grid(row=0, column=5, sticky="w")
 
     # ARFCN lists
-    ttk.Separator(frm).grid(row=7, column=0, columnspan=3, sticky="ew", **pad)
-    ttk.Label(frm, text="Allowed SSB & ARFCN sets for Configuration Audit (comma separated values):").grid(row=8, column=0, columnspan=3, sticky="w", **pad)
+    ttk.Separator(frm).grid(row=5, column=0, columnspan=3, sticky="ew", **pad)
+    ttk.Label(frm, text="Allowed SSB & ARFCN sets for Configuration Audit (comma separated values):").grid(row=6, column=0, columnspan=3, sticky="w", **pad)
 
-    ttk.Label(frm, text="[PRE]: Allowed N77 SSB (comma separated values):").grid(row=9, column=0, sticky="w", **pad)
-    ttk.Entry(frm, textvariable=allowed_n77_ssb_pre_var, width=40).grid(row=9, column=1, columnspan=2, sticky="ew", **pad)
+    ttk.Label(frm, text="[PRE]: Allowed N77 SSB (comma separated values):").grid(row=7, column=0, sticky="w", **pad)
+    ttk.Entry(frm, textvariable=allowed_n77_ssb_pre_var, width=40).grid(row=7, column=1, columnspan=2, sticky="ew", **pad)
 
-    ttk.Label(frm, text="[PRE]: Allowed N77 ARFCN (comma separated values):").grid(row=10, column=0, sticky="w", **pad)
-    ttk.Entry(frm, textvariable=allowed_n77_arfcn_pre_var, width=40).grid(row=10, column=1, columnspan=2, sticky="ew", **pad)
+    ttk.Label(frm, text="[PRE]: Allowed N77 ARFCN (comma separated values):").grid(row=8, column=0, sticky="w", **pad)
+    ttk.Entry(frm, textvariable=allowed_n77_arfcn_pre_var, width=40).grid(row=8, column=1, columnspan=2, sticky="ew", **pad)
 
-    ttk.Label(frm, text="[POST]: Allowed N77 SSB (comma separated values):").grid(row=11, column=0, sticky="w", **pad)
-    ttk.Entry(frm, textvariable=allowed_n77_ssb_post_var, width=40).grid(row=11, column=1, columnspan=2, sticky="ew", **pad)
+    ttk.Label(frm, text="[POST]: Allowed N77 SSB (comma separated values):").grid(row=9, column=0, sticky="w", **pad)
+    ttk.Entry(frm, textvariable=allowed_n77_ssb_post_var, width=40).grid(row=9, column=1, columnspan=2, sticky="ew", **pad)
 
-    ttk.Label(frm, text="[POST]: Allowed N77 ARFCN (comma separated values):").grid(row=12, column=0, sticky="w", **pad)
-    ttk.Entry(frm, textvariable=allowed_n77_arfcn_post_var, width=40).grid(row=12, column=1, columnspan=2, sticky="ew", **pad)
+    ttk.Label(frm, text="[POST]: Allowed N77 ARFCN (comma separated values):").grid(row=10, column=0, sticky="w", **pad)
+    ttk.Entry(frm, textvariable=allowed_n77_arfcn_post_var, width=40).grid(row=10, column=1, columnspan=2, sticky="ew", **pad)
 
     # Summary filters
-    ttk.Separator(frm).grid(row=13, column=0, columnspan=3, sticky="ew", **pad)
-    ttk.Label(frm, text="Frequecy Filters:").grid(row=14, column=0, columnspan=3, sticky="w", **pad)
+    ttk.Separator(frm).grid(row=11, column=0, columnspan=3, sticky="ew", **pad)
+    ttk.Label(frm, text="Frequecy Filters:").grid(row=12, column=0, columnspan=3, sticky="w", **pad)
 
     list_frame = ttk.Frame(frm)
-    list_frame.grid(row=15, column=0, columnspan=1, sticky="nsw", **pad_tight)
+    list_frame.grid(row=13, column=0, columnspan=1, sticky="nsw", **pad_tight)
     ttk.Label(list_frame, text="Network frequencies:").pack(anchor="w")
 
     lb_container = ttk.Frame(list_frame)
@@ -553,7 +557,7 @@ def gui_config_dialog(
     scrollbar.config(command=lb.yview)
 
     right_frame = ttk.Frame(frm)
-    right_frame.grid(row=15, column=2, sticky="nsew", **pad_tight)
+    right_frame.grid(row=13, column=2, sticky="nsew", **pad_tight)
 
     # Configuration Audit Filters (for Summary Pivots)
     ttk.Label(right_frame, text="Configuration Audit Filters (for Summary Pivots) (Empty = No Filter):").grid(row=0, column=0, sticky="w")
@@ -638,7 +642,7 @@ def gui_config_dialog(
         lb.select_set(0, "end")
 
     btns_frame = ttk.Frame(frm)
-    btns_frame.grid(row=15, column=1, sticky="n", **pad_tight)
+    btns_frame.grid(row=13, column=1, sticky="n", **pad_tight)
 
     # Botones para Summary
     ttk.Label(btns_frame, text="Coonfiguration Audit").pack(anchor="w")
