@@ -213,7 +213,7 @@
           <span class="runs-total" id="inputs_total_size">Total size: {{ inputs_total_size }} · Selected size: 0.00 MB</span>
         </div>
         <div class="runs-actions">
-          <select id="select_user_inputs_combo"><option value="__all__" selected>All Users</option>{% for uploader in input_uploaders %}<option value="{{ uploader }}">{{ uploader }}</option>{% endfor %}</select>
+          <select id="select_user_inputs_combo"><option value="__all__">All Users</option>{% for uploader in input_uploaders %}<option value="{{ uploader }}" {% if uploader == user.username %}selected{% endif %}>{{ uploader }}</option>{% endfor %}{% if user.username not in input_uploaders %}<option value="{{ user.username }}" selected>{{ user.username }}</option>{% endif %}</select>
           <select id="inputs_bulk_select_action" aria-label="Bulk input selection">
             <option value="" selected>Select</option>
             <option value="all">Select All</option>
@@ -820,8 +820,8 @@
     function populateInputScopeSelector(explicitUsers = []) {
       const tableUsers = Array.from(document.querySelectorAll("#inputs_panel_table tbody tr"))
         .map((row) => row.cells?.[2]?.textContent?.trim() || "");
-      const users = [...explicitUsers, ...tableUsers];
-      populateScopeCombo(selectUserInputsCombo, users, { includeAll: true, fallback: "__all__" });
+      const users = [currentUsername, ...explicitUsers, ...tableUsers];
+      populateScopeCombo(selectUserInputsCombo, users, { includeAll: true, fallback: currentUsername });
     }
 
     function populateRunScopeSelector() {
