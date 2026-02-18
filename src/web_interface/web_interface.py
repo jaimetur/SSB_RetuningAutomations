@@ -98,17 +98,43 @@ pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 def setup_logging() -> logging.Logger:
     logger = logging.getLogger("web_interface")
     logger.setLevel(logging.INFO)
-    if not logger.handlers:
-        # Persist application logs across restarts.
+
+    # Persist application logs across restarts and avoid duplicated handlers.
+    app_handler = next(
+        (
+            handler
+            for handler in logger.handlers
+            if isinstance(handler, RotatingFileHandler)
+            and getattr(handler, "baseFilename", "") == str(APP_LOG_PATH)
+        ),
+        None,
+    )
+    if app_handler is None:
         app_handler = RotatingFileHandler(APP_LOG_PATH, maxBytes=2_000_000, backupCount=3)
         app_handler.setFormatter(logging.Formatter("[%(asctime)s] - [%(levelname)s] - %(message)s", datefmt=LOG_DATETIME_FORMAT))
         logger.addHandler(app_handler)
 
-        for name in ("uvicorn", "uvicorn.error"):
-            uv_logger = logging.getLogger(name)
-            uv_logger.setLevel(logging.INFO)
-            if all(handler is not app_handler for handler in uv_logger.handlers):
-                uv_logger.addHandler(app_handler)
+    # Uvicorn emits most lifecycle errors through `uvicorn.error`.
+    # Attach our file handler once there and disable propagation to avoid duplicates.
+    uv_error_logger = logging.getLogger("uvicorn.error")
+    uv_error_logger.setLevel(logging.INFO)
+    if all(handler is not app_handler for handler in uv_error_logger.handlers):
+        uv_error_logger.addHandler(app_handler)
+    uv_error_logger.propagate = False
+
+    # Ensure parent uvicorn logger does not also write the same events to the same file.
+    uv_logger = logging.getLogger("uvicorn")
+    uv_logger.setLevel(logging.INFO)
+    uv_logger.propagate = False
+    uv_logger.handlers = [
+        handler
+        for handler in uv_logger.handlers
+        if not (
+            isinstance(handler, RotatingFileHandler)
+            and getattr(handler, "baseFilename", "") == str(APP_LOG_PATH)
+        )
+    ]
+
     return logger
 
 
