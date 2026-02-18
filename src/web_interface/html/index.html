@@ -213,7 +213,12 @@
           <span class="runs-total" id="inputs_total_size">Total size: {{ inputs_total_size }} · Selected size: 0.00 MB</span>
         </div>
         <div class="runs-actions">
-          <select id="select_user_inputs_combo"><option value="__all__" selected>All Users</option>{% for uploader in input_uploaders %}<option value="{{ uploader }}">{{ uploader }}</option>{% endfor %}</select>
+          <select id="select_user_inputs_combo"><option value="__all__">All Users</option>{% for uploader in input_uploaders %}<option value="{{ uploader }}" {% if uploader == user.username %}selected{% endif %}>{{ uploader }}</option>{% endfor %}{% if user.username not in input_uploaders %}<option value="{{ user.username }}" selected>{{ user.username }}</option>{% endif %}</select>
+          <input id="inputs_name_filter_combo" class="combo-filter" list="inputs_name_filter_presets" value="Pattern Filter" placeholder="Pattern Filter or wildcard (*text*)" aria-label="Input name pattern filter" />
+          <datalist id="inputs_name_filter_presets">
+            <option value="Pattern Filter"></option>
+            <option value="*Mkt188*"></option>
+          </datalist>
           <select id="inputs_bulk_select_action" aria-label="Bulk input selection">
             <option value="" selected>Select</option>
             <option value="all">Select All</option>
@@ -222,6 +227,7 @@
           </select>
           <button type="button" id="send_selected_inputs" class="btn btn-success">Send to Input</button>
           <button type="button" id="user_upload_inputs" class="btn btn-primary">Upload</button>
+          <button type="button" id="rename_inputs" class="btn btn-secondary">Rename</button>
           <button type="button" id="delete_selected_inputs" class="btn btn-danger danger-anchor">Delete Selected</button>
           <button type="button" id="toggle_inputs_panel" class="panel-toggle" aria-label="Collapse inputs panel" title="Collapse/Expand">▾</button>
         </div>
@@ -272,7 +278,12 @@
           <span class="runs-total" id="runs_total_size">Total size: {{ total_runs_size }} · Selected size: 0.00 MB</span>
         </div>
         <div class="runs-actions">
-          <select id="select_user_runs_combo"><option value="{{ user.username }}" selected>{{ user.username }}</option></select>
+          <select id="select_user_runs_combo">
+            <option value="__all__">All users</option>
+            {% for run_user in runs_users %}
+              <option value="{{ run_user }}" {% if run_user == user.username %}selected{% endif %}>{{ run_user }}</option>
+            {% endfor %}
+          </select>
           <select id="runs_bulk_select_action" aria-label="Bulk run selection">
             <option value="" selected>Select</option>
             <option value="all">Select All</option>
@@ -311,8 +322,8 @@
           <tbody>
           {% for r in latest_runs %}
             <tr class="run-row {% if r.status_lower == 'error' %}run-error{% elif r.status_lower == 'success' %}run-success{% elif r.status_lower == 'canceled' %}run-canceled{% endif %}"
-                data-run-id="{{ r.id }}" data-status="{{ r.status_lower }}" data-run-user="{{ user.username }}">
-              <td><input type="checkbox" class="run-checkbox" value="{{ r.id }}" data-start="{{ r.started_at }}" data-status="{{ r.status_lower }}" /></td>
+                data-run-id="{{ r.id }}" data-status="{{ r.status_lower }}" data-run-user="{{ r.username or "unknown" }}">
+              <td><input type="checkbox" class="run-checkbox" value="{{ r.id }}" data-start="{{ r.started_at }}" data-status="{{ r.status_lower }}" {% if (r.username or "") != user.username %}disabled title="You can only manage your own runs"{% endif %} /></td>
               <td>{{ r.id }}</td>
               <td>{{ r.module }}</td>
               <td>{{ r.tool_version or '—' }}</td>
@@ -322,14 +333,14 @@
               <td class="run-finished-cell">{{ r.finished_at }}</td>
               <td class="run-duration-cell">{{ r.duration_hms }}</td>
               <td class="run-output-cell">
-                {% if r.output_zip %}
+                {% if r.output_zip and (r.username or '') == user.username %}
                   <a href="/runs/{{ r.id }}/download">Download zip</a>
                 {% else %}
                   —
                 {% endif %}
               </td>
               <td class="run-log-cell">
-                {% if r.output_log_file %}
+                {% if r.output_log_file and (r.username or '') == user.username %}
                   <a href="/runs/{{ r.id }}/log">Download log</a>
                 {% else %}
                   —
@@ -351,7 +362,7 @@
         <h2>Executions Logs</h2>
         <div class="log-actions">
           <select id="log_run_selector">
-            {% for r in latest_runs %}
+            {% for r in latest_runs if (r.username or "") == user.username %}
               <option value="{{ r.id }}" {% if loop.first %}selected{% endif %}>{{ r.run_label }}</option>
             {% endfor %}
           </select>
@@ -431,10 +442,12 @@
     const toggleSystemLogPanelButton = document.getElementById("toggle_system_log_panel");
     const inputsBulkSelectAction = document.getElementById("inputs_bulk_select_action");
     const selectUserInputsCombo = document.getElementById("select_user_inputs_combo");
+    const inputsNameFilterCombo = document.getElementById("inputs_name_filter_combo");
     const sendSelectedInputsButton = document.getElementById("send_selected_inputs");
     const userUploadInputsButton = document.getElementById("user_upload_inputs");
     const userInputsUploadPicker = document.getElementById("user_inputs_upload_picker");
     const deleteSelectedInputsButton = document.getElementById("delete_selected_inputs");
+    const renameInputsButton = document.getElementById("rename_inputs");
     const olderInputDatePicker = document.getElementById("older_input_date_picker");
     const toggleInputsPanelButton = document.getElementById("toggle_inputs_panel");
     const inputsPanelTable = document.getElementById("inputs_panel_table");
@@ -465,6 +478,9 @@
     const runsTotalSizeLabel = document.getElementById("runs_total_size");
     const currentUsername = "{{ user.username }}";
     let moduleInputsMap = {{ module_inputs_map | tojson }};
+    const persistedPanelStates = {{ (settings.get("ui_panels", {}) if settings else {}) | tojson }};
+    const persistedUserSystemLogSource = {{ ((settings.get("user_system_log_source") or settings.get("system_log_source") or "app") if settings else "app") | tojson }};
+    let panelStateSaveTimeout = null;
 
     const inputFields = {
       input: document.getElementById("input_path"),
@@ -731,7 +747,7 @@
 
           applyCurrentOrDefaultSort("#inputs_panel_table table");
           populateInputScopeSelector(data.uploaders || []);
-          applyScopeFilter("#inputs_panel_table", (row) => row?.cells?.[2]?.textContent?.trim() || "", selectUserInputsCombo?.value);
+          applyInputsFilters();
           updateSelectionSizeLabels();
         })
         .catch(() => {});
@@ -760,6 +776,40 @@
         const rowUser = getRowUser(row);
         const shouldShow = mode === "__all__" || rowUser === mode;
         row.classList.toggle("hidden", !shouldShow);
+      });
+    }
+
+    function wildcardPatternToRegex(pattern) {
+      const escaped = String(pattern || "")
+        .split("*")
+        .map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+        .join(".*");
+      return new RegExp(`^${escaped}$`, "i");
+    }
+
+    function matchesInputNamePattern(inputName, rawPattern) {
+      const value = String(rawPattern || "").trim();
+      if (!value || value.toLowerCase() === "pattern filter") return true;
+      const candidate = String(inputName || "");
+      if (value.includes("*")) {
+        try {
+          return wildcardPatternToRegex(value).test(candidate);
+        } catch (_error) {
+          return true;
+        }
+      }
+      return candidate.toLowerCase().includes(value.toLowerCase());
+    }
+
+    function applyInputsFilters() {
+      const selectedUser = selectUserInputsCombo?.value || "__all__";
+      const pattern = inputsNameFilterCombo?.value || "Pattern Filter";
+      document.querySelectorAll('#inputs_panel_table tbody tr').forEach((row) => {
+        const rowUser = row?.cells?.[2]?.textContent?.trim() || "";
+        const inputName = row?.cells?.[1]?.textContent?.trim() || "";
+        const matchesUser = selectedUser === "__all__" || rowUser === selectedUser;
+        const matchesName = matchesInputNamePattern(inputName, pattern);
+        row.classList.toggle('hidden', !(matchesUser && matchesName));
       });
     }
 
@@ -813,14 +863,14 @@
     function populateInputScopeSelector(explicitUsers = []) {
       const tableUsers = Array.from(document.querySelectorAll("#inputs_panel_table tbody tr"))
         .map((row) => row.cells?.[2]?.textContent?.trim() || "");
-      const users = [...explicitUsers, ...tableUsers];
-      populateScopeCombo(selectUserInputsCombo, users, { includeAll: true, fallback: "__all__" });
+      const users = [currentUsername, ...explicitUsers, ...tableUsers];
+      populateScopeCombo(selectUserInputsCombo, users, { includeAll: true, fallback: currentUsername });
     }
 
     function populateRunScopeSelector() {
       const users = Array.from(document.querySelectorAll("#runs_panel_table tbody tr"))
         .map((row) => row.dataset.runUser || currentUsername);
-      populateScopeCombo(selectUserRunsCombo, users, { includeAll: false, fallback: currentUsername });
+      populateScopeCombo(selectUserRunsCombo, users, { includeAll: true, fallback: currentUsername });
     }
 
     function collectSelectedInputsByTarget() {
@@ -1411,13 +1461,16 @@
                 ? "run-row run-success"
                 : (item.status_lower === "canceled" ? "run-row run-canceled" : "run-row"));
 
-            const checked = selectedIds.has(item.id) ? 'checked' : '';
-            const outputCell = item.output_zip ? `<a href="/runs/${item.id}/download">Download zip</a>` : "—";
-            const logCell = item.output_log_file ? `<a href="/runs/${item.id}/log">Download log</a>` : "—";
+            const runUser = item.username || "unknown";
+            const isOwnRun = runUser === currentUsername;
+            const checked = selectedIds.has(item.id) && isOwnRun ? 'checked' : '';
+            const outputCell = item.output_zip && isOwnRun ? `<a href="/runs/${item.id}/download">Download zip</a>` : "—";
+            const logCell = item.output_log_file && isOwnRun ? `<a href="/runs/${item.id}/log">Download log</a>` : "—";
+            const disabledAttr = isOwnRun ? "" : 'disabled title="You can only manage your own runs"';
 
             return `
-              <tr class="${rowClass}" data-run-id="${item.id}" data-status="${item.status_lower}" data-run-user="${escapeHtml(currentUsername)}">
-                <td><input type="checkbox" class="run-checkbox" value="${item.id}" data-start="${item.started_at}" data-status="${item.status_lower}" ${checked} /></td>
+              <tr class="${rowClass}" data-run-id="${item.id}" data-status="${item.status_lower}" data-run-user="${escapeHtml(runUser)}">
+                <td><input type="checkbox" class="run-checkbox" value="${item.id}" data-start="${item.started_at}" data-status="${item.status_lower}" ${checked} ${disabledAttr} /></td>
                 <td>${escapeHtml(item.id)}</td>
                 <td>${escapeHtml(item.module)}</td>
                 <td>${escapeHtml(item.tool_version || "—")}</td>
@@ -1434,9 +1487,13 @@
 
           if (logRunSelector && opts.updateExecutionLogPanel) {
             const nextRunId = pickExecutionLogRunId(data.items, logRunSelector.value);
-            logRunSelector.innerHTML = data.items.map((item) => `<option value="${item.id}">${escapeHtml(item.run_label)}</option>`).join("");
-            if (nextRunId) logRunSelector.value = nextRunId;
-            fetchLogByRun();
+            logRunSelector.innerHTML = data.items.filter((item) => (item.username || "") === currentUsername).map((item) => `<option value="${item.id}">${escapeHtml(item.run_label)}</option>`).join("");
+            if (nextRunId && logRunSelector.options.length > 0) {
+              logRunSelector.value = nextRunId;
+              fetchLogByRun();
+            } else {
+              logOutput.textContent = "No logs yet.";
+            }
           }
 
           const hasRunning = data.items.some((item) => item.status_lower === "running" || item.status_lower === "canceling");
@@ -1487,6 +1544,14 @@
         .catch(() => renderSystemLog(""));
     }
 
+    function persistUserSystemLogSource(source) {
+      fetch("/settings/update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_system_log_source: source || "app" })
+      }).catch(() => {});
+    }
+
     function collectFormValues() {
       const form = document.querySelector(".module-form");
       const data = new FormData(form);
@@ -1495,7 +1560,36 @@
       ["profiles_audit", "frequency_audit", "export_correction_cmd", "fast_excel_export"].forEach((key) => {
         payload[key] = form.querySelector(`input[name="${key}"]`).checked;
       });
+      payload.ui_panels = { ...(persistedPanelStates || {}) };
+      payload.user_system_log_source = systemLogSource?.value || "app";
       return payload;
+    }
+
+    function savePanelStatesOnly() {
+      if (panelStateSaveTimeout) clearTimeout(panelStateSaveTimeout);
+      panelStateSaveTimeout = setTimeout(() => {
+        fetch("/settings/update", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ui_panels: { ...(persistedPanelStates || {}) } })
+        }).catch(() => {});
+      }, 200);
+    }
+
+    function setPanelCollapsedState(key, panel, button) {
+      if (!panel || !button) return;
+      const collapsed = Boolean(persistedPanelStates?.[key]);
+      panel.classList.toggle("hidden", collapsed);
+      button.textContent = collapsed ? "▸" : "▾";
+    }
+
+    function togglePanelCollapsedState(key, panel, button) {
+      if (!panel || !button) return;
+      panel.classList.toggle("hidden");
+      const collapsed = panel.classList.contains("hidden");
+      button.textContent = collapsed ? "▸" : "▾";
+      persistedPanelStates[key] = collapsed;
+      savePanelStatesOnly();
     }
 
     let saveTimeout = null;
@@ -1584,6 +1678,8 @@
     });
     systemLogSource?.addEventListener("change", () => {
       fetchSystemLog();
+      persistUserSystemLogSource(systemLogSource?.value || "app");
+      scheduleBackgroundRefresh();
     });
 
     function getTargetFiltersInput() {
@@ -1748,13 +1844,97 @@
 
     let uploadSessionId = buildSessionId();
 
+    let userInputRenameMode = false;
+
+    function isOwnInputRow(row) {
+      const owner = row?.cells?.[2]?.textContent?.trim() || "";
+      return owner === currentUsername;
+    }
+
+    function enterUserInputRenameMode() {
+      document.querySelectorAll('#inputs_panel_table tbody tr').forEach((row) => {
+        const nameCell = row?.cells?.[1];
+        if (!nameCell || row.cells.length < 6) return;
+        const currentName = (nameCell.textContent || "").trim();
+        row.dataset.originalInputName = currentName;
+        const isOwn = isOwnInputRow(row);
+        nameCell.innerHTML = `<input type="text" class="input-name-editor" value="${escapeHtml(currentName)}" ${isOwn ? "" : "disabled title='Only your inputs can be renamed'"} />`;
+      });
+      userInputRenameMode = true;
+      if (renameInputsButton) renameInputsButton.textContent = "Save Rename";
+    }
+
+    function exitUserInputRenameMode() {
+      document.querySelectorAll('#inputs_panel_table tbody tr').forEach((row) => {
+        const nameCell = row?.cells?.[1];
+        if (!nameCell || row.cells.length < 6) return;
+        const editor = nameCell.querySelector('.input-name-editor');
+        const fallback = row.dataset.originalInputName || "";
+        const value = editor ? String(editor.value || fallback).trim() : fallback;
+        nameCell.textContent = value || fallback;
+      });
+      userInputRenameMode = false;
+      if (renameInputsButton) renameInputsButton.textContent = "Rename";
+    }
+
+    async function saveUserInputRenames() {
+      const items = [];
+      document.querySelectorAll('#inputs_panel_table tbody tr').forEach((row) => {
+        if (row.classList.contains('hidden')) return;
+        const idValue = row.querySelector('.input-checkbox')?.value;
+        const nameCell = row?.cells?.[1];
+        const editor = nameCell?.querySelector('.input-name-editor');
+        if (!idValue || !editor || editor.disabled) return;
+        const originalName = (row.dataset.originalInputName || "").trim();
+        const newName = String(editor.value || "").trim();
+        if (!newName || newName === originalName) return;
+        items.push({ id: Number(idValue), new_name: newName });
+      });
+
+      if (!items.length) {
+        exitUserInputRenameMode();
+        return;
+      }
+
+      const response = await fetch('/inputs/rename', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ items })
+      });
+      const data = await response.json().catch(() => ({ ok: false }));
+      if (!data.ok) {
+        await showModal({ title: 'Rename inputs', message: data.message || 'Some inputs could not be renamed.', confirmText: 'Accept' });
+      }
+      await refreshInputsRepository();
+      exitUserInputRenameMode();
+      applyInputsFilters();
+      updateSelectionSizeLabels();
+    }
+
     function getSelectedInputIds() {
       return Array.from(document.querySelectorAll(".input-checkbox:checked")).map((box) => Number(box.value));
     }
 
     selectUserInputsCombo?.addEventListener("change", () => {
-      applyScopeFilter("#inputs_panel_table", (row) => row?.cells?.[2]?.textContent?.trim() || "", selectUserInputsCombo.value);
+      applyInputsFilters();
       updateSelectionSizeLabels();
+    });
+
+    inputsNameFilterCombo?.addEventListener("input", () => {
+      applyInputsFilters();
+      updateSelectionSizeLabels();
+    });
+    inputsNameFilterCombo?.addEventListener("change", () => {
+      applyInputsFilters();
+      updateSelectionSizeLabels();
+    });
+
+    renameInputsButton?.addEventListener("click", async () => {
+      if (!userInputRenameMode) {
+        enterUserInputRenameMode();
+        return;
+      }
+      await saveUserInputRenames();
     });
 
     inputsBulkSelectAction?.addEventListener("change", () => {
@@ -1840,29 +2020,30 @@
         });
     });
 
+    setPanelCollapsedState("user_module", moduleForm, toggleModulePanelButton);
+    setPanelCollapsedState("user_runs", runsPanelTable, toggleRunsPanelButton);
+    setPanelCollapsedState("user_execution_log", logOutput, toggleExecutionLogPanelButton);
+    setPanelCollapsedState("user_system_log", systemLogOutput, toggleSystemLogPanelButton);
+    setPanelCollapsedState("user_inputs", inputsPanelTable, toggleInputsPanelButton);
+
     toggleModulePanelButton?.addEventListener("click", () => {
-      moduleForm?.classList.toggle("hidden");
-      toggleModulePanelButton.textContent = moduleForm?.classList.contains("hidden") ? "▸" : "▾";
+      togglePanelCollapsedState("user_module", moduleForm, toggleModulePanelButton);
     });
 
     toggleRunsPanelButton?.addEventListener("click", () => {
-      runsPanelTable?.classList.toggle("hidden");
-      toggleRunsPanelButton.textContent = runsPanelTable?.classList.contains("hidden") ? "▸" : "▾";
+      togglePanelCollapsedState("user_runs", runsPanelTable, toggleRunsPanelButton);
     });
 
     toggleExecutionLogPanelButton?.addEventListener("click", () => {
-      logOutput?.classList.toggle("hidden");
-      toggleExecutionLogPanelButton.textContent = logOutput?.classList.contains("hidden") ? "▸" : "▾";
+      togglePanelCollapsedState("user_execution_log", logOutput, toggleExecutionLogPanelButton);
     });
 
     toggleSystemLogPanelButton?.addEventListener("click", () => {
-      systemLogOutput?.classList.toggle("hidden");
-      toggleSystemLogPanelButton.textContent = systemLogOutput?.classList.contains("hidden") ? "▸" : "▾";
+      togglePanelCollapsedState("user_system_log", systemLogOutput, toggleSystemLogPanelButton);
     });
 
     toggleInputsPanelButton?.addEventListener("click", () => {
-      inputsPanelTable?.classList.toggle("hidden");
-      toggleInputsPanelButton.textContent = inputsPanelTable?.classList.contains("hidden") ? "▸" : "▾";
+      togglePanelCollapsedState("user_inputs", inputsPanelTable, toggleInputsPanelButton);
     });
 
     moduleSelect.addEventListener("change", () => {
@@ -2036,6 +2217,11 @@
       if (target && (target.classList?.contains("input-checkbox") || target.classList?.contains("run-checkbox"))) updateSelectionSizeLabels();
     });
 
+    if (systemLogSource) {
+      const hasPersistedOption = Array.from(systemLogSource.options || []).some((opt) => opt.value === persistedUserSystemLogSource);
+      systemLogSource.value = hasPersistedOption ? persistedUserSystemLogSource : "app";
+    }
+
     fetchLogByRun();
     fetchSystemLog();
     scheduleSystemLogRefresh();
@@ -2049,7 +2235,7 @@
     if (inputsTotalSizeLabel) inputsTotalSizeLabel.dataset.totalSize = "{{ inputs_total_size }}";
     if (runsTotalSizeLabel) runsTotalSizeLabel.dataset.totalSize = "{{ total_runs_size }}";
 
-    applyScopeFilter("#inputs_panel_table", (row) => row?.cells?.[2]?.textContent?.trim() || "", selectUserInputsCombo?.value);
+    applyInputsFilters();
     applyScopeFilter("#runs_panel_table", (row) => row?.dataset?.runUser || currentUsername, selectUserRunsCombo?.value);
     updateSelectionSizeLabels();
 

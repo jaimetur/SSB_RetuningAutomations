@@ -98,17 +98,43 @@ pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 def setup_logging() -> logging.Logger:
     logger = logging.getLogger("web_interface")
     logger.setLevel(logging.INFO)
-    if not logger.handlers:
-        # Persist application logs across restarts.
+
+    # Persist application logs across restarts and avoid duplicated handlers.
+    app_handler = next(
+        (
+            handler
+            for handler in logger.handlers
+            if isinstance(handler, RotatingFileHandler)
+            and getattr(handler, "baseFilename", "") == str(APP_LOG_PATH)
+        ),
+        None,
+    )
+    if app_handler is None:
         app_handler = RotatingFileHandler(APP_LOG_PATH, maxBytes=2_000_000, backupCount=3)
         app_handler.setFormatter(logging.Formatter("[%(asctime)s] - [%(levelname)s] - %(message)s", datefmt=LOG_DATETIME_FORMAT))
         logger.addHandler(app_handler)
 
-        for name in ("uvicorn", "uvicorn.error"):
-            uv_logger = logging.getLogger(name)
-            uv_logger.setLevel(logging.INFO)
-            if all(handler is not app_handler for handler in uv_logger.handlers):
-                uv_logger.addHandler(app_handler)
+    # Uvicorn emits most lifecycle errors through `uvicorn.error`.
+    # Attach our file handler once there and disable propagation to avoid duplicates.
+    uv_error_logger = logging.getLogger("uvicorn.error")
+    uv_error_logger.setLevel(logging.INFO)
+    if all(handler is not app_handler for handler in uv_error_logger.handlers):
+        uv_error_logger.addHandler(app_handler)
+    uv_error_logger.propagate = False
+
+    # Ensure parent uvicorn logger does not also write the same events to the same file.
+    uv_logger = logging.getLogger("uvicorn")
+    uv_logger.setLevel(logging.INFO)
+    uv_logger.propagate = False
+    uv_logger.handlers = [
+        handler
+        for handler in uv_logger.handlers
+        if not (
+            isinstance(handler, RotatingFileHandler)
+            and getattr(handler, "baseFilename", "") == str(APP_LOG_PATH)
+        )
+    ]
+
     return logger
 
 
@@ -159,6 +185,8 @@ OUTPUTS_DIR.mkdir(parents=True, exist_ok=True)
 MAX_CPU_DEFAULT = 80
 MAX_MEMORY_DEFAULT = 80
 MAX_PARALLEL_DEFAULT = 1
+SQLITE_BUSY_TIMEOUT_MS = 30000
+SQLITE_CONNECT_TIMEOUT_S = 30
 
 queue_event = threading.Event()
 worker_started = False
@@ -170,9 +198,35 @@ canceled_task_ids_lock = threading.Lock()
 
 
 def get_conn() -> sqlite3.Connection:
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, timeout=SQLITE_CONNECT_TIMEOUT_S)
     conn.row_factory = sqlite3.Row
+    conn.execute(f"PRAGMA busy_timeout = {SQLITE_BUSY_TIMEOUT_MS}")
+    conn.execute("PRAGMA journal_mode = WAL")
+    conn.execute("PRAGMA synchronous = NORMAL")
+    conn.execute("PRAGMA foreign_keys = ON")
     return conn
+
+
+def recover_incomplete_tasks() -> None:
+    """Re-queue tasks left in non-terminal states after an unexpected restart."""
+    conn = get_conn()
+    pending_count = conn.execute(
+        "SELECT COUNT(*) AS total FROM task_runs WHERE status IN ('running', 'canceling')"
+    ).fetchone()["total"]
+    if pending_count:
+        conn.execute(
+            """
+            UPDATE task_runs
+            SET status = 'queued',
+                finished_at = NULL,
+                duration_seconds = NULL,
+                output_log = TRIM(COALESCE(output_log, '') || '\nRecovered after service restart. Task re-queued automatically.')
+            WHERE status IN ('running', 'canceling')
+            """
+        )
+        conn.commit()
+        logger.warning("Recovered %s interrupted task(s) after startup and moved them back to queue.", pending_count)
+    conn.close()
 
 
 def load_tool_metadata() -> dict[str, str]:
@@ -1392,7 +1446,21 @@ async def access_log_middleware(request: Request, call_next):
 @app.on_event("startup")
 def startup() -> None:
     init_db()
+    recover_incomplete_tasks()
     ensure_worker_started()
+    queue_event.set()
+
+
+@app.get("/healthz", tags=["System"])
+def healthz():
+    try:
+        conn = get_conn()
+        conn.execute("SELECT 1").fetchone()
+        conn.close()
+        return {"status": "ok"}
+    except sqlite3.Error as exc:
+        logger.exception("Health check failed: %s", exc)
+        return JSONResponse(status_code=503, content={"status": "error", "detail": str(exc)})
 
 
 def serialize_run_row(row: dict[str, Any], run_sizes: dict[int, int]) -> dict[str, Any]:
@@ -1442,20 +1510,15 @@ def index(request: Request):
     conn = get_conn()
     latest_runs = conn.execute(
         """
-        SELECT id, module, tool_version, input_name, status, started_at, finished_at, duration_seconds, output_zip, output_log_file
-        FROM task_runs
-        WHERE user_id = ?
-        ORDER BY id DESC
-
-        """,
-        (user["id"],),
+        SELECT tr.id, tr.user_id, u.username, tr.module, tr.tool_version, tr.input_name, tr.status, tr.started_at, tr.finished_at, tr.duration_seconds, tr.output_zip, tr.output_log_file
+        FROM task_runs tr
+        JOIN users u ON u.id = tr.user_id
+        ORDER BY tr.id DESC
+        """
     ).fetchall()
     latest_runs = [dict(row) for row in latest_runs]
 
-    all_runs = conn.execute(
-        "SELECT id, status, input_dir, output_dir, output_zip FROM task_runs WHERE user_id = ?",
-        (user["id"],),
-    ).fetchall()
+    all_runs = conn.execute("SELECT id, status, input_dir, output_dir, output_zip FROM task_runs").fetchall()
     conn.close()
 
     run_sizes, total_bytes = compute_runs_size(all_runs)
@@ -1482,6 +1545,7 @@ def index(request: Request):
             "input_items": input_items,
             "input_uploaders": input_uploaders,
             "inputs_total_size": inputs_total_size,
+            "runs_users": sorted({user["username"], *{str(row.get("username") or "") for row in latest_runs if row.get("username")}}),
         },
     )
 
@@ -2110,6 +2174,124 @@ async def admin_delete_inputs(request: Request):
     return {"ok": True}
 
 
+
+
+def rename_inputs_common(user_id: int | None, rename_items: list[dict[str, Any]]) -> dict[str, Any]:
+    valid_items: list[tuple[int, str]] = []
+    for item in rename_items:
+        raw_id = item.get("id") if isinstance(item, dict) else None
+        raw_name = item.get("new_name") if isinstance(item, dict) else None
+        if raw_id is None or raw_name is None:
+            continue
+        if not str(raw_id).isdigit():
+            continue
+        sanitized_name = sanitize_component(str(raw_name))
+        if not sanitized_name:
+            continue
+        valid_items.append((int(raw_id), sanitized_name))
+
+    if not valid_items:
+        return {"ok": False, "error": "no_valid_items"}
+
+    requested_by_id: dict[int, str] = {item_id: new_name for item_id, new_name in valid_items}
+    ids = list(requested_by_id.keys())
+
+    conn = get_conn()
+    rows = conn.execute(
+        "SELECT id, user_id, input_name, input_path FROM inputs_repository WHERE id IN (%s)" % ",".join("?" for _ in ids),
+        tuple(ids),
+    ).fetchall()
+
+    denied_count = 0
+    renamed_count = 0
+    conflict_names: list[str] = []
+
+    for row in rows:
+        if user_id is not None and int(row["user_id"]) != int(user_id):
+            denied_count += 1
+            continue
+
+        input_id = int(row["id"])
+        old_name = str(row["input_name"] or "")
+        new_name = requested_by_id.get(input_id, old_name)
+        if not new_name or new_name == old_name:
+            continue
+
+        source_path = Path(row["input_path"] or "")
+        target_path = INPUTS_REPOSITORY_DIR / new_name
+
+        if target_path.exists():
+            same_target = False
+            try:
+                same_target = source_path.exists() and source_path.resolve() == target_path.resolve()
+            except OSError:
+                same_target = str(source_path) == str(target_path)
+            if not same_target:
+                conflict_names.append(new_name)
+                continue
+
+        if source_path.exists() and is_safe_path(INPUTS_REPOSITORY_DIR, source_path):
+            try:
+                source_path.rename(target_path)
+            except OSError:
+                try:
+                    shutil.move(str(source_path), str(target_path))
+                except OSError:
+                    conflict_names.append(new_name)
+                    continue
+
+        conn.execute(
+            "UPDATE inputs_repository SET input_name = ?, input_path = ? WHERE id = ?",
+            (new_name, str(target_path), input_id),
+        )
+        renamed_count += 1
+
+    conn.commit()
+    conn.close()
+
+    if denied_count:
+        return {
+            "ok": False,
+            "error": "forbidden_inputs",
+            "message": "Only inputs uploaded by your own user can be renamed from this panel.",
+            "renamed": renamed_count,
+            "conflicts": conflict_names,
+        }
+    if conflict_names:
+        return {
+            "ok": False,
+            "error": "name_conflict",
+            "message": "Some input names already exist and could not be renamed.",
+            "renamed": renamed_count,
+            "conflicts": conflict_names,
+        }
+    return {"ok": True, "renamed": renamed_count}
+
+
+@app.post("/inputs/rename", tags=["Inputs"])
+async def rename_inputs(request: Request):
+    try:
+        user = require_user(request)
+    except PermissionError:
+        return {"ok": False}
+
+    payload = await request.json()
+    items = payload.get("items", []) if isinstance(payload, dict) else []
+    return rename_inputs_common(int(user["id"]), items)
+
+
+@app.post("/admin/inputs/rename", tags=["Administration"])
+async def admin_rename_inputs(request: Request):
+    try:
+        require_admin(request)
+    except PermissionError:
+        return {"ok": False}
+
+    payload = await request.json()
+    items = payload.get("items", []) if isinstance(payload, dict) else []
+    return rename_inputs_common(None, items)
+
+
 @app.get("/logs/latest", tags=["Runs & Logs"])
 def latest_logs(request: Request):
     try:
@@ -2255,15 +2437,14 @@ def runs_list(request: Request):
     conn = get_conn()
     latest_runs = conn.execute(
         """
-        SELECT id, module, tool_version, input_name, status, started_at, finished_at, duration_seconds, output_zip, output_log_file
-        FROM task_runs
-        WHERE user_id = ?
-        ORDER BY id DESC
-        """,
-        (user["id"],),
+        SELECT tr.id, tr.user_id, u.username, tr.module, tr.tool_version, tr.input_name, tr.status, tr.started_at, tr.finished_at, tr.duration_seconds, tr.output_zip, tr.output_log_file
+        FROM task_runs tr
+        JOIN users u ON u.id = tr.user_id
+        ORDER BY tr.id DESC
+        """
     ).fetchall()
     latest_runs = [dict(row) for row in latest_runs]
-    all_runs = conn.execute("SELECT id, status, input_dir, output_dir, output_zip FROM task_runs WHERE user_id = ?", (user["id"],)).fetchall()
+    all_runs = conn.execute("SELECT id, status, input_dir, output_dir, output_zip FROM task_runs").fetchall()
     conn.close()
 
     run_sizes, _ = compute_runs_size(all_runs)
@@ -2778,6 +2959,7 @@ def admin_panel(request: Request):
         (SESSION_IDLE_TIMEOUT_SECONDS, SESSION_IDLE_TIMEOUT_SECONDS),
     ).fetchall()
     users = [dict(row) for row in users]
+    now_dt = datetime.now().astimezone()
     for row in users:
         dirs = get_user_storage_dirs(row["username"])
         uploads_size = compute_dir_size(dirs["uploads"])
@@ -2785,6 +2967,20 @@ def admin_panel(request: Request):
         row["storage_size"] = format_mb(uploads_size + outputs_size)
         row["total_login_hms"] = format_seconds_hms(row.get("total_login_seconds"))
         row["total_execution_hms"] = format_seconds_hms(row.get("total_execution_seconds"))
+
+        active_sessions = conn.execute(
+            "SELECT active, last_seen_at FROM sessions WHERE user_id = ? AND active = 1",
+            (row["id"],),
+        ).fetchall()
+        connected = False
+        for session_row in active_sessions:
+            last_seen = parse_iso_datetime(session_row["last_seen_at"])
+            if not last_seen:
+                continue
+            if (now_dt - last_seen).total_seconds() <= SESSION_IDLE_TIMEOUT_SECONDS:
+                connected = True
+                break
+        row["connected"] = connected
     recent_runs = conn.execute(
         """
         SELECT tr.id, u.username, tr.module, tr.tool_version, tr.input_name, tr.status, tr.started_at, tr.finished_at, tr.duration_seconds, tr.output_zip, tr.output_log_file, tr.input_dir, tr.output_dir
@@ -2796,6 +2992,7 @@ def admin_panel(request: Request):
     conn.close()
 
     tool_meta = load_tool_metadata()
+    admin_user_settings = load_user_settings(admin["id"])
     run_sizes, total_bytes = compute_runs_size(recent_runs)
     recent_runs = [dict(row) for row in recent_runs]
     for row in recent_runs:
@@ -2820,6 +3017,7 @@ def admin_panel(request: Request):
             "input_items": list_inputs_repository(),
             "inputs_total_size": get_inputs_repository_total_size(),
             "admin_settings": get_admin_settings(),
+            "user_settings": admin_user_settings,
             "tool_meta": tool_meta,
             "editable_tables": editable_tables,
         },
@@ -3181,7 +3379,6 @@ async def release_notes(request: Request, user=Depends(get_current_user)):
     changelog_md = changelog_path.read_text(encoding="utf-8", errors="replace") if changelog_path.exists() else "CHANGELOG.md not found at /app/CHANGELOG.md"
     tool_meta = load_tool_metadata()
     return templates.TemplateResponse("release_notes.html", {"request": request, "tool_meta": tool_meta, "user": user, "changelog_md": changelog_md})
-
 
 
 
