@@ -1757,33 +1757,11 @@ def download_user_guide(request: Request, file_format: str, mode: str = "downloa
         return HTMLResponse(html_doc)
 
     if normalized_mode == "view" and normalized_format == "pdf":
-        tool_meta = load_tool_metadata()
-        guide_version = tool_meta.get("version", "unknown")
-        if guide_version == "unknown":
-            filename_match = re.search(r"-v([\d.]+)\.pdf$", guide_path.name)
-            if filename_match:
-                guide_version = filename_match.group(1)
-        guide_title = f"Technical User Guide (PDF) — SSB Retuning Automations {guide_version}"
-        pdf_viewer_html = f"""
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>{guide_title}</title>
-  <link rel="icon" type="image/png" href="/static/logo_02.png" />
-  <link rel="shortcut icon" type="image/png" href="/static/logo_02.png" />
-  <style>
-    html, body {{ margin: 0; height: 100%; background: #0f172a; }}
-    iframe {{ border: 0; width: 100%; height: 100%; }}
-  </style>
-</head>
-<body>
-  <iframe src="/documentation/user-guide/pdf" title="{guide_title}"></iframe>
-</body>
-</html>
-"""
-        return HTMLResponse(pdf_viewer_html)
+        return FileResponse(
+            guide_path,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f'inline; filename="{guide_path.name}"'},
+        )
 
     return FileResponse(guide_path, filename=guide_path.name)
 
