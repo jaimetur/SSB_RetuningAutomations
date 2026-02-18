@@ -24,6 +24,8 @@
 
 - #### 🐛 Bug fixes:
   - Fixed duplicated System/Application log lines by de-duplicating uvicorn logger handler wiring and propagation. 
+  - Fixed connected users status consistency and add live connected counter.
+  - Fixed rendered guide heading version and PDF web favicon.
 
 - #### 📚 Documentation:
   - Updated Documentation to allign with the latest changes.
