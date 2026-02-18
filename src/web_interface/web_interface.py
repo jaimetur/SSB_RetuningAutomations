@@ -2790,17 +2790,20 @@ def resolve_run_output_dir_path(conn: sqlite3.Connection, user_id: int, username
 @app.get("/runs/{run_id}/download", tags=["Runs & Logs"])
 def download_run_output(request: Request, run_id: int):
     try:
-        user = require_user(request)
+        require_user(request)
     except PermissionError:
         return PlainTextResponse("", status_code=403)
 
     conn = get_conn()
-    row = conn.execute("SELECT module, tool_version, output_zip, output_dir, finished_at FROM task_runs WHERE id = ? AND user_id = ?", (run_id, user["id"])).fetchone()
+    row = conn.execute(
+        "SELECT tr.user_id, u.username, tr.module, tr.tool_version, tr.output_zip, tr.output_dir, tr.finished_at FROM task_runs tr JOIN users u ON u.id = tr.user_id WHERE tr.id = ?",
+        (run_id,),
+    ).fetchone()
     if not row:
         conn.close()
         return PlainTextResponse("", status_code=404)
 
-    output_zip = resolve_run_zip_path(conn, user["id"], user["username"], run_id, row["output_zip"], row["output_dir"], row["module"], row["tool_version"], row["finished_at"])
+    output_zip = resolve_run_zip_path(conn, int(row["user_id"]), row["username"], run_id, row["output_zip"], row["output_dir"], row["module"], row["tool_version"], row["finished_at"])
     conn.close()
 
     if not output_zip or not output_zip.exists():
@@ -2834,22 +2837,23 @@ def admin_download_run_output(request: Request, run_id: int):
 @app.get("/runs/{run_id}/log", tags=["Runs & Logs"])
 def download_run_log(request: Request, run_id: int):
     try:
-        user = require_user(request)
+        require_user(request)
     except PermissionError:
         return PlainTextResponse("", status_code=403)
 
     conn = get_conn()
     row = conn.execute(
-        "SELECT output_log_file FROM task_runs WHERE id = ? AND user_id = ?",
-        (run_id, user["id"]),
+        "SELECT tr.user_id, u.username, tr.module, tr.tool_version, tr.output_log_file, tr.output_dir, tr.finished_at FROM task_runs tr JOIN users u ON u.id = tr.user_id WHERE tr.id = ?",
+        (run_id,),
     ).fetchone()
-    conn.close()
-
-    if not row or not row["output_log_file"]:
+    if not row:
+        conn.close()
         return PlainTextResponse("", status_code=404)
 
-    log_path = Path(row["output_log_file"])
-    if not log_path.exists():
+    log_path = resolve_run_log_path(conn, int(row["user_id"]), row["username"], run_id, row["output_log_file"], row["output_dir"], row["module"], row["tool_version"], row["finished_at"])
+    conn.close()
+
+    if not log_path or not log_path.exists():
         return PlainTextResponse("", status_code=404)
 
     return FileResponse(log_path, filename=log_path.name)
@@ -2891,6 +2895,23 @@ async def delete_runs(request: Request):
         return {"ok": False}
 
     conn = get_conn()
+    selected_rows = conn.execute(
+        "SELECT id, user_id FROM task_runs WHERE id IN (%s)" % ",".join("?" for _ in run_ids),
+        tuple(run_ids),
+    ).fetchall()
+    foreign_run_ids = [int(row["id"]) for row in selected_rows if int(row["user_id"]) != int(user["id"])]
+    if foreign_run_ids:
+        conn.close()
+        return JSONResponse(
+            {
+                "ok": False,
+                "error": "Solo puedes borrar ejecuciones que hayan sido lanzadas por tu usuario.",
+                "forbidden_ids": foreign_run_ids,
+            },
+            status_code=403,
+            headers=NO_CACHE_HEADERS,
+        )
+
     rows = conn.execute(
         "SELECT id, status, module, tool_version, finished_at, output_dir, output_zip, output_log_file, payload_json FROM task_runs WHERE user_id = ? AND id IN (%s)" % ",".join("?" for _ in run_ids),
         (user["id"], *run_ids),
