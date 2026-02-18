@@ -137,6 +137,7 @@
             <option value="older">Select Older</option>
           </select>
           <button type="button" id="admin_upload_inputs" class="btn btn-primary">Upload</button>
+          <button type="button" id="rename_inputs" class="btn btn-secondary">Rename</button>
           <button type="button" id="delete_selected_inputs" class="btn btn-danger danger-anchor">Delete Selected</button>
           <button type="button" id="toggle_inputs_panel" class="panel-toggle" aria-label="Collapse inputs panel" title="Collapse/Expand">▾</button>
         </div>
@@ -402,6 +403,7 @@
     const adminUploadInputsButton = document.getElementById("admin_upload_inputs");
     const adminInputsUploadPicker = document.getElementById("admin_inputs_upload_picker");
     const deleteSelectedInputsButton = document.getElementById("delete_selected_inputs");
+    const renameInputsButton = document.getElementById("rename_inputs");
     const olderInputDatePicker = document.getElementById("older_input_date_picker");
     const toggleInputsPanelButton = document.getElementById("toggle_inputs_panel");
     const inputsPanelTable = document.getElementById("inputs_panel_table");
@@ -854,12 +856,80 @@
       });
     });
 
+    let adminInputRenameMode = false;
+
+    function enterAdminInputRenameMode() {
+      document.querySelectorAll('#inputs_panel_table tbody tr').forEach((row) => {
+        const nameCell = row?.cells?.[1];
+        if (!nameCell || row.cells.length < 5) return;
+        const currentName = (nameCell.textContent || "").trim();
+        row.dataset.originalInputName = currentName;
+        nameCell.innerHTML = `<input type="text" class="input-name-editor" value="${escapeHtml(currentName)}" />`;
+      });
+      adminInputRenameMode = true;
+      if (renameInputsButton) renameInputsButton.textContent = "Save Rename";
+    }
+
+    function exitAdminInputRenameMode() {
+      document.querySelectorAll('#inputs_panel_table tbody tr').forEach((row) => {
+        const nameCell = row?.cells?.[1];
+        if (!nameCell || row.cells.length < 5) return;
+        const editor = nameCell.querySelector('.input-name-editor');
+        const fallback = row.dataset.originalInputName || "";
+        const value = editor ? String(editor.value || fallback).trim() : fallback;
+        nameCell.textContent = value || fallback;
+      });
+      adminInputRenameMode = false;
+      if (renameInputsButton) renameInputsButton.textContent = "Rename";
+    }
+
+    async function saveAdminInputRenames() {
+      const items = [];
+      document.querySelectorAll('#inputs_panel_table tbody tr').forEach((row) => {
+        if (row.classList.contains('hidden')) return;
+        const idValue = row.querySelector('.input-checkbox')?.value;
+        const nameCell = row?.cells?.[1];
+        const editor = nameCell?.querySelector('.input-name-editor');
+        if (!idValue || !editor) return;
+        const originalName = (row.dataset.originalInputName || "").trim();
+        const newName = String(editor.value || "").trim();
+        if (!newName || newName === originalName) return;
+        items.push({ id: Number(idValue), new_name: newName });
+      });
+
+      if (!items.length) {
+        exitAdminInputRenameMode();
+        return;
+      }
+
+      const response = await fetch('/admin/inputs/rename', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ items })
+      });
+      const data = await response.json().catch(() => ({ ok: false }));
+      if (!data.ok) {
+        await showModal({ title: 'Rename inputs', message: data.message || 'Some inputs could not be renamed.', confirmText: 'Accept' });
+      }
+      await refreshInputsRepository();
+      exitAdminInputRenameMode();
+      applyAdminInputsFilters();
+      updateSelectionSizeLabels();
+    }
+
     function getSelectedInputIds() {
       return Array.from(document.querySelectorAll(".input-checkbox:checked")).map((box) => Number(box.value));
     }
     selectUserInputsCombo?.addEventListener("change", () => { applyAdminInputsFilters(); updateSelectionSizeLabels(); });
     adminInputsNameFilterCombo?.addEventListener("input", () => { applyAdminInputsFilters(); updateSelectionSizeLabels(); });
     adminInputsNameFilterCombo?.addEventListener("change", () => { applyAdminInputsFilters(); updateSelectionSizeLabels(); });
+    renameInputsButton?.addEventListener("click", async () => {
+      if (!adminInputRenameMode) {
+        enterAdminInputRenameMode();
+        return;
+      }
+      await saveAdminInputRenames();
+    });
     inputsBulkSelectAction?.addEventListener("change", () => {
       const action = inputsBulkSelectAction.value;
       if (action === "all") {

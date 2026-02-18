@@ -158,3 +158,8 @@ th,td{border-bottom:1px solid #e3e8ee;padding:.55rem;text-align:left;font-size:.
 .combo-filter {
   min-width: 180px;
 }
+
+.input-name-editor {
+  width: 100%;
+  min-width: 140px;
+}

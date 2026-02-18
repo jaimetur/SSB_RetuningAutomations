@@ -227,6 +227,7 @@
           </select>
           <button type="button" id="send_selected_inputs" class="btn btn-success">Send to Input</button>
           <button type="button" id="user_upload_inputs" class="btn btn-primary">Upload</button>
+          <button type="button" id="rename_inputs" class="btn btn-secondary">Rename</button>
           <button type="button" id="delete_selected_inputs" class="btn btn-danger danger-anchor">Delete Selected</button>
           <button type="button" id="toggle_inputs_panel" class="panel-toggle" aria-label="Collapse inputs panel" title="Collapse/Expand">▾</button>
         </div>
@@ -446,6 +447,7 @@
     const userUploadInputsButton = document.getElementById("user_upload_inputs");
     const userInputsUploadPicker = document.getElementById("user_inputs_upload_picker");
     const deleteSelectedInputsButton = document.getElementById("delete_selected_inputs");
+    const renameInputsButton = document.getElementById("rename_inputs");
     const olderInputDatePicker = document.getElementById("older_input_date_picker");
     const toggleInputsPanelButton = document.getElementById("toggle_inputs_panel");
     const inputsPanelTable = document.getElementById("inputs_panel_table");
@@ -1830,6 +1832,73 @@
 
     let uploadSessionId = buildSessionId();
 
+    let userInputRenameMode = false;
+
+    function isOwnInputRow(row) {
+      const owner = row?.cells?.[2]?.textContent?.trim() || "";
+      return owner === currentUsername;
+    }
+
+    function enterUserInputRenameMode() {
+      document.querySelectorAll('#inputs_panel_table tbody tr').forEach((row) => {
+        const nameCell = row?.cells?.[1];
+        if (!nameCell || row.cells.length < 6) return;
+        const currentName = (nameCell.textContent || "").trim();
+        row.dataset.originalInputName = currentName;
+        const isOwn = isOwnInputRow(row);
+        nameCell.innerHTML = `<input type="text" class="input-name-editor" value="${escapeHtml(currentName)}" ${isOwn ? "" : "disabled title='Only your inputs can be renamed'"} />`;
+      });
+      userInputRenameMode = true;
+      if (renameInputsButton) renameInputsButton.textContent = "Save Rename";
+    }
+
+    function exitUserInputRenameMode() {
+      document.querySelectorAll('#inputs_panel_table tbody tr').forEach((row) => {
+        const nameCell = row?.cells?.[1];
+        if (!nameCell || row.cells.length < 6) return;
+        const editor = nameCell.querySelector('.input-name-editor');
+        const fallback = row.dataset.originalInputName || "";
+        const value = editor ? String(editor.value || fallback).trim() : fallback;
+        nameCell.textContent = value || fallback;
+      });
+      userInputRenameMode = false;
+      if (renameInputsButton) renameInputsButton.textContent = "Rename";
+    }
+
+    async function saveUserInputRenames() {
+      const items = [];
+      document.querySelectorAll('#inputs_panel_table tbody tr').forEach((row) => {
+        if (row.classList.contains('hidden')) return;
+        const idValue = row.querySelector('.input-checkbox')?.value;
+        const nameCell = row?.cells?.[1];
+        const editor = nameCell?.querySelector('.input-name-editor');
+        if (!idValue || !editor || editor.disabled) return;
+        const originalName = (row.dataset.originalInputName || "").trim();
+        const newName = String(editor.value || "").trim();
+        if (!newName || newName === originalName) return;
+        items.push({ id: Number(idValue), new_name: newName });
+      });
+
+      if (!items.length) {
+        exitUserInputRenameMode();
+        return;
+      }
+
+      const response = await fetch('/inputs/rename', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ items })
+      });
+      const data = await response.json().catch(() => ({ ok: false }));
+      if (!data.ok) {
+        await showModal({ title: 'Rename inputs', message: data.message || 'Some inputs could not be renamed.', confirmText: 'Accept' });
+      }
+      await refreshInputsRepository();
+      exitUserInputRenameMode();
+      applyInputsFilters();
+      updateSelectionSizeLabels();
+    }
+
     function getSelectedInputIds() {
       return Array.from(document.querySelectorAll(".input-checkbox:checked")).map((box) => Number(box.value));
     }
@@ -1846,6 +1915,14 @@
     inputsNameFilterCombo?.addEventListener("change", () => {
       applyInputsFilters();
       updateSelectionSizeLabels();
+    });
+
+    renameInputsButton?.addEventListener("click", async () => {
+      if (!userInputRenameMode) {
+        enterUserInputRenameMode();
+        return;
+      }
+      await saveUserInputRenames();
     });
 
     inputsBulkSelectAction?.addEventListener("change", () => {

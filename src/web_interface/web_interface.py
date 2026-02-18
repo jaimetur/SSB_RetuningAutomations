@@ -2174,6 +2174,124 @@ async def admin_delete_inputs(request: Request):
     return {"ok": True}
 
 
+
+
+def rename_inputs_common(user_id: int | None, rename_items: list[dict[str, Any]]) -> dict[str, Any]:
+    valid_items: list[tuple[int, str]] = []
+    for item in rename_items:
+        raw_id = item.get("id") if isinstance(item, dict) else None
+        raw_name = item.get("new_name") if isinstance(item, dict) else None
+        if raw_id is None or raw_name is None:
+            continue
+        if not str(raw_id).isdigit():
+            continue
+        sanitized_name = sanitize_component(str(raw_name))
+        if not sanitized_name:
+            continue
+        valid_items.append((int(raw_id), sanitized_name))
+
+    if not valid_items:
+        return {"ok": False, "error": "no_valid_items"}
+
+    requested_by_id: dict[int, str] = {item_id: new_name for item_id, new_name in valid_items}
+    ids = list(requested_by_id.keys())
+
+    conn = get_conn()
+    rows = conn.execute(
+        "SELECT id, user_id, input_name, input_path FROM inputs_repository WHERE id IN (%s)" % ",".join("?" for _ in ids),
+        tuple(ids),
+    ).fetchall()
+
+    denied_count = 0
+    renamed_count = 0
+    conflict_names: list[str] = []
+
+    for row in rows:
+        if user_id is not None and int(row["user_id"]) != int(user_id):
+            denied_count += 1
+            continue
+
+        input_id = int(row["id"])
+        old_name = str(row["input_name"] or "")
+        new_name = requested_by_id.get(input_id, old_name)
+        if not new_name or new_name == old_name:
+            continue
+
+        source_path = Path(row["input_path"] or "")
+        target_path = INPUTS_REPOSITORY_DIR / new_name
+
+        if target_path.exists():
+            same_target = False
+            try:
+                same_target = source_path.exists() and source_path.resolve() == target_path.resolve()
+            except OSError:
+                same_target = str(source_path) == str(target_path)
+            if not same_target:
+                conflict_names.append(new_name)
+                continue
+
+        if source_path.exists() and is_safe_path(INPUTS_REPOSITORY_DIR, source_path):
+            try:
+                source_path.rename(target_path)
+            except OSError:
+                try:
+                    shutil.move(str(source_path), str(target_path))
+                except OSError:
+                    conflict_names.append(new_name)
+                    continue
+
+        conn.execute(
+            "UPDATE inputs_repository SET input_name = ?, input_path = ? WHERE id = ?",
+            (new_name, str(target_path), input_id),
+        )
+        renamed_count += 1
+
+    conn.commit()
+    conn.close()
+
+    if denied_count:
+        return {
+            "ok": False,
+            "error": "forbidden_inputs",
+            "message": "Only inputs uploaded by your own user can be renamed from this panel.",
+            "renamed": renamed_count,
+            "conflicts": conflict_names,
+        }
+    if conflict_names:
+        return {
+            "ok": False,
+            "error": "name_conflict",
+            "message": "Some input names already exist and could not be renamed.",
+            "renamed": renamed_count,
+            "conflicts": conflict_names,
+        }
+    return {"ok": True, "renamed": renamed_count}
+
+
+@app.post("/inputs/rename", tags=["Inputs"])
+async def rename_inputs(request: Request):
+    try:
+        user = require_user(request)
+    except PermissionError:
+        return {"ok": False}
+
+    payload = await request.json()
+    items = payload.get("items", []) if isinstance(payload, dict) else []
+    return rename_inputs_common(int(user["id"]), items)
+
+
+@app.post("/admin/inputs/rename", tags=["Administration"])
+async def admin_rename_inputs(request: Request):
+    try:
+        require_admin(request)
+    except PermissionError:
+        return {"ok": False}
+
+    payload = await request.json()
+    items = payload.get("items", []) if isinstance(payload, dict) else []
+    return rename_inputs_common(None, items)
+
+
 @app.get("/logs/latest", tags=["Runs & Logs"])
 def latest_logs(request: Request):
     try:
