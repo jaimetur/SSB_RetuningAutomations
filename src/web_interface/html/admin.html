@@ -442,6 +442,7 @@
     let adminPersistedExecutionAutoChecked = false;
     let adminPersistedSystemLogAutoChecked = false;
     const persistedPanelStates = {{ (user_settings.get("ui_panels", {}) if user_settings else {}) | tojson }};
+    const persistedAdminSystemLogSource = {{ (user_settings.get("admin_system_log_source") if user_settings else "app") | tojson }};
     let panelStateSaveTimeout = null;
     try {
       adminPersistedExecutionAutoChecked = window.sessionStorage?.getItem(ADMIN_EXECUTION_AUTO_CHECKED_KEY) === "1";
@@ -460,6 +461,14 @@
           body: JSON.stringify({ ui_panels: { ...(persistedPanelStates || {}) } })
         }).catch(() => {});
       }, 200);
+    }
+
+    function persistAdminSystemLogSource(source) {
+      fetch("/settings/update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ admin_system_log_source: source || "app" })
+      }).catch(() => {});
     }
 
     function persistAdminExecutionAutoCheckedState(isChecked) {
@@ -1166,6 +1175,7 @@
 
     adminSystemLogSource?.addEventListener("change", () => {
       fetchAdminSystemLog();
+      persistAdminSystemLogSource(adminSystemLogSource?.value || "app");
     });
     adminRefreshSystemLogButton?.addEventListener("click", fetchAdminSystemLog);
     adminCopySystemLogButton?.addEventListener("click", () => copyToClipboard(adminSystemLogOutput?.textContent || ""));
@@ -1379,6 +1389,11 @@
     updateSelectionSizeLabels();
     refreshInputsRepository();
     runAdminBackgroundRefreshCycle();
+    if (adminSystemLogSource) {
+      const hasPersistedOption = Array.from(adminSystemLogSource.options || []).some((opt) => opt.value === persistedAdminSystemLogSource);
+      adminSystemLogSource.value = hasPersistedOption ? persistedAdminSystemLogSource : "app";
+    }
+
     fetchAdminRunLog();
     fetchAdminSystemLog();
     loadAdminDbTable();

@@ -479,6 +479,7 @@
     const currentUsername = "{{ user.username }}";
     let moduleInputsMap = {{ module_inputs_map | tojson }};
     const persistedPanelStates = {{ (settings.get("ui_panels", {}) if settings else {}) | tojson }};
+    const persistedUserSystemLogSource = {{ ((settings.get("user_system_log_source") or settings.get("system_log_source") or "app") if settings else "app") | tojson }};
     let panelStateSaveTimeout = null;
 
     const inputFields = {
@@ -1543,6 +1544,14 @@
         .catch(() => renderSystemLog(""));
     }
 
+    function persistUserSystemLogSource(source) {
+      fetch("/settings/update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_system_log_source: source || "app" })
+      }).catch(() => {});
+    }
+
     function collectFormValues() {
       const form = document.querySelector(".module-form");
       const data = new FormData(form);
@@ -1552,6 +1561,7 @@
         payload[key] = form.querySelector(`input[name="${key}"]`).checked;
       });
       payload.ui_panels = { ...(persistedPanelStates || {}) };
+      payload.user_system_log_source = systemLogSource?.value || "app";
       return payload;
     }
 
@@ -1668,6 +1678,8 @@
     });
     systemLogSource?.addEventListener("change", () => {
       fetchSystemLog();
+      persistUserSystemLogSource(systemLogSource?.value || "app");
+      scheduleBackgroundRefresh();
     });
 
     function getTargetFiltersInput() {
@@ -2204,6 +2216,11 @@
       const target = event.target;
       if (target && (target.classList?.contains("input-checkbox") || target.classList?.contains("run-checkbox"))) updateSelectionSizeLabels();
     });
+
+    if (systemLogSource) {
+      const hasPersistedOption = Array.from(systemLogSource.options || []).some((opt) => opt.value === persistedUserSystemLogSource);
+      systemLogSource.value = hasPersistedOption ? persistedUserSystemLogSource : "app";
+    }
 
     fetchLogByRun();
     fetchSystemLog();
