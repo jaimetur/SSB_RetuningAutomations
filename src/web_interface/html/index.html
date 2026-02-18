@@ -279,7 +279,7 @@
             <option value="__all__">All users</option>
             <option value="__last24h__">Last 24h</option>
             {% for run_user in runs_users %}
-              <option value="{{ run_user }}" {% if run_user == user.username %}selected{% endif %}>{{ run_user }}</option>
+              <option value="{{ run_user }}">{{ run_user }}</option>
             {% endfor %}
           </select>
           <input id="runs_pattern_filter_combo" class="combo-filter" list="runs_pattern_filter_presets" value="" placeholder="Wildcard Filter (*text*)" aria-label="Runs pattern filter" />
@@ -324,7 +324,7 @@
           {% for r in latest_runs %}
             <tr class="run-row {% if r.status_lower == 'error' %}run-error{% elif r.status_lower == 'success' %}run-success{% elif r.status_lower == 'canceled' %}run-canceled{% endif %}"
                 data-run-id="{{ r.id }}" data-status="{{ r.status_lower }}" data-run-user="{{ r.username or "unknown" }}">
-              <td><input type="checkbox" class="run-checkbox" value="{{ r.id }}" data-start="{{ r.started_at }}" data-status="{{ r.status_lower }}" {% if (r.username or "") != user.username %}disabled title="You can only manage your own runs"{% endif %} /></td>
+              <td><input type="checkbox" class="run-checkbox" value="{{ r.id }}" data-start="{{ r.started_at }}" data-status="{{ r.status_lower }}" /></td>
               <td>{{ r.id }}</td>
               <td>{{ r.module }}</td>
               <td>{{ r.tool_version or '—' }}</td>
@@ -485,6 +485,7 @@
     const persistedUserSystemLogSource = {{ ((settings.get("user_system_log_source") or settings.get("system_log_source") or "app") if settings else "app") | tojson }};
     let persistedInputsWildcardHistory = {{ (settings.get("wildcard_history_inputs", []) if settings else []) | tojson }};
     let persistedExecutionsWildcardHistory = {{ (settings.get("wildcard_history_executions", []) if settings else []) | tojson }};
+    const persistedRunsUserFilter = {{ (settings.get("runs_user_filter") if settings else "__all__") | tojson }};
     let panelStateSaveTimeout = null;
 
     const inputFields = {
@@ -931,7 +932,7 @@
     function populateRunScopeSelector() {
       const users = Array.from(document.querySelectorAll("#runs_panel_table tbody tr"))
         .map((row) => row.dataset.runUser || currentUsername);
-      populateScopeCombo(selectUserRunsCombo, users, { includeAll: true, fallback: currentUsername });
+      populateScopeCombo(selectUserRunsCombo, users, { includeAll: true, fallback: "__all__" });
     }
 
     function collectSelectedInputsByTarget() {
@@ -1515,14 +1516,13 @@
 
             const runUser = item.username || "unknown";
             const isOwnRun = runUser === currentUsername;
-            const checked = selectedIds.has(item.id) && isOwnRun ? 'checked' : '';
+            const checked = selectedIds.has(item.id) ? 'checked' : '';
             const outputCell = item.output_zip && isOwnRun ? `<a href="/runs/${item.id}/download">Download zip</a>` : "—";
             const logCell = item.output_log_file && isOwnRun ? `<a href="/runs/${item.id}/log">Download log</a>` : "—";
-            const disabledAttr = isOwnRun ? "" : 'disabled title="You can only manage your own runs"';
 
             return `
               <tr class="${rowClass}" data-run-id="${item.id}" data-status="${item.status_lower}" data-run-user="${escapeHtml(runUser)}">
-                <td><input type="checkbox" class="run-checkbox" value="${item.id}" data-start="${item.started_at}" data-status="${item.status_lower}" ${checked} ${disabledAttr} /></td>
+                <td><input type="checkbox" class="run-checkbox" value="${item.id}" data-start="${item.started_at}" data-status="${item.status_lower}" ${checked} /></td>
                 <td>${escapeHtml(item.id)}</td>
                 <td>${escapeHtml(item.module)}</td>
                 <td>${escapeHtml(item.tool_version || "—")}</td>
@@ -1850,9 +1850,18 @@
       });
     });
 
+    function persistRunsUserFilter(mode) {
+      fetch("/settings/update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ runs_user_filter: mode || "__all__" })
+      }).catch(() => {});
+    }
+
     selectUserRunsCombo?.addEventListener("change", () => {
       applyRunsFilters();
       updateSelectionSizeLabels();
+      persistRunsUserFilter(selectUserRunsCombo?.value || "__all__");
     });
 
     runsPatternFilterCombo?.addEventListener("input", () => {
@@ -2380,6 +2389,10 @@
     });
     populateInputScopeSelector();
     populateRunScopeSelector();
+    if (selectUserRunsCombo) {
+      const hasPersistedRunsFilter = Array.from(selectUserRunsCombo.options || []).some((opt) => opt.value === persistedRunsUserFilter);
+      selectUserRunsCombo.value = hasPersistedRunsFilter ? persistedRunsUserFilter : "__all__";
+    }
 
     if (inputsTotalSizeLabel) inputsTotalSizeLabel.dataset.totalSize = "{{ inputs_total_size }}";
     if (runsTotalSizeLabel) runsTotalSizeLabel.dataset.totalSize = "{{ total_runs_size }}";
