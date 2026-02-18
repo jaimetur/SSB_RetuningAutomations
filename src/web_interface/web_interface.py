@@ -2049,8 +2049,8 @@ async def rerun_runs(request: Request):
 
     conn = get_conn()
     rows = conn.execute(
-        "SELECT id, payload_json FROM task_runs WHERE user_id = ? AND id IN (%s)" % ",".join("?" for _ in run_ids),
-        (user["id"], *run_ids),
+        "SELECT id, payload_json FROM task_runs WHERE id IN (%s)" % ",".join("?" for _ in run_ids),
+        (*run_ids,),
     ).fetchall()
 
     run_payload_by_id: dict[int, dict[str, Any]] = {}

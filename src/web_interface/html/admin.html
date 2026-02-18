@@ -458,6 +458,8 @@
     const persistedPanelStates = {{ (user_settings.get("ui_panels", {}) if user_settings else {}) | tojson }};
     const persistedAdminSystemLogSource = {{ (user_settings.get("admin_system_log_source") if user_settings else "app") | tojson }};
     const persistedAdminUsersFilter = {{ (user_settings.get("admin_users_filter") if user_settings else "all") | tojson }};
+    const persistedAdminInputsFilter = {{ (user_settings.get("admin_inputs_filter") if user_settings else "__all__") | tojson }};
+    const persistedAdminRunsFilter = {{ (user_settings.get("admin_runs_filter") if user_settings else "__all__") | tojson }};
     let persistedInputsWildcardHistory = {{ (user_settings.get("wildcard_history_inputs", []) if user_settings else []) | tojson }};
     let persistedExecutionsWildcardHistory = {{ (user_settings.get("wildcard_history_executions", []) if user_settings else []) | tojson }};
     let panelStateSaveTimeout = null;
@@ -869,7 +871,19 @@
       });
     });
 
-    selectUserRunsCombo?.addEventListener("change", () => { applyAdminRunsFilters(); updateSelectionSizeLabels(); });
+    function persistAdminRunsFilter(value) {
+      fetch("/settings/update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ admin_runs_filter: value || "__all__" })
+      }).catch(() => {});
+    }
+
+    selectUserRunsCombo?.addEventListener("change", () => {
+      applyAdminRunsFilters();
+      updateSelectionSizeLabels();
+      persistAdminRunsFilter(selectUserRunsCombo?.value || "__all__");
+    });
 
     adminRunsPatternFilterCombo?.addEventListener("input", () => { applyAdminRunsFilters(); updateSelectionSizeLabels(); });
     adminRunsPatternFilterCombo?.addEventListener("change", () => { persistedExecutionsWildcardHistory = rememberWildcardPattern(adminRunsPatternFilterCombo?.value, "wildcard_history_executions", persistedExecutionsWildcardHistory, document.getElementById("admin_runs_pattern_filter_presets")); applyAdminRunsFilters(); updateSelectionSizeLabels(); });
@@ -1097,7 +1111,19 @@
     function getSelectedInputIds() {
       return Array.from(document.querySelectorAll(".input-checkbox:checked")).map((box) => Number(box.value));
     }
-    selectUserInputsCombo?.addEventListener("change", () => { applyAdminInputsFilters(); updateSelectionSizeLabels(); });
+    function persistAdminInputsFilter(value) {
+      fetch("/settings/update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ admin_inputs_filter: value || "__all__" })
+      }).catch(() => {});
+    }
+
+    selectUserInputsCombo?.addEventListener("change", () => {
+      applyAdminInputsFilters();
+      updateSelectionSizeLabels();
+      persistAdminInputsFilter(selectUserInputsCombo?.value || "__all__");
+    });
     adminInputsNameFilterCombo?.addEventListener("input", () => { applyAdminInputsFilters(); updateSelectionSizeLabels(); });
     adminInputsNameFilterCombo?.addEventListener("change", () => { persistedInputsWildcardHistory = rememberWildcardPattern(adminInputsNameFilterCombo?.value, "wildcard_history_inputs", persistedInputsWildcardHistory, document.getElementById("admin_inputs_name_filter_presets")); applyAdminInputsFilters(); updateSelectionSizeLabels(); });
     adminInputsNameFilterCombo?.addEventListener("blur", () => { persistedInputsWildcardHistory = rememberWildcardPattern(adminInputsNameFilterCombo?.value, "wildcard_history_inputs", persistedInputsWildcardHistory, document.getElementById("admin_inputs_name_filter_presets")); });
@@ -1546,6 +1572,14 @@
 
     populateScopeCombo(selectUserInputsCombo, "#inputs_panel_table", 2);
     populateScopeCombo(selectUserRunsCombo, "#runs_panel_table", 2);
+    if (selectUserInputsCombo) {
+      const hasPersistedInputsFilter = Array.from(selectUserInputsCombo.options || []).some((opt) => opt.value === persistedAdminInputsFilter);
+      selectUserInputsCombo.value = hasPersistedInputsFilter ? persistedAdminInputsFilter : "__all__";
+    }
+    if (selectUserRunsCombo) {
+      const hasPersistedRunsFilter = Array.from(selectUserRunsCombo.options || []).some((opt) => opt.value === persistedAdminRunsFilter);
+      selectUserRunsCombo.value = hasPersistedRunsFilter ? persistedAdminRunsFilter : "__all__";
+    }
     if (inputsTotalSizeLabel) {
       inputsTotalSizeLabel.dataset.totalSize = "{{ inputs_total_size }}";
     }

@@ -213,7 +213,7 @@
           <span class="runs-total" id="inputs_total_size">Total size: {{ inputs_total_size }} · Selected size: 0.00 MB</span>
         </div>
         <div class="runs-actions">
-          <select id="select_user_inputs_combo"><option value="__all__">All Users</option><option value="__last24h__">Last 24h</option>{% for uploader in input_uploaders %}<option value="{{ uploader }}" {% if uploader == user.username %}selected{% endif %}>{{ uploader }}</option>{% endfor %}{% if user.username not in input_uploaders %}<option value="{{ user.username }}" selected>{{ user.username }}</option>{% endif %}</select>
+          <select id="select_user_inputs_combo"><option value="__all__">All Users</option><option value="__last24h__">Last 24h</option>{% for uploader in input_uploaders %}<option value="{{ uploader }}">{{ uploader }}</option>{% endfor %}</select>
           <input id="inputs_name_filter_combo" class="combo-filter" list="inputs_name_filter_presets" value="" placeholder="Wildcard Filter (*text*)" aria-label="Input name pattern filter" />
           <datalist id="inputs_name_filter_presets"></datalist>
           <select id="inputs_bulk_select_action" aria-label="Bulk input selection">
@@ -279,7 +279,7 @@
             <option value="__all__">All users</option>
             <option value="__last24h__">Last 24h</option>
             {% for run_user in runs_users %}
-              <option value="{{ run_user }}" {% if run_user == user.username %}selected{% endif %}>{{ run_user }}</option>
+              <option value="{{ run_user }}">{{ run_user }}</option>
             {% endfor %}
           </select>
           <input id="runs_pattern_filter_combo" class="combo-filter" list="runs_pattern_filter_presets" value="" placeholder="Wildcard Filter (*text*)" aria-label="Runs pattern filter" />
@@ -485,6 +485,8 @@
     const persistedUserSystemLogSource = {{ ((settings.get("user_system_log_source") or settings.get("system_log_source") or "app") if settings else "app") | tojson }};
     let persistedInputsWildcardHistory = {{ (settings.get("wildcard_history_inputs", []) if settings else []) | tojson }};
     let persistedExecutionsWildcardHistory = {{ (settings.get("wildcard_history_executions", []) if settings else []) | tojson }};
+    const persistedInputsUserFilter = {{ (settings.get("inputs_user_filter") if settings else "__all__") | tojson }};
+    const persistedRunsUserFilter = {{ (settings.get("runs_user_filter") if settings else "__all__") | tojson }};
     let panelStateSaveTimeout = null;
 
     const inputFields = {
@@ -925,13 +927,13 @@
       const tableUsers = Array.from(document.querySelectorAll("#inputs_panel_table tbody tr"))
         .map((row) => row.cells?.[2]?.textContent?.trim() || "");
       const users = [currentUsername, ...explicitUsers, ...tableUsers];
-      populateScopeCombo(selectUserInputsCombo, users, { includeAll: true, fallback: currentUsername });
+      populateScopeCombo(selectUserInputsCombo, users, { includeAll: true, fallback: "__all__" });
     }
 
     function populateRunScopeSelector() {
       const users = Array.from(document.querySelectorAll("#runs_panel_table tbody tr"))
         .map((row) => row.dataset.runUser || currentUsername);
-      populateScopeCombo(selectUserRunsCombo, users, { includeAll: true, fallback: currentUsername });
+      populateScopeCombo(selectUserRunsCombo, users, { includeAll: true, fallback: "__all__" });
     }
 
     function collectSelectedInputsByTarget() {
@@ -1673,14 +1675,24 @@
     function setPanelCollapsedState(key, panel, button) {
       if (!panel || !button) return;
       const collapsed = Boolean(persistedPanelStates?.[key]);
-      panel.classList.toggle("hidden", collapsed);
+      if (key === "user_module") {
+        panel.classList.toggle("module-form-collapsed", collapsed);
+      } else {
+        panel.classList.toggle("hidden", collapsed);
+      }
       button.textContent = collapsed ? "▸" : "▾";
     }
 
     function togglePanelCollapsedState(key, panel, button) {
       if (!panel || !button) return;
-      panel.classList.toggle("hidden");
-      const collapsed = panel.classList.contains("hidden");
+      if (key === "user_module") {
+        panel.classList.toggle("module-form-collapsed");
+      } else {
+        panel.classList.toggle("hidden");
+      }
+      const collapsed = key === "user_module"
+        ? panel.classList.contains("module-form-collapsed")
+        : panel.classList.contains("hidden");
       button.textContent = collapsed ? "▸" : "▾";
       persistedPanelStates[key] = collapsed;
       savePanelStatesOnly();
@@ -1849,9 +1861,32 @@
       });
     });
 
+    function persistRunsUserFilter(mode) {
+      fetch("/settings/update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ runs_user_filter: mode || "__all__" })
+      }).catch(() => {});
+    }
+
+    function persistInputsUserFilter(mode) {
+      fetch("/settings/update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ inputs_user_filter: mode || "__all__" })
+      }).catch(() => {});
+    }
+
     selectUserRunsCombo?.addEventListener("change", () => {
       applyRunsFilters();
       updateSelectionSizeLabels();
+      persistRunsUserFilter(selectUserRunsCombo?.value || "__all__");
+    });
+
+    selectUserInputsCombo?.addEventListener("change", () => {
+      applyInputsFilters();
+      updateSelectionSizeLabels();
+      persistInputsUserFilter(selectUserInputsCombo?.value || "__all__");
     });
 
     runsPatternFilterCombo?.addEventListener("input", () => {
@@ -2379,6 +2414,14 @@
     });
     populateInputScopeSelector();
     populateRunScopeSelector();
+    if (selectUserInputsCombo) {
+      const hasPersistedInputsFilter = Array.from(selectUserInputsCombo.options || []).some((opt) => opt.value === persistedInputsUserFilter);
+      selectUserInputsCombo.value = hasPersistedInputsFilter ? persistedInputsUserFilter : "__all__";
+    }
+    if (selectUserRunsCombo) {
+      const hasPersistedRunsFilter = Array.from(selectUserRunsCombo.options || []).some((opt) => opt.value === persistedRunsUserFilter);
+      selectUserRunsCombo.value = hasPersistedRunsFilter ? persistedRunsUserFilter : "__all__";
+    }
 
     if (inputsTotalSizeLabel) inputsTotalSizeLabel.dataset.totalSize = "{{ inputs_total_size }}";
     if (runsTotalSizeLabel) runsTotalSizeLabel.dataset.totalSize = "{{ total_runs_size }}";
