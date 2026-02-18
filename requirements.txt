@@ -14,10 +14,9 @@ python-docx>=1.1.2
 markdown>=3.6
 reportlab>=4.2.2
 
-# Only necesary to generate the Bineries files (it is done by Github)
+# Only necesary to generate the Binaries files (it is done by Github)
 pyinstaller>=6.0.0
 nuitka>=2.7.3
-
 
 # Web Interface (not necesary if you use docker to launch the web service)
 fastapi>=0.115.0
