@@ -159,6 +159,8 @@ OUTPUTS_DIR.mkdir(parents=True, exist_ok=True)
 MAX_CPU_DEFAULT = 80
 MAX_MEMORY_DEFAULT = 80
 MAX_PARALLEL_DEFAULT = 1
+SQLITE_BUSY_TIMEOUT_MS = 30000
+SQLITE_CONNECT_TIMEOUT_S = 30
 
 queue_event = threading.Event()
 worker_started = False
@@ -170,9 +172,35 @@ canceled_task_ids_lock = threading.Lock()
 
 
 def get_conn() -> sqlite3.Connection:
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, timeout=SQLITE_CONNECT_TIMEOUT_S)
     conn.row_factory = sqlite3.Row
+    conn.execute(f"PRAGMA busy_timeout = {SQLITE_BUSY_TIMEOUT_MS}")
+    conn.execute("PRAGMA journal_mode = WAL")
+    conn.execute("PRAGMA synchronous = NORMAL")
+    conn.execute("PRAGMA foreign_keys = ON")
     return conn
+
+
+def recover_incomplete_tasks() -> None:
+    """Re-queue tasks left in non-terminal states after an unexpected restart."""
+    conn = get_conn()
+    pending_count = conn.execute(
+        "SELECT COUNT(*) AS total FROM task_runs WHERE status IN ('running', 'canceling')"
+    ).fetchone()["total"]
+    if pending_count:
+        conn.execute(
+            """
+            UPDATE task_runs
+            SET status = 'queued',
+                finished_at = NULL,
+                duration_seconds = NULL,
+                output_log = TRIM(COALESCE(output_log, '') || '\nRecovered after service restart. Task re-queued automatically.')
+            WHERE status IN ('running', 'canceling')
+            """
+        )
+        conn.commit()
+        logger.warning("Recovered %s interrupted task(s) after startup and moved them back to queue.", pending_count)
+    conn.close()
 
 
 def load_tool_metadata() -> dict[str, str]:
@@ -1392,7 +1420,21 @@ async def access_log_middleware(request: Request, call_next):
 @app.on_event("startup")
 def startup() -> None:
     init_db()
+    recover_incomplete_tasks()
     ensure_worker_started()
+    queue_event.set()
+
+
+@app.get("/healthz", tags=["System"])
+def healthz():
+    try:
+        conn = get_conn()
+        conn.execute("SELECT 1").fetchone()
+        conn.close()
+        return {"status": "ok"}
+    except sqlite3.Error as exc:
+        logger.exception("Health check failed: %s", exc)
+        return JSONResponse(status_code=503, content={"status": "error", "detail": str(exc)})
 
 
 def serialize_run_row(row: dict[str, Any], run_sizes: dict[int, int]) -> dict[str, Any]:
@@ -3181,7 +3223,6 @@ async def release_notes(request: Request, user=Depends(get_current_user)):
     changelog_md = changelog_path.read_text(encoding="utf-8", errors="replace") if changelog_path.exists() else "CHANGELOG.md not found at /app/CHANGELOG.md"
     tool_meta = load_tool_metadata()
     return templates.TemplateResponse("release_notes.html", {"request": request, "tool_meta": tool_meta, "user": user, "changelog_md": changelog_md})
-
 
 
 
