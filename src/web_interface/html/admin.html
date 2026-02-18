@@ -433,12 +433,25 @@
     const ADMIN_SYSTEM_LOG_AUTO_CHECKED_KEY = "admin_system_log_auto_checked";
     let adminPersistedExecutionAutoChecked = false;
     let adminPersistedSystemLogAutoChecked = false;
+    const persistedPanelStates = {{ (user_settings.get("ui_panels", {}) if user_settings else {}) | tojson }};
+    let panelStateSaveTimeout = null;
     try {
       adminPersistedExecutionAutoChecked = window.sessionStorage?.getItem(ADMIN_EXECUTION_AUTO_CHECKED_KEY) === "1";
       adminPersistedSystemLogAutoChecked = window.sessionStorage?.getItem(ADMIN_SYSTEM_LOG_AUTO_CHECKED_KEY) === "1";
     } catch (_error) {
       adminPersistedExecutionAutoChecked = false;
       adminPersistedSystemLogAutoChecked = false;
+    }
+
+    function savePanelStatesOnly() {
+      if (panelStateSaveTimeout) clearTimeout(panelStateSaveTimeout);
+      panelStateSaveTimeout = setTimeout(() => {
+        fetch("/settings/update", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ui_panels: { ...(persistedPanelStates || {}) } })
+        }).catch(() => {});
+      }, 200);
     }
 
     function persistAdminExecutionAutoCheckedState(isChecked) {
@@ -555,17 +568,29 @@
       }
     }
 
-    function bindPanelToggle(button, panel) {
-      button?.addEventListener("click", () => {
-        panel?.classList.toggle("hidden");
-        if (button) button.textContent = panel?.classList.contains("hidden") ? "▸" : "▾";
+    function bindPanelToggle(button, panel, stateKey) {
+      if (!button || !panel) return;
+      const collapsed = Boolean(persistedPanelStates?.[stateKey]);
+      panel.classList.toggle("hidden", collapsed);
+      button.textContent = collapsed ? "▸" : "▾";
+      button.addEventListener("click", () => {
+        panel.classList.toggle("hidden");
+        const nowCollapsed = panel.classList.contains("hidden");
+        button.textContent = nowCollapsed ? "▸" : "▾";
+        persistedPanelStates[stateKey] = nowCollapsed;
+        savePanelStatesOnly();
       });
     }
 
-    bindPanelToggle(toggleLimitsPanelButton, limitsPanelContent);
-    bindPanelToggle(toggleCreateUserPanelButton, createUserPanelContent);
-    bindPanelToggle(toggleDbBackupPanelButton, dbBackupPanelContent);
-    bindPanelToggle(toggleDbEditorPanelButton, dbEditorPanelContent);
+    bindPanelToggle(toggleLimitsPanelButton, limitsPanelContent, "admin_limits");
+    bindPanelToggle(toggleCreateUserPanelButton, createUserPanelContent, "admin_create_user");
+    bindPanelToggle(toggleDbBackupPanelButton, dbBackupPanelContent, "admin_db_backup");
+    bindPanelToggle(toggleDbEditorPanelButton, dbEditorPanelContent, "admin_db_editor");
+    bindPanelToggle(toggleRunsPanelButton, runsTable, "admin_runs");
+    bindPanelToggle(toggleInputsPanelButton, inputsPanelTable, "admin_inputs");
+    bindPanelToggle(toggleUsersPanelButton, usersPanelTable, "admin_users");
+    bindPanelToggle(toggleAdminExecutionLogPanelButton, adminLogOutput, "admin_execution_log");
+    bindPanelToggle(toggleAdminSystemLogPanelButton, adminSystemLogOutput, "admin_system_log");
 
     function getSelectedRunIds() {
       return Array.from(document.querySelectorAll(".run-checkbox:checked")).map((box) => Number(box.value));
@@ -792,18 +817,6 @@
     function getSelectedInputIds() {
       return Array.from(document.querySelectorAll(".input-checkbox:checked")).map((box) => Number(box.value));
     }
-    toggleRunsPanelButton?.addEventListener("click", () => {
-      runsTable?.classList.toggle("hidden");
-      if (toggleRunsPanelButton) {
-        toggleRunsPanelButton.textContent = runsTable?.classList.contains("hidden") ? "▸" : "▾";
-      }
-    });
-    toggleInputsPanelButton?.addEventListener("click", () => {
-      inputsPanelTable?.classList.toggle("hidden");
-      if (toggleInputsPanelButton) {
-        toggleInputsPanelButton.textContent = inputsPanelTable?.classList.contains("hidden") ? "▸" : "▾";
-      }
-    });
     selectUserInputsCombo?.addEventListener("change", () => { applyScopeFilter(selectUserInputsCombo, "#inputs_panel_table", 2); updateSelectionSizeLabels(); });
     inputsBulkSelectAction?.addEventListener("change", () => {
       const action = inputsBulkSelectAction.value;
@@ -837,12 +850,6 @@
     });
 
 
-    toggleUsersPanelButton?.addEventListener("click", () => {
-      usersPanelTable?.classList.toggle("hidden");
-      if (toggleUsersPanelButton) {
-        toggleUsersPanelButton.textContent = usersPanelTable?.classList.contains("hidden") ? "▸" : "▾";
-      }
-    });
 
     function renderAdminLog(text, target, options = {}) {
       if (!target) return;
@@ -1240,18 +1247,6 @@
     adminDbCancelChangesButton?.addEventListener("click", loadAdminDbTable);
     adminDbUpdateChangesButton?.addEventListener("click", applyAdminDbUpdates);
 
-    toggleAdminExecutionLogPanelButton?.addEventListener("click", () => {
-      adminLogOutput?.classList.toggle("hidden");
-      if (toggleAdminExecutionLogPanelButton) {
-        toggleAdminExecutionLogPanelButton.textContent = adminLogOutput?.classList.contains("hidden") ? "▸" : "▾";
-      }
-    });
-    toggleAdminSystemLogPanelButton?.addEventListener("click", () => {
-      adminSystemLogOutput?.classList.toggle("hidden");
-      if (toggleAdminSystemLogPanelButton) {
-        toggleAdminSystemLogPanelButton.textContent = adminSystemLogOutput?.classList.contains("hidden") ? "▸" : "▾";
-      }
-    });
 
     populateScopeCombo(selectUserInputsCombo, "#inputs_panel_table", 2);
     populateScopeCombo(selectUserRunsCombo, "#runs_panel_table", 2);

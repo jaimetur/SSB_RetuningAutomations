@@ -470,6 +470,8 @@
     const runsTotalSizeLabel = document.getElementById("runs_total_size");
     const currentUsername = "{{ user.username }}";
     let moduleInputsMap = {{ module_inputs_map | tojson }};
+    const persistedPanelStates = {{ (settings.get("ui_panels", {}) if settings else {}) | tojson }};
+    let panelStateSaveTimeout = null;
 
     const inputFields = {
       input: document.getElementById("input_path"),
@@ -1507,7 +1509,35 @@
       ["profiles_audit", "frequency_audit", "export_correction_cmd", "fast_excel_export"].forEach((key) => {
         payload[key] = form.querySelector(`input[name="${key}"]`).checked;
       });
+      payload.ui_panels = { ...(persistedPanelStates || {}) };
       return payload;
+    }
+
+    function savePanelStatesOnly() {
+      if (panelStateSaveTimeout) clearTimeout(panelStateSaveTimeout);
+      panelStateSaveTimeout = setTimeout(() => {
+        fetch("/settings/update", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ui_panels: { ...(persistedPanelStates || {}) } })
+        }).catch(() => {});
+      }, 200);
+    }
+
+    function setPanelCollapsedState(key, panel, button) {
+      if (!panel || !button) return;
+      const collapsed = Boolean(persistedPanelStates?.[key]);
+      panel.classList.toggle("hidden", collapsed);
+      button.textContent = collapsed ? "▸" : "▾";
+    }
+
+    function togglePanelCollapsedState(key, panel, button) {
+      if (!panel || !button) return;
+      panel.classList.toggle("hidden");
+      const collapsed = panel.classList.contains("hidden");
+      button.textContent = collapsed ? "▸" : "▾";
+      persistedPanelStates[key] = collapsed;
+      savePanelStatesOnly();
     }
 
     let saveTimeout = null;
@@ -1852,29 +1882,30 @@
         });
     });
 
+    setPanelCollapsedState("user_module", moduleForm, toggleModulePanelButton);
+    setPanelCollapsedState("user_runs", runsPanelTable, toggleRunsPanelButton);
+    setPanelCollapsedState("user_execution_log", logOutput, toggleExecutionLogPanelButton);
+    setPanelCollapsedState("user_system_log", systemLogOutput, toggleSystemLogPanelButton);
+    setPanelCollapsedState("user_inputs", inputsPanelTable, toggleInputsPanelButton);
+
     toggleModulePanelButton?.addEventListener("click", () => {
-      moduleForm?.classList.toggle("hidden");
-      toggleModulePanelButton.textContent = moduleForm?.classList.contains("hidden") ? "▸" : "▾";
+      togglePanelCollapsedState("user_module", moduleForm, toggleModulePanelButton);
     });
 
     toggleRunsPanelButton?.addEventListener("click", () => {
-      runsPanelTable?.classList.toggle("hidden");
-      toggleRunsPanelButton.textContent = runsPanelTable?.classList.contains("hidden") ? "▸" : "▾";
+      togglePanelCollapsedState("user_runs", runsPanelTable, toggleRunsPanelButton);
     });
 
     toggleExecutionLogPanelButton?.addEventListener("click", () => {
-      logOutput?.classList.toggle("hidden");
-      toggleExecutionLogPanelButton.textContent = logOutput?.classList.contains("hidden") ? "▸" : "▾";
+      togglePanelCollapsedState("user_execution_log", logOutput, toggleExecutionLogPanelButton);
     });
 
     toggleSystemLogPanelButton?.addEventListener("click", () => {
-      systemLogOutput?.classList.toggle("hidden");
-      toggleSystemLogPanelButton.textContent = systemLogOutput?.classList.contains("hidden") ? "▸" : "▾";
+      togglePanelCollapsedState("user_system_log", systemLogOutput, toggleSystemLogPanelButton);
     });
 
     toggleInputsPanelButton?.addEventListener("click", () => {
-      inputsPanelTable?.classList.toggle("hidden");
-      toggleInputsPanelButton.textContent = inputsPanelTable?.classList.contains("hidden") ? "▸" : "▾";
+      togglePanelCollapsedState("user_inputs", inputsPanelTable, toggleInputsPanelButton);
     });
 
     moduleSelect.addEventListener("change", () => {

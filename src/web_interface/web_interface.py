@@ -2859,6 +2859,7 @@ def admin_panel(request: Request):
     conn.close()
 
     tool_meta = load_tool_metadata()
+    admin_user_settings = load_user_settings(admin["id"])
     run_sizes, total_bytes = compute_runs_size(recent_runs)
     recent_runs = [dict(row) for row in recent_runs]
     for row in recent_runs:
@@ -2883,6 +2884,7 @@ def admin_panel(request: Request):
             "input_items": list_inputs_repository(),
             "inputs_total_size": get_inputs_repository_total_size(),
             "admin_settings": get_admin_settings(),
+            "user_settings": admin_user_settings,
             "tool_meta": tool_meta,
             "editable_tables": editable_tables,
         },
