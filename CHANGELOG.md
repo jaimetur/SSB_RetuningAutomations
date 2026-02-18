@@ -28,7 +28,8 @@
 
 - #### 🐛 Bug fixes:
   - Fixed duplicated System/Application log lines by de-duplicating uvicorn logger handler wiring and propagation. 
-  - Fixed connected users status consistency
+  - Fixed connected users status consistency.
+  - Fixed Step1 conditions logic on MeContext table.
 
 - #### 📚 Documentation:
   - Updated Documentation to align with the latest changes.

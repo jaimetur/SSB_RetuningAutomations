@@ -1009,12 +1009,19 @@ class ConfigurationAudit:
                                     old_nr = int(row.get("NRFreqRelation to old N77A SSB", 0) or 0)
                                     new_nr = int(row.get("NRFreqRelation to new N77A SSB", 0) or 0)
 
-                                    old_cell_resel = _normalized_priority_values(row.get("NRFreqRelation to old N77A SSB cellReselPrio", ""))
-                                    new_cell_resel = _normalized_priority_values(row.get("NRFreqRelation to new N77A SSB cellReselPrio", ""))
+                                    old_cell_resel_nr = _normalized_priority_values(row.get("NRFreqRelation to old N77A SSB cellReselPrio", ""))
+                                    new_cell_resel_nr = _normalized_priority_values(row.get("NRFreqRelation to new N77A SSB cellReselPrio", ""))
+
+                                    old_cell_resel_gu = _normalized_priority_values(row.get("GUtranFreqRelation to old N77A SSB cellReselPrio", ""))
+                                    new_cell_resel_gu = _normalized_priority_values(row.get("GUtranFreqRelation to new N77A SSB cellReselPrio", ""))
+
                                     old_endc = _split_unique_values(row.get("GUtranFreqRelation to old N77A SSB EndcPrio", ""))
                                     new_endc = _split_unique_values(row.get("GUtranFreqRelation to new N77A SSB EndcPrio", ""))
 
-                                    cell_resel_same_or_empty = (old_cell_resel == new_cell_resel) or (not old_cell_resel) or (not new_cell_resel)
+                                    nr_cell_resel_same_or_empty = (old_cell_resel_nr == new_cell_resel_nr) or (not old_cell_resel_nr) or (not new_cell_resel_nr)
+                                    gu_cell_resel_same_or_empty = (old_cell_resel_gu == new_cell_resel_gu) or (not old_cell_resel_gu) or (not new_cell_resel_gu)
+                                    cell_resel_same_or_empty = nr_cell_resel_same_or_empty and gu_cell_resel_same_or_empty
+
                                     endc_not_same_or_empty = (old_endc != new_endc) or (not old_endc) or (not new_endc)
                                     if old_gu == new_gu and old_nr == new_nr and cell_resel_same_or_empty and endc_not_same_or_empty:
                                         return "Step1Done"
