@@ -2,6 +2,31 @@
 
 ---
 
+## Release: v0.7.5
+### Release Date: 2026-02-18
+  
+- #### 🚨 Breaking Changes:
+
+- #### 🌟 New Features:
+  - Added SQLite resilience (busy_timeout, WAL, connect timeout, etc.) plus startup task recovery to reduce hangs and auto-requeue interrupted jobs after restart. 
+  - Added /healthz endpoint and Docker/Compose healthchecks for automatic health probing and restart orchestration support. 
+  - Enabled user-panel Executions History visibility across users (with “All users” + per-user filter) while keeping ownership restrictions for stop/delete. 
+  - Added combined Inputs Pattern Filter (wildcard + case-insensitive) in user/admin, applied together with user-scope filter. 
+  - Added inline Rename button/workflow in Inputs (user/admin), including folder rename + DB update, with user-only ownership enforcement and full admin rights.
+
+- #### 🚀 Enhancements:
+  - Persisted collapsed/expanded state of panels per user in both user and admin dashboards. 
+  - Persisted selected System Logs source per user for both user and admin views across page refreshes. 
+
+- #### 🐛 Bug fixes:
+  - Fixed duplicated System/Application log lines by de-duplicating uvicorn logger handler wiring and propagation. 
+
+- #### 📚 Documentation:
+  - Updated Documentation to allign with the latest changes.
+
+
+---
+
 ## Release: v0.7.4
 ### Release Date: 2026-02-17
   
