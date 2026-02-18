@@ -909,6 +909,53 @@ def detect_task_name_from_input(input_path: str) -> str:
     return Path(input_path).name or sanitize_component(input_path)
 
 
+def enqueue_payloads_for_user(
+    conn: sqlite3.Connection,
+    user_id: int,
+    username: str,
+    queue_payloads: list[dict[str, Any]],
+    tool_version: str,
+    force_user_output_root: bool = False,
+) -> int:
+    if not queue_payloads:
+        return 0
+
+    default_output_root = Path(OUTPUTS_DIR / sanitize_component(username))
+    queue_batch_stamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+
+    for index, queue_payload in enumerate(queue_payloads, start=1):
+        if force_user_output_root:
+            base_output_root = default_output_root
+        else:
+            configured_output = str(queue_payload.get("output") or "").strip()
+            base_output_root = Path(configured_output) if configured_output else default_output_root
+        queue_output_dir = base_output_root / f"queue_task_{queue_batch_stamp}_{index:02d}"
+        queue_output_dir.mkdir(parents=True, exist_ok=True)
+        queue_payload["output"] = str(queue_output_dir)
+
+    for queue_payload in queue_payloads:
+        module_name = str(queue_payload.get("module") or "").strip()
+        task_input = queue_payload.get("input_post", "") if module_name == "consistency-check" else queue_payload.get("input", "")
+        task_name = detect_task_name_from_input(str(task_input or ""))
+        conn.execute(
+            """
+            INSERT INTO task_runs(user_id, module, tool_version, input_name, status, started_at, command, output_log, payload_json, input_dir)
+            VALUES (?, ?, ?, ?, 'queued', ?, '', '', ?, ?)
+            """,
+            (
+                user_id,
+                module_name,
+                tool_version,
+                task_name,
+                "",
+                json.dumps(queue_payload),
+                task_input,
+            ),
+        )
+
+    return len(queue_payloads)
+
+
 def format_task_status(raw_status: str) -> str:
     normalized = (raw_status or "").strip().lower()
     mapping = {
@@ -1875,32 +1922,8 @@ def run_module(
                 payload_copy["input_post"] = post_value
                 queue_payloads.append(payload_copy)
 
-    base_output_root = Path(raw_payload.get("output") or (OUTPUTS_DIR / sanitize_component(user["username"])))
-    queue_batch_stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    for index, queue_payload in enumerate(queue_payloads, start=1):
-        queue_output_dir = base_output_root / f"queue_task_{queue_batch_stamp}_{index:02d}"
-        queue_output_dir.mkdir(parents=True, exist_ok=True)
-        queue_payload["output"] = str(queue_output_dir)
-
     conn = get_conn()
-    for queue_payload in queue_payloads:
-        task_input = queue_payload.get("input_post", "") if module == "consistency-check" else queue_payload.get("input", "")
-        task_name = detect_task_name_from_input(task_input)
-        conn.execute(
-            """
-            INSERT INTO task_runs(user_id, module, tool_version, input_name, status, started_at, command, output_log, payload_json, input_dir)
-            VALUES (?, ?, ?, ?, 'queued', ?, '', '', ?, ?)
-            """,
-            (
-                user["id"],
-                module,
-                tool_version,
-                task_name,
-                "",
-                json.dumps(queue_payload),
-                task_input,
-            ),
-        )
+    enqueue_payloads_for_user(conn, user["id"], user["username"], queue_payloads, tool_version)
     conn.commit()
     conn.close()
 
@@ -2009,6 +2032,57 @@ async def stop_runs(request: Request):
         "stopped": len(queued_ids) + len(running_ids),
         "canceled_immediately": len(queued_ids) + len(running_without_process_ids),
     }
+
+
+@app.post("/runs/rerun", tags=["Runs & Logs"])
+async def rerun_runs(request: Request):
+    try:
+        user = require_user(request)
+    except PermissionError:
+        return {"ok": False}
+
+    payload = await request.json()
+    raw_run_ids = payload.get("ids", [])
+    run_ids = [int(run_id) for run_id in raw_run_ids if str(run_id).isdigit()]
+    if not run_ids:
+        return {"ok": False}
+
+    conn = get_conn()
+    rows = conn.execute(
+        "SELECT id, payload_json FROM task_runs WHERE user_id = ? AND id IN (%s)" % ",".join("?" for _ in run_ids),
+        (user["id"], *run_ids),
+    ).fetchall()
+
+    run_payload_by_id: dict[int, dict[str, Any]] = {}
+    for row in rows:
+        try:
+            payload_json = json.loads(row["payload_json"] or "{}")
+        except json.JSONDecodeError:
+            payload_json = {}
+        run_payload_by_id[int(row["id"])] = dict(payload_json)
+
+    queue_payloads: list[dict[str, Any]] = []
+    for run_id in run_ids:
+        payload_json = run_payload_by_id.get(run_id)
+        if payload_json:
+            queue_payloads.append(payload_json)
+
+    if not queue_payloads:
+        conn.close()
+        return {"ok": False, "queued": 0}
+
+    tool_meta = load_tool_metadata()
+    tool_version = tool_meta.get("version", "unknown")
+    queued = enqueue_payloads_for_user(conn, user["id"], user["username"], queue_payloads, tool_version, force_user_output_root=True)
+
+    conn.commit()
+    conn.close()
+
+    if queued:
+        queue_event.set()
+        ensure_worker_started()
+
+    return {"ok": True, "queued": queued}
 
 
 @app.post("/account/change_password", tags=["Authentication"])
@@ -2931,6 +3005,57 @@ async def admin_stop_runs(request: Request):
     return {"ok": True}
 
 
+@app.post("/admin/runs/rerun", tags=["Administration"])
+async def admin_rerun_runs(request: Request):
+    try:
+        admin = require_admin(request)
+    except PermissionError:
+        return {"ok": False}
+
+    payload = await request.json()
+    raw_run_ids = payload.get("ids", [])
+    run_ids = [int(run_id) for run_id in raw_run_ids if str(run_id).isdigit()]
+    if not run_ids:
+        return {"ok": False}
+
+    conn = get_conn()
+    rows = conn.execute(
+        "SELECT id, payload_json FROM task_runs WHERE id IN (%s)" % ",".join("?" for _ in run_ids),
+        tuple(run_ids),
+    ).fetchall()
+
+    run_payload_by_id: dict[int, dict[str, Any]] = {}
+    for row in rows:
+        try:
+            payload_json = json.loads(row["payload_json"] or "{}")
+        except json.JSONDecodeError:
+            payload_json = {}
+        run_payload_by_id[int(row["id"])] = dict(payload_json)
+
+    queue_payloads: list[dict[str, Any]] = []
+    for run_id in run_ids:
+        payload_json = run_payload_by_id.get(run_id)
+        if payload_json:
+            queue_payloads.append(payload_json)
+
+    if not queue_payloads:
+        conn.close()
+        return {"ok": False, "queued": 0}
+
+    tool_meta = load_tool_metadata()
+    tool_version = tool_meta.get("version", "unknown")
+    queued = enqueue_payloads_for_user(conn, int(admin["id"]), str(admin["username"]), queue_payloads, tool_version, force_user_output_root=True)
+
+    conn.commit()
+    conn.close()
+
+    if queued:
+        queue_event.set()
+        ensure_worker_started()
+
+    return {"ok": True, "queued": queued}
+
+
 @app.post("/admin/runs/delete", tags=["Administration"])
 async def admin_delete_runs(request: Request):
     try:
@@ -3424,5 +3549,4 @@ async def release_notes(request: Request, user=Depends(get_current_user)):
     changelog_md = changelog_path.read_text(encoding="utf-8", errors="replace") if changelog_path.exists() else "CHANGELOG.md not found at /app/CHANGELOG.md"
     tool_meta = load_tool_metadata()
     return templates.TemplateResponse("release_notes.html", {"request": request, "tool_meta": tool_meta, "user": user, "changelog_md": changelog_md})
-
 
