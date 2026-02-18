@@ -1707,9 +1707,28 @@ def download_user_guide(request: Request, file_format: str, mode: str = "downloa
             return "\n".join(out)
 
         md_text = _normalize_markdown_lists(md_text)
-        html_body = markdown_module.markdown(md_text, extensions=["tables", "fenced_code", "sane_lists"])
         tool_meta = load_tool_metadata()
-        guide_title = f"Technical User Guide — SSB Retuning Automations {tool_meta.get('version', 'unknown')}"
+        guide_version = tool_meta.get("version", "unknown")
+        if guide_version == "unknown":
+            filename_match = re.search(r"-v([\d.]+)\.md$", guide_path.name)
+            if filename_match:
+                guide_version = filename_match.group(1)
+
+        base_guide_title = "Technical User Guide — SSB Retuning Automations"
+        if guide_version and guide_version != "unknown":
+            rendered_guide_title = f"{base_guide_title} {guide_version}"
+            md_text = re.sub(
+                rf"^(\s*#\s*){re.escape(base_guide_title)}\s*$",
+                rf"\1{rendered_guide_title}",
+                md_text,
+                count=1,
+                flags=re.MULTILINE,
+            )
+        else:
+            rendered_guide_title = base_guide_title
+
+        html_body = markdown_module.markdown(md_text, extensions=["tables", "fenced_code", "sane_lists"])
+        guide_title = rendered_guide_title
         html_doc = f"""
 <!doctype html>
 <html lang="en">
@@ -1718,6 +1737,7 @@ def download_user_guide(request: Request, file_format: str, mode: str = "downloa
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>{guide_title}</title>
   <link rel="icon" type="image/png" href="/static/logo_02.png" />
+  <link rel="shortcut icon" type="image/png" href="/static/logo_02.png" />
   <style>
     body {{ font-family: Arial, sans-serif; margin: 2rem auto; max-width: 980px; line-height: 1.5; color: #1f2937; padding: 0 1rem; }}
     h1,h2,h3,h4 {{ color: #0f172a; }}
@@ -3382,6 +3402,5 @@ async def release_notes(request: Request, user=Depends(get_current_user)):
     changelog_md = changelog_path.read_text(encoding="utf-8", errors="replace") if changelog_path.exists() else "CHANGELOG.md not found at /app/CHANGELOG.md"
     tool_meta = load_tool_metadata()
     return templates.TemplateResponse("release_notes.html", {"request": request, "tool_meta": tool_meta, "user": user, "changelog_md": changelog_md})
-
 
 
