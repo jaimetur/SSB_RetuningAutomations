@@ -12,7 +12,7 @@
   - Added /healthz endpoint and Docker/Compose healthchecks for automatic health probing and restart orchestration support. 
   - Enabled user-panel Executions History visibility across users (with “All users” + per-user filter) while keeping ownership restrictions for stop/delete. 
   - Added combined Inputs Pattern Filter (wildcard + case-insensitive) in user/admin, applied together with user-scope filter. 
-  - Added inline Rename button/workflow in Inputs (user/admin), including folder rename + DB update, with user-only ownership enforcement and full admin rights.
+  - Added inline Rename button in Inputs (user/admin), including folder rename + DB update, with user-only ownership enforcement and full admin rights.
 
 - #### 🚀 Enhancements:
   - Persisted collapsed/expanded state of panels per user in both user and admin dashboards. 
