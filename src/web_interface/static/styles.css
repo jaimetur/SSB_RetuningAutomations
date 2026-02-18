@@ -163,3 +163,15 @@ th,td{border-bottom:1px solid #e3e8ee;padding:.55rem;text-align:left;font-size:.
   width: 100%;
   min-width: 140px;
 }
+
+.connected-users-badge {
+  display: inline-block;
+  margin-left: 0.5rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  background: #e8f5e9;
+  color: #1b5e20;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
