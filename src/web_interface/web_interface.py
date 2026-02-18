@@ -1708,13 +1708,16 @@ def download_user_guide(request: Request, file_format: str, mode: str = "downloa
 
         md_text = _normalize_markdown_lists(md_text)
         html_body = markdown_module.markdown(md_text, extensions=["tables", "fenced_code", "sane_lists"])
+        tool_meta = load_tool_metadata()
+        guide_title = f"Technical User Guide — SSB Retuning Automations {tool_meta.get('version', 'unknown')}"
         html_doc = f"""
 <!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>{guide_path.name}</title>
+  <title>{guide_title}</title>
+  <link rel="icon" type="image/png" href="/static/logo_02.png" />
   <style>
     body {{ font-family: Arial, sans-serif; margin: 2rem auto; max-width: 980px; line-height: 1.5; color: #1f2937; padding: 0 1rem; }}
     h1,h2,h3,h4 {{ color: #0f172a; }}
