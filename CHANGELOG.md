@@ -18,6 +18,7 @@
   - Added Wildcard filter and Last 24h filters to Inputs and Execution History (user/admin).
   - Added live connected users counter badge in administrator section.
   - Added re-run selected action for user and admin in execution history panel.
+  - Added sortable admin Inputs and Executions panels.
 
 - #### 🚀 Enhancements:
   - Persisted collapsed/expanded state of panels per user in both user and admin dashboards. 
