@@ -28,6 +28,7 @@
   - Compact SSB frequency section to reduce GUI dialog height to adapt the resolution for a small screen.
   - Made Users filter persistent per admin user in user_settings (admin_users_filter) and restored it on page load, with save-on-change behavior via /settings/update. 
   - Persist all user filters and keep Run Module visible when collapsed.
+  - Updated user executions history permissions and columns.
 
 - #### 🐛 Bug fixes:
   - Fixed duplicated System/Application log lines by de-duplicating uvicorn logger handler wiring and propagation. 

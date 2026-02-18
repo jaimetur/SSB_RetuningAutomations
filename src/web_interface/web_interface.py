@@ -2905,7 +2905,7 @@ async def delete_runs(request: Request):
         return JSONResponse(
             {
                 "ok": False,
-                "error": "Solo puedes borrar ejecuciones que hayan sido lanzadas por tu usuario.",
+                "error": "Only executions run by your user can be deleted.",
                 "forbidden_ids": foreign_run_ids,
             },
             status_code=403,
