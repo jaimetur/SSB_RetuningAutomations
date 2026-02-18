@@ -18,18 +18,40 @@ import importlib
 import os
 import subprocess
 
+# =========== WORD SETTINGS =============
+WORD_TABLE_HEADER_PT = 9            # Font Size for Table Header
+WORD_TABLE_BODY_PT = 8              # Font Size for Table Body
+WORD_LIST_STYLE = "List Paragraph"  # Style for List Paragraph (Must exists in the template)
+# =======================================
 
+# =========== PPT SETTINGS ==============
+PPT_FONT_SIZE_H3 = 20               # Define Font Size for Headers 3 (Header 3 are in the Tittle of the slide as subtitle)
+PPT_FONT_SIZE_H4 = 14               # Define Font Size for Headers 4 (Header 2 and 3 are in the Tittle of the slide)
+PPT_FONT_SIZE_PARAGRAPH = 12        # Font size for normal paragraph
+PPT_FONT_SIZE_LISTS = 12            # Font size for lists
+PPT_FONT_SIZE_TABLES_HEADER = 10    # Font size for table header
+PPT_FONT_SIZE_TABLES_BODY = 7       # Font size for table body
+
+PPT_MAX_CONTENT_LINES = 24          # Max number of lines per slide
+PPT_MAX_TABLE_DATA_ROWS = 12        # Max number of Rows per table (header doesn' t count)
+PPT_CUT_SLIDE_WEIGHT = 85           # Increasing this value makes to add more content to previous slide
+                                    # Decreasing this value makes the lists and paragraph to be cut to next slide earlier
+
+PPT_COMBINE_MAX_DATA_ROWS = 10      # Only try to combine small tables (header excluded)
+PPT_GAP = Pt(6)                     # Gap between rows
+PPT_MIN_TEXT_H = Pt(70)             # Min Text Height to combine with a table in the same slide
+PPT_MIN_TABLE_H = Pt(160)           # Min Table Height to combine with text in the same slide
+# =======================================
+
+# ================ PATHS ================
 ROOT = Path(__file__).resolve().parents[1]
 HELP_DIR = ROOT / "help"
 README_PATH = ROOT / "README.md"
-TOOL_MAIN_PATH = ROOT / "src" / "SSB_RetuningAutomations.py"
-DOCX_TEMPLATE_CANDIDATES = [
-    ROOT / "assets" / "templates_docx" / "UserGuideTemplate.docx",
-]
-PPTX_TEMPLATE_CANDIDATES = [
-    ROOT / "assets" / "templates_pptx" / "UserGuideTemplate.pptx",
-]
 GUIDE_PREFIX = "User-Guide-SSB-Retuning-Automations-v"
+TOOL_MAIN_PATH = ROOT / "src" / "SSB_RetuningAutomations.py"
+DOCX_TEMPLATE_CANDIDATES = [ROOT / "assets" / "templates_docx" / "UserGuideTemplate.docx"]
+PPTX_TEMPLATE_CANDIDATES = [ROOT / "assets" / "templates_pptx" / "UserGuideTemplate.pptx"]
+# =======================================
 
 
 def get_tool_version() -> str:
@@ -152,11 +174,13 @@ def is_table_separator(line: str) -> bool:
     return bool(re.fullmatch(r"\|?[\s:-]+(\|[\s:-]+)+\|?", stripped))
 
 
+# Update Word Fields (including ToC) and export into PDF
 def try_update_docx_fields_and_export_pdf(docx_file: Path, pdf_file: Path) -> bool:
     """Best effort on Windows: update TOC/fields via Word automation and export PDF."""
     if os.name != "nt":
         return False
 
+    print(f"\tUpdating Word fields and exporting PDF from Word...")
     ps_script = f"""
 $ErrorActionPreference = 'Stop'
 $word = $null
@@ -213,7 +237,96 @@ try {{
     return result.returncode == 0 and pdf_file.exists()
 
 
+
+# Only used when we execute this script in a Non-Windows OS or without Microsoft Word installed
+# Markdown to PDF Converter
+def build_pdf_from_markdown(md_file: Path, pdf_file: Path) -> None:
+    if importlib.util.find_spec("reportlab") is None:
+        raise RuntimeError("Missing dependency 'reportlab'. Install requirements.txt to generate PDF guides.")
+
+    print(f"\tGenerating PDF from Markdown...")
+    colors = importlib.import_module("reportlab.lib.colors")
+    pagesizes = importlib.import_module("reportlab.lib.pagesizes")
+    styles_mod = importlib.import_module("reportlab.lib.styles")
+    units = importlib.import_module("reportlab.lib.units")
+    platypus = importlib.import_module("reportlab.platypus")
+
+    A4 = pagesizes.A4
+    ParagraphStyle = styles_mod.ParagraphStyle
+    getSampleStyleSheet = styles_mod.getSampleStyleSheet
+    cm = units.cm
+    Paragraph = platypus.Paragraph
+    SimpleDocTemplate = platypus.SimpleDocTemplate
+    Spacer = platypus.Spacer
+    Table = platypus.Table
+    TableStyle = platypus.TableStyle
+
+    styles = getSampleStyleSheet()
+    body_style = ParagraphStyle("Body", parent=styles["BodyText"], leading=14, spaceAfter=6)
+    h1_style = ParagraphStyle("H1", parent=styles["Heading1"], spaceBefore=8, spaceAfter=6)
+    h2_style = ParagraphStyle("H2", parent=styles["Heading2"], spaceBefore=6, spaceAfter=4)
+    h3_style = ParagraphStyle("H3", parent=styles["Heading3"], spaceBefore=4, spaceAfter=3)
+
+    def inline_html(text: str) -> str:
+        text = normalize_markdown_inline(text)
+        text = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+        return re.sub(r"\*\*(.*?)\*\*", r"<b>\1</b>", text)
+
+    doc = SimpleDocTemplate(str(pdf_file), pagesize=A4, leftMargin=1.8 * cm, rightMargin=1.8 * cm, topMargin=1.8 * cm, bottomMargin=1.8 * cm)
+    story = []
+    lines = md_file.read_text(encoding="utf-8").splitlines()
+
+    i = 0
+    while i < len(lines):
+        raw = lines[i].rstrip()
+        line = raw.strip()
+
+        if not line or line == "---":
+            story.append(Spacer(1, 0.2 * cm))
+            i += 1
+            continue
+
+        if line.startswith("| ") and line.endswith(" |") and i + 1 < len(lines) and is_table_separator(lines[i + 1]):
+            rows = [parse_table_row(line)]
+            i += 2
+            while i < len(lines):
+                candidate = lines[i].strip()
+                if not (candidate.startswith("| ") and candidate.endswith(" |")):
+                    break
+                rows.append(parse_table_row(candidate))
+                i += 1
+            table_data = [[Paragraph(inline_html(cell), body_style) for cell in row] for row in rows]
+            table = Table(table_data, repeatRows=1)
+            table.setStyle(TableStyle([
+                ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#cbd5e1")),
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#e2e8f0")),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ]))
+            story.append(table)
+            story.append(Spacer(1, 0.2 * cm))
+            continue
+
+        if line.startswith("# "):
+            story.append(Paragraph(inline_html(clean_heading_text(line[2:].strip())), h1_style))
+        elif line.startswith("## "):
+            story.append(Paragraph(inline_html(clean_heading_text(line[3:].strip())), h1_style))
+        elif line.startswith("### "):
+            story.append(Paragraph(inline_html(clean_heading_text(line[4:].strip())), h2_style))
+        elif line.startswith("#### "):
+            story.append(Paragraph(inline_html(clean_heading_text(line[5:].strip())), h3_style))
+        elif re.match(r"^\s*-\s+", raw):
+            bullet = re.sub(r"^\s*-\s+", "", raw)
+            story.append(Paragraph(inline_html(f"• {bullet}"), body_style))
+        else:
+            story.append(Paragraph(inline_html(line), body_style))
+
+        i += 1
+
+    doc.build(story)
+
+# Markdown to Word Converter
 def build_docx_from_markdown(md_file: Path, docx_file: Path, version: str) -> None:
+    print(f"\tGenerating Word from Markdown...")
     # ------------------- Word-only helpers (subfunctions) ------------------- #
     def markdown_segments(text: str) -> list[tuple[str, bool]]:
         """Return [(segment, is_bold)] for markdown strings with **bold** markers."""
@@ -229,11 +342,12 @@ def build_docx_from_markdown(md_file: Path, docx_file: Path, version: str) -> No
                 segments.append((part, False))
         return segments
 
-    def add_markdown_paragraph(doc: Document, text: str, style: str | None = None) -> None:
+    def add_markdown_paragraph(doc: Document, text: str, style: str | None = None):
         paragraph = doc.add_paragraph(style=style) if style else doc.add_paragraph()
         for segment, is_bold in markdown_segments(text):
             run = paragraph.add_run(segment)
             run.bold = is_bold
+        return paragraph
 
     def add_plain_paragraph(doc: Document, text: str, style: str | None = None) -> None:
         paragraph = doc.add_paragraph(style=style) if style else doc.add_paragraph()
@@ -320,6 +434,46 @@ def build_docx_from_markdown(md_file: Path, docx_file: Path, version: str) -> No
                 continue
             body.remove(el)
 
+    def set_list_level_from_style(paragraph, level: int) -> None:
+        """
+        Force the list nesting level (w:ilvl) while keeping the list definition (w:numId)
+        coming from the paragraph style (template-linked multilevel list).
+        """
+        level = max(0, min(int(level), 8))
+
+        p = paragraph._p
+        pPr = p.get_or_add_pPr()
+
+        numPr = pPr.find(qn("w:numPr"))
+        if numPr is None:
+            numPr = OxmlElement("w:numPr")
+            pPr.append(numPr)
+
+        ilvl = numPr.find(qn("w:ilvl"))
+        if ilvl is None:
+            ilvl = OxmlElement("w:ilvl")
+            numPr.append(ilvl)
+        ilvl.set(qn("w:val"), str(level))
+
+        # Ensure numId is present so the paragraph is attached to the same multilevel list as the style
+        numId = numPr.find(qn("w:numId"))
+        if numId is None:
+            style_el = paragraph.style._element
+            pPr_style = style_el.find(qn("w:pPr"))
+            if pPr_style is None:
+                return
+            numPr_style = pPr_style.find(qn("w:numPr"))
+            if numPr_style is None:
+                return
+            numId_style = numPr_style.find(qn("w:numId"))
+            if numId_style is None:
+                return
+
+            numId = OxmlElement("w:numId")
+            numId.set(qn("w:val"), numId_style.get(qn("w:val")))
+            numPr.append(numId)
+
+
     # ------------------------------ Word logic ------------------------------ #
     text = md_file.read_text(encoding="utf-8")
     lines = text.splitlines()
@@ -332,7 +486,6 @@ def build_docx_from_markdown(md_file: Path, docx_file: Path, version: str) -> No
         remove_from_anchor_to_end(doc, anchor)
 
     seen_heading1 = False  # Track if we've already written the first Heading 1 (## ...)
-    # last_was_blank = False
 
     i = 0
     while i < len(lines):
@@ -365,10 +518,6 @@ def build_docx_from_markdown(md_file: Path, docx_file: Path, version: str) -> No
                 i += 1
                 continue
 
-            # if not last_was_blank:
-            #     doc.add_paragraph("")
-            #     last_was_blank = True
-
             i += 1
             continue
 
@@ -378,8 +527,6 @@ def build_docx_from_markdown(md_file: Path, docx_file: Path, version: str) -> No
             while i < len(lines) and not lines[i].strip():
                 i += 1
             continue
-
-        # last_was_blank = False
 
         t = s.strip()
         if t.startswith("| ") and t.endswith(" |") and i + 1 < len(lines) and is_table_separator(lines[i + 1]):
@@ -395,13 +542,11 @@ def build_docx_from_markdown(md_file: Path, docx_file: Path, version: str) -> No
             if rows:
                 table = doc.add_table(rows=len(rows), cols=len(rows[0]))
                 table.style = "Table Grid"
-                TABLE_BODY_PT = 9
-                TABLE_HEADER_PT = 10
                 for row_idx, row in enumerate(rows):
                     for col_idx, cell in enumerate(row):
                         paragraph = table.cell(row_idx, col_idx).paragraphs[0]
                         paragraph.text = ""  # limpia el párrafo de la celda
-                        font_pt = TABLE_HEADER_PT if row_idx == 0 else TABLE_BODY_PT
+                        font_pt = WORD_TABLE_HEADER_PT if row_idx == 0 else WORD_TABLE_BODY_PT
                         for seg, is_bold in markdown_segments(cell):
                             run = paragraph.add_run(seg)
                             run.bold = is_bold or row_idx == 0
@@ -432,9 +577,17 @@ def build_docx_from_markdown(md_file: Path, docx_file: Path, version: str) -> No
             indent = len(m.group(1).replace("\t", "    "))
             item_text = m.group(2).strip()
 
-            # 0 spaces => bullet normal; >=2 spaces => sub-bullet
-            style = "List Bullet 2" if indent >= 2 else "List Bullet"
-            add_markdown_paragraph(doc, item_text, style=style)
+            # 2 spaces per level (as in your example). Use //4 if your markdown uses 4 spaces per level.
+            level = 0 if indent < 2 else min(8, indent // 2)
+
+            paragraph = doc.add_paragraph(style=WORD_LIST_STYLE)
+            for segment, is_bold in markdown_segments(item_text):
+                run = paragraph.add_run(segment)
+                run.bold = is_bold
+
+            set_list_level_from_style(paragraph, level)
+
+
 
         elif re.match(r"^[A-Za-z](?:\.[A-Za-z])*\)\s+", s):
             # Examples: A) , B) , a) , A.B) , a.b)
@@ -454,7 +607,9 @@ def build_docx_from_markdown(md_file: Path, docx_file: Path, version: str) -> No
     doc.save(docx_file)
 
 
+# Markdown to PowerPoint Converter
 def build_pptx_summary(md_file: Path, pptx_file: Path, version: str) -> None:
+    print(f"\tGenerating PowerPoint from Markdown...")
     # ------------------- PPT-only helpers (subfunctions) ------------------- #
     def _strip_bold(text: str) -> str:
         return re.sub(r"\*\*(.*?)\*\*", r"\1", text)
@@ -603,13 +758,14 @@ def build_pptx_summary(md_file: Path, pptx_file: Path, version: str) -> None:
         return sections
 
     def _block_units(block: dict) -> int:
-        # Rough estimator to fit content in a slide.
+        # Rough estimator of "lines" to fit content in a slide.
+        # Calibrated to a 20-lines max template.
         if block["type"] == "h4":
             return 2
         if block["type"] == "paragraph":
-            return max(1, ceil(len(block["text"]) / 95))
+            return max(1, ceil(len(block["text"]) / PPT_CUT_SLIDE_WEIGHT))
         if block["type"] == "list":
-            return 1 + sum(max(1, ceil(len(it["text"]) / 95)) for it in block["items"])
+            return 1 + sum(max(1, ceil(len(it["text"]) / PPT_CUT_SLIDE_WEIGHT)) for it in block["items"])
         if block["type"] == "table":
             return 6 + len(block["rows"])
         return 2
@@ -626,7 +782,7 @@ def build_pptx_summary(md_file: Path, pptx_file: Path, version: str) -> None:
             p = cell.text_frame.paragraphs[0]
             p.font.bold = True
             p.font.color.rgb = RGBColor(255, 255, 255)
-            p.font.size = Pt(10)
+            p.font.size = Pt(PPT_FONT_SIZE_TABLES_HEADER)
 
         for row in range(1, len(table.rows)):
             for col in range(len(table.columns)):
@@ -636,7 +792,7 @@ def build_pptx_summary(md_file: Path, pptx_file: Path, version: str) -> None:
                     cell.fill.fore_color.rgb = band_fill
                 p = cell.text_frame.paragraphs[0]
                 p.font.color.rgb = text_dark
-                p.font.size = Pt(9)
+                p.font.size = Pt(PPT_FONT_SIZE_TABLES_BODY)
 
     def _set_table_wrap(table) -> None:
         for row in table.rows:
@@ -798,9 +954,6 @@ def build_pptx_summary(md_file: Path, pptx_file: Path, version: str) -> None:
 
 
     def _add_table_slide(prs: Presentation, slide_title: str, subtitle: str | None, rows: list[list[str]], continuation: bool = False) -> None:
-        # Define Font Size for Headers 2 & 3 (Header 2 and 3 are in the Tittle of the slide)
-        FONT_SIZE_H3 = 20
-
         slide = prs.slides.add_slide(prs.slide_layouts[1])
 
         title_shape = slide.shapes.title
@@ -810,7 +963,7 @@ def build_pptx_summary(md_file: Path, pptx_file: Path, version: str) -> None:
             p.text = subtitle if not continuation else f"{subtitle} (cont.)"
             p.level = 0
             p.font.bold = False
-            p.font.size = Pt(FONT_SIZE_H3)
+            p.font.size = Pt(PPT_FONT_SIZE_H3)
             p.font.color.theme_color = MSO_THEME_COLOR.ACCENT_2
 
         content = slide.shapes.placeholders[1]
@@ -842,11 +995,6 @@ def build_pptx_summary(md_file: Path, pptx_file: Path, version: str) -> None:
         from pptx.oxml.ns import qn as pptx_qn
         from pptx.oxml.xmlchemy import OxmlElement as PptxOxmlElement
 
-        # Define Font Size for Normal paragraph, lists and Headers 4 (Header 2 and 3 are in the Tittle of the slide)
-        FONT_SIZE_H4 = 16
-        FONT_SIZE_PARAGRAPH = 14
-        FONT_SIZE_LISTS = 14
-
         def _set_bullets(p, enabled: bool) -> None:
             pPr = p._p.get_or_add_pPr()
             for tag in ("a:buAutoNum", "a:buChar", "a:buBlip", "a:buFont", "a:buNone"):
@@ -871,7 +1019,7 @@ def build_pptx_summary(md_file: Path, pptx_file: Path, version: str) -> None:
                 p.level = 0
                 _set_bullets(p, enabled=False)
                 p.font.bold = True
-                p.font.size = Pt(FONT_SIZE_H4)
+                p.font.size = Pt(PPT_FONT_SIZE_H4)
                 continue
 
             if block["type"] == "paragraph":
@@ -880,7 +1028,7 @@ def build_pptx_summary(md_file: Path, pptx_file: Path, version: str) -> None:
                 p.text = block["text"]
                 p.level = 0
                 _set_bullets(p, enabled=False)
-                p.font.size = Pt(FONT_SIZE_PARAGRAPH)
+                p.font.size = Pt(PPT_FONT_SIZE_PARAGRAPH)
                 continue
 
             if block["type"] == "list":
@@ -890,7 +1038,7 @@ def build_pptx_summary(md_file: Path, pptx_file: Path, version: str) -> None:
 
                     nesting = int(it.get("level", 0))
                     p.level = 1 + nesting
-                    p.font.size = Pt(FONT_SIZE_LISTS)
+                    p.font.size = Pt(PPT_FONT_SIZE_LISTS)
 
                     if block["ordered"]:
                         marker = it.get("marker") or f"{idx}."
@@ -908,16 +1056,8 @@ def build_pptx_summary(md_file: Path, pptx_file: Path, version: str) -> None:
 
     # Cover
     slide = prs.slides.add_slide(prs.slide_layouts[0])
-    slide.shapes.title.text = "Technical User Guide Summary"
-    slide.placeholders[1].text = f"SSB Retuning Automations (v{version})"
-
-    max_units = 20
-    MAX_TABLE_DATA_ROWS = 12  # simple split: header + 12 rows per slide
-
-    GAP = Pt(6)
-    MIN_TEXT_H = Pt(70)
-    MIN_TABLE_H = Pt(160)
-    COMBINE_MAX_DATA_ROWS = 6  # Only try to combine small tables (header excluded)
+    slide.shapes.title.text = "Technical User Guide"
+    slide.placeholders[1].text = "SSB Retuning Automations"
 
     for section in sections:
         slide_title = section["title"]
@@ -985,12 +1125,12 @@ def build_pptx_summary(md_file: Path, pptx_file: Path, version: str) -> None:
                         continuation=continuation,
                         buffer=buffer,
                         used=used,
-                        max_units=max_units,
+                        max_units=PPT_MAX_CONTENT_LINES,
                         rows=rows,
-                        combine_max_data_rows=COMBINE_MAX_DATA_ROWS,
-                        gap=GAP,
-                        min_text_h=MIN_TEXT_H,
-                        min_table_h=MIN_TABLE_H,
+                        combine_max_data_rows=PPT_COMBINE_MAX_DATA_ROWS,
+                        gap=PPT_GAP,
+                        min_text_h=PPT_MIN_TEXT_H,
+                        min_table_h=PPT_MIN_TABLE_H,
                     )
                     if handled:
                         i += 1
@@ -1007,8 +1147,8 @@ def build_pptx_summary(md_file: Path, pptx_file: Path, version: str) -> None:
                         _add_table_slide(prs, slide_title, subtitle, rows, continuation=continuation)
                         continuation = True
                     else:
-                        for start in range(0, len(data), MAX_TABLE_DATA_ROWS):
-                            chunk = header + data[start:start + MAX_TABLE_DATA_ROWS]
+                        for start in range(0, len(data), PPT_MAX_TABLE_DATA_ROWS):
+                            chunk = header + data[start:start + PPT_MAX_TABLE_DATA_ROWS]
                             _add_table_slide(
                                 prs,
                                 slide_title,
@@ -1021,8 +1161,63 @@ def build_pptx_summary(md_file: Path, pptx_file: Path, version: str) -> None:
                     i += 1
                     continue
 
+                # Special case: split long lists so they respect the per-slide line budget
+                if b["type"] == "list":
+                    u = _block_units(b)
+                    remaining = PPT_MAX_CONTENT_LINES - used
+
+                    if u > PPT_MAX_CONTENT_LINES or (buffer and used + u > PPT_MAX_CONTENT_LINES):
+                        # Need at least "1 unit" overhead + 1 item to be worth placing on this slide
+                        fit_items = []
+                        fit_used = 1  # list overhead (same idea as _block_units)
+                        for it in b["items"]:
+                            item_u = max(1, ceil(len(it["text"]) / PPT_CUT_SLIDE_WEIGHT))
+                            if fit_used + item_u > remaining:
+                                break
+                            fit_items.append(it)
+                            fit_used += item_u
+
+                        if fit_items:
+                            # Put the first part of the list on the current slide
+                            b1 = dict(b)
+                            b1["items"] = fit_items
+                            buffer.append(b1)
+                            used += fit_used
+
+                            # Flush now so the list continues on the next slide
+                            flush()
+
+                            # Replace current block with the remaining items and re-process it
+                            rest = b["items"][len(fit_items):]
+                            if rest:
+                                gblocks[i] = {"type": "list", "ordered": b["ordered"], "items": rest}
+                                continue
+
+                            i += 1
+                            continue
+
+                        # If nothing fits (e.g., a single very long item), force one item per slide
+                        if b["items"]:
+                            b1 = dict(b)
+                            b1["items"] = [b["items"][0]]
+                            buffer.append(b1)
+                            used = PPT_MAX_CONTENT_LINES
+                            flush()
+
+                            rest = b["items"][1:]
+                            if rest:
+                                gblocks[i] = {"type": "list", "ordered": b["ordered"], "items": rest}
+                                continue
+
+                            i += 1
+                            continue
+
+                        flush()
+                        continue
+
+                # Default behavior for non-list blocks (and lists that fit)
                 u = _block_units(b)
-                if buffer and used + u > max_units:
+                if buffer and used + u > PPT_MAX_CONTENT_LINES:
                     flush()
 
                 buffer.append(b)
@@ -1033,91 +1228,6 @@ def build_pptx_summary(md_file: Path, pptx_file: Path, version: str) -> None:
                 flush()
 
     prs.save(pptx_file)
-
-
-
-def build_pdf_from_markdown(md_file: Path, pdf_file: Path) -> None:
-    if importlib.util.find_spec("reportlab") is None:
-        raise RuntimeError("Missing dependency 'reportlab'. Install requirements.txt to generate PDF guides.")
-
-    colors = importlib.import_module("reportlab.lib.colors")
-    pagesizes = importlib.import_module("reportlab.lib.pagesizes")
-    styles_mod = importlib.import_module("reportlab.lib.styles")
-    units = importlib.import_module("reportlab.lib.units")
-    platypus = importlib.import_module("reportlab.platypus")
-
-    A4 = pagesizes.A4
-    ParagraphStyle = styles_mod.ParagraphStyle
-    getSampleStyleSheet = styles_mod.getSampleStyleSheet
-    cm = units.cm
-    Paragraph = platypus.Paragraph
-    SimpleDocTemplate = platypus.SimpleDocTemplate
-    Spacer = platypus.Spacer
-    Table = platypus.Table
-    TableStyle = platypus.TableStyle
-
-    styles = getSampleStyleSheet()
-    body_style = ParagraphStyle("Body", parent=styles["BodyText"], leading=14, spaceAfter=6)
-    h1_style = ParagraphStyle("H1", parent=styles["Heading1"], spaceBefore=8, spaceAfter=6)
-    h2_style = ParagraphStyle("H2", parent=styles["Heading2"], spaceBefore=6, spaceAfter=4)
-    h3_style = ParagraphStyle("H3", parent=styles["Heading3"], spaceBefore=4, spaceAfter=3)
-
-    def inline_html(text: str) -> str:
-        text = normalize_markdown_inline(text)
-        text = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-        return re.sub(r"\*\*(.*?)\*\*", r"<b>\1</b>", text)
-
-    doc = SimpleDocTemplate(str(pdf_file), pagesize=A4, leftMargin=1.8 * cm, rightMargin=1.8 * cm, topMargin=1.8 * cm, bottomMargin=1.8 * cm)
-    story = []
-    lines = md_file.read_text(encoding="utf-8").splitlines()
-
-    i = 0
-    while i < len(lines):
-        raw = lines[i].rstrip()
-        line = raw.strip()
-
-        if not line or line == "---":
-            story.append(Spacer(1, 0.2 * cm))
-            i += 1
-            continue
-
-        if line.startswith("| ") and line.endswith(" |") and i + 1 < len(lines) and is_table_separator(lines[i + 1]):
-            rows = [parse_table_row(line)]
-            i += 2
-            while i < len(lines):
-                candidate = lines[i].strip()
-                if not (candidate.startswith("| ") and candidate.endswith(" |")):
-                    break
-                rows.append(parse_table_row(candidate))
-                i += 1
-            table_data = [[Paragraph(inline_html(cell), body_style) for cell in row] for row in rows]
-            table = Table(table_data, repeatRows=1)
-            table.setStyle(TableStyle([
-                ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#cbd5e1")),
-                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#e2e8f0")),
-                ("VALIGN", (0, 0), (-1, -1), "TOP"),
-            ]))
-            story.append(table)
-            story.append(Spacer(1, 0.2 * cm))
-            continue
-
-        if line.startswith("# "):
-            story.append(Paragraph(inline_html(clean_heading_text(line[2:].strip())), h1_style))
-        elif line.startswith("## "):
-            story.append(Paragraph(inline_html(clean_heading_text(line[3:].strip())), h1_style))
-        elif line.startswith("### "):
-            story.append(Paragraph(inline_html(clean_heading_text(line[4:].strip())), h2_style))
-        elif line.startswith("#### "):
-            story.append(Paragraph(inline_html(clean_heading_text(line[5:].strip())), h3_style))
-        elif re.match(r"^\s*-\s+", raw):
-            bullet = re.sub(r"^\s*-\s+", "", raw)
-            story.append(Paragraph(inline_html(f"• {bullet}"), body_style))
-        else:
-            story.append(Paragraph(inline_html(line), body_style))
-
-        i += 1
-
-    doc.build(story)
 
 
 

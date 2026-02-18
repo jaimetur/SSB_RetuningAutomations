@@ -11,8 +11,8 @@ from tkinter import messagebox
 
 ROOT = Path(__file__).resolve().parents[1]
 TOOL_MAIN_PATH = ROOT / "src" / "SSB_RetuningAutomations.py"
-DOWNLOAD_SCRIPT = ROOT / "tools" / "Update-Download-Links.py"
-GUIDES_SCRIPT = ROOT / "tools" / "Update-User-Guides.py"
+DOWNLOAD_SCRIPT = ROOT / "tools" / "UpdateDownloadLinks.py"
+GUIDES_SCRIPT = ROOT / "tools" / "UpdateUserGuides.py"
 
 
 def read_version_date() -> tuple[str, str, str]:
