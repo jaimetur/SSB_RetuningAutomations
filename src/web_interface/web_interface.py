@@ -1707,14 +1707,28 @@ def download_user_guide(request: Request, file_format: str, mode: str = "downloa
             return "\n".join(out)
 
         md_text = _normalize_markdown_lists(md_text)
-        html_body = markdown_module.markdown(md_text, extensions=["tables", "fenced_code", "sane_lists"])
         tool_meta = load_tool_metadata()
         guide_version = tool_meta.get("version", "unknown")
         if guide_version == "unknown":
             filename_match = re.search(r"-v([\d.]+)\.md$", guide_path.name)
             if filename_match:
                 guide_version = filename_match.group(1)
-        guide_title = f"Technical User Guide — SSB Retuning Automations {guide_version}"
+
+        base_guide_title = "Technical User Guide — SSB Retuning Automations"
+        if guide_version and guide_version != "unknown":
+            rendered_guide_title = f"{base_guide_title} {guide_version}"
+            md_text = re.sub(
+                rf"^(\s*#\s*){re.escape(base_guide_title)}\s*$",
+                rf"\1{rendered_guide_title}",
+                md_text,
+                count=1,
+                flags=re.MULTILINE,
+            )
+        else:
+            rendered_guide_title = base_guide_title
+
+        html_body = markdown_module.markdown(md_text, extensions=["tables", "fenced_code", "sane_lists"])
+        guide_title = rendered_guide_title
         html_doc = f"""
 <!doctype html>
 <html lang="en">
@@ -1743,11 +1757,33 @@ def download_user_guide(request: Request, file_format: str, mode: str = "downloa
         return HTMLResponse(html_doc)
 
     if normalized_mode == "view" and normalized_format == "pdf":
-        return FileResponse(
-            guide_path,
-            media_type="application/pdf",
-            headers={"Content-Disposition": f'inline; filename="{guide_path.name}"'},
-        )
+        tool_meta = load_tool_metadata()
+        guide_version = tool_meta.get("version", "unknown")
+        if guide_version == "unknown":
+            filename_match = re.search(r"-v([\d.]+)\.pdf$", guide_path.name)
+            if filename_match:
+                guide_version = filename_match.group(1)
+        guide_title = f"Technical User Guide (PDF) — SSB Retuning Automations {guide_version}"
+        pdf_viewer_html = f"""
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{guide_title}</title>
+  <link rel="icon" type="image/png" href="/static/logo_02.png" />
+  <link rel="shortcut icon" type="image/png" href="/static/logo_02.png" />
+  <style>
+    html, body {{ margin: 0; height: 100%; background: #0f172a; }}
+    iframe {{ border: 0; width: 100%; height: 100%; }}
+  </style>
+</head>
+<body>
+  <iframe src="/documentation/user-guide/pdf" title="{guide_title}"></iframe>
+</body>
+</html>
+"""
+        return HTMLResponse(pdf_viewer_html)
 
     return FileResponse(guide_path, filename=guide_path.name)
 
