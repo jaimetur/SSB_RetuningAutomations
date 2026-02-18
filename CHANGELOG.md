@@ -11,24 +11,27 @@
   - Added SQLite resilience (busy_timeout, WAL, connect timeout, etc.) plus startup task recovery to reduce hangs and auto-requeue interrupted jobs after restart. 
   - Added /healthz endpoint and Docker/Compose healthchecks for automatic health probing and restart orchestration support. 
   - Enabled user-panel Executions History visibility across users (with “All users” + per-user filter) while keeping ownership restrictions for stop/delete. 
-  - Added combined Inputs Pattern Filter (wildcard + case-insensitive) in user/admin, applied together with user-scope filter. 
   - Added inline Rename button in Inputs (user/admin), including folder rename + DB update, with user-only ownership enforcement and full admin rights.
   - Added a new Connected column in Admin → Users (right after Status) and show each user as connected / not connected based on active non-idle sessions. 
-  - Added a new Users filter combo in Admin with options: Select All, Connected Users, No Connected Users, Admin Role, User Role, Active Users, Innactive Users. 
+  - Added a new Users filter combo in Admin with options: Select All, Connected Users, No Connected Users, Admin Role, User Role, Active Users, Inactive Users. 
+  - Added combined Inputs Wildcard filter (wildcard + case-insensitive) in user/admin, applied together with user-scope filter. 
   - Implemented row filtering logic for the Users panel using per-row attributes (data-user-role, data-user-active, data-user-connected) and the selected filter option. 
   - Made this Users filter persistent per admin user in user_settings (admin_users_filter) and restored it on page load, with save-on-change behavior via /settings/update. 
+  - Added Wildcard filter and Last 24h filters to Inputs and Execution History (user/admin).
+  - Added live connected users counter badge in administrator section.
 
 - #### 🚀 Enhancements:
   - Persisted collapsed/expanded state of panels per user in both user and admin dashboards. 
   - Persisted selected System Logs source per user for both user and admin views across page refreshes. 
+  - Refined wildcard filter UX defaults and expand Inputs filter coverage.
+  - Persist wildcard filter history for inputs and executions.
 
 - #### 🐛 Bug fixes:
   - Fixed duplicated System/Application log lines by de-duplicating uvicorn logger handler wiring and propagation. 
-  - Fixed connected users status consistency and add live connected counter.
-  - Fixed rendered guide heading version and PDF web favicon.
+  - Fixed connected users status consistency
 
 - #### 📚 Documentation:
-  - Updated Documentation to allign with the latest changes.
+  - Updated Documentation to align with the latest changes.
   - Updated the Markdown User Guide web view so it uses the same favicon as the main app (/static/logo_02.png).
   - Changed the web-rendered Markdown guide title to include the tool version dynamically, now shown as Technical User Guide — SSB Retuning Automations <version> (without modifying the guide file itself).
 
