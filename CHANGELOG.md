@@ -13,6 +13,10 @@
   - Enabled user-panel Executions History visibility across users (with “All users” + per-user filter) while keeping ownership restrictions for stop/delete. 
   - Added combined Inputs Pattern Filter (wildcard + case-insensitive) in user/admin, applied together with user-scope filter. 
   - Added inline Rename button in Inputs (user/admin), including folder rename + DB update, with user-only ownership enforcement and full admin rights.
+  - Added a new Connected column in Admin → Users (right after Status) and show each user as connected / not connected based on active non-idle sessions. 
+  - Added a new Users filter combo in Admin with options: Select All, Connected Users, No Connected Users, Admin Role, User Role, Active Users, Innactive Users. 
+  - Implemented row filtering logic for the Users panel using per-row attributes (data-user-role, data-user-active, data-user-connected) and the selected filter option. 
+  - Made this Users filter persistent per admin user in user_settings (admin_users_filter) and restored it on page load, with save-on-change behavior via /settings/update. 
 
 - #### 🚀 Enhancements:
   - Persisted collapsed/expanded state of panels per user in both user and admin dashboards. 
@@ -23,7 +27,8 @@
 
 - #### 📚 Documentation:
   - Updated Documentation to allign with the latest changes.
-
+  - Updated the Markdown User Guide web view so it uses the same favicon as the main app (/static/logo_02.png).
+  - Changed the web-rendered Markdown guide title to include the tool version dynamically, now shown as Technical User Guide — SSB Retuning Automations <version> (without modifying the guide file itself).
 
 ---
 
