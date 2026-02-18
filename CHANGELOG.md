@@ -10,13 +10,11 @@
 - #### 🌟 New Features:
   - Added SQLite resilience (busy_timeout, WAL, connect timeout, etc.) plus startup task recovery to reduce hangs and auto-requeue interrupted jobs after restart. 
   - Added /healthz endpoint and Docker/Compose healthchecks for automatic health probing and restart orchestration support. 
-  - Enabled user-panel Executions History visibility across users (with “All users” + per-user filter) while keeping ownership restrictions for stop/delete. 
   - Added inline Rename button in Inputs (user/admin), including folder rename + DB update, with user-only ownership enforcement and full admin rights.
   - Added a new Connected column in Admin → Users (right after Status) and show each user as connected / not connected based on active non-idle sessions. 
   - Added a new Users filter combo in Admin with options: Select All, Connected Users, No Connected Users, Admin Role, User Role, Active Users, Inactive Users. 
   - Added combined Inputs Wildcard filter (wildcard + case-insensitive) in user/admin, applied together with user-scope filter. 
-  - Implemented row filtering logic for the Users panel using per-row attributes (data-user-role, data-user-active, data-user-connected) and the selected filter option. 
-  - Made this Users filter persistent per admin user in user_settings (admin_users_filter) and restored it on page load, with save-on-change behavior via /settings/update. 
+  - Added row filtering logic for the Users panel using per-row attributes (data-user-role, data-user-active, data-user-connected) and the selected filter option. 
   - Added Wildcard filter and Last 24h filters to Inputs and Execution History (user/admin).
   - Added live connected users counter badge in administrator section.
   - Added re-run selected action for user and admin in execution history panel.
@@ -24,9 +22,12 @@
 - #### 🚀 Enhancements:
   - Persisted collapsed/expanded state of panels per user in both user and admin dashboards. 
   - Persisted selected System Logs source per user for both user and admin views across page refreshes. 
+  - Enabled user-panel Executions History visibility across users (with “All users” + per-user filter) while keeping ownership restrictions for stop/delete. 
   - Refined wildcard filter UX defaults and expand Inputs filter coverage.
   - Persist wildcard filter history for inputs and executions.
   - Compact SSB frequency section to reduce GUI dialog height to adapt the resolution for a small screen.
+  - Made Users filter persistent per admin user in user_settings (admin_users_filter) and restored it on page load, with save-on-change behavior via /settings/update. 
+  - Persist all user filters and keep Run Module visible when collapsed.
 
 - #### 🐛 Bug fixes:
   - Fixed duplicated System/Application log lines by de-duplicating uvicorn logger handler wiring and propagation. 
