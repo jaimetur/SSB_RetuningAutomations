@@ -136,10 +136,7 @@
         <div class="runs-actions">
           <select id="select_user_inputs_combo"><option value="__all__" selected>All Users</option><option value="__last24h__">Last 24h</option></select>
           <input id="admin_inputs_name_filter_combo" class="combo-filter" list="admin_inputs_name_filter_presets" value="" placeholder="Wildcard Filter (*text*)" aria-label="Input name pattern filter" />
-          <datalist id="admin_inputs_name_filter_presets">
-            <option value=""></option>
-            <option value="*Mkt188*"></option>
-          </datalist>
+          <datalist id="admin_inputs_name_filter_presets"></datalist>
           <select id="inputs_bulk_select_action" aria-label="Bulk input selection">
             <option value="" selected>Select</option>
             <option value="all">Select All</option>
@@ -182,10 +179,7 @@
         <div class="runs-actions">
           <select id="select_user_runs_combo"><option value="__all__" selected>All Users</option><option value="__last24h__">Last 24h</option></select>
           <input id="admin_runs_pattern_filter_combo" class="combo-filter" list="admin_runs_pattern_filter_presets" value="" placeholder="Wildcard Filter (*text*)" aria-label="Runs pattern filter" />
-          <datalist id="admin_runs_pattern_filter_presets">
-            <option value=""></option>
-            <option value="*running*"></option>
-          </datalist>
+          <datalist id="admin_runs_pattern_filter_presets"></datalist>
           <select id="runs_bulk_select_action" aria-label="Bulk run selection">
             <option value="" selected>Select</option>
             <option value="all">Select All</option>
@@ -462,6 +456,8 @@
     const persistedPanelStates = {{ (user_settings.get("ui_panels", {}) if user_settings else {}) | tojson }};
     const persistedAdminSystemLogSource = {{ (user_settings.get("admin_system_log_source") if user_settings else "app") | tojson }};
     const persistedAdminUsersFilter = {{ (user_settings.get("admin_users_filter") if user_settings else "all") | tojson }};
+    let persistedInputsWildcardHistory = {{ (user_settings.get("wildcard_history_inputs", []) if user_settings else []) | tojson }};
+    let persistedExecutionsWildcardHistory = {{ (user_settings.get("wildcard_history_executions", []) if user_settings else []) | tojson }};
     let panelStateSaveTimeout = null;
     try {
       adminPersistedExecutionAutoChecked = window.sessionStorage?.getItem(ADMIN_EXECUTION_AUTO_CHECKED_KEY) === "1";
@@ -496,6 +492,49 @@
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ admin_users_filter: filterValue || "all" })
       }).catch(() => {});
+    }
+
+    function normalizeWildcardPattern(rawValue) {
+      const value = String(rawValue || "").trim();
+      const lowered = value.toLowerCase();
+      if (!value || lowered === "pattern filter" || lowered === "wildcard filter (*text*)") return "";
+      return value;
+    }
+
+    function sanitizeWildcardHistory(items) {
+      if (!Array.isArray(items)) return [];
+      const result = [];
+      for (const rawItem of items) {
+        const normalized = normalizeWildcardPattern(rawItem);
+        if (!normalized) continue;
+        if (!result.includes(normalized)) result.push(normalized);
+        if (result.length >= 10) break;
+      }
+      return result;
+    }
+
+    function renderWildcardHistory(datalistElement, history) {
+      if (!datalistElement) return;
+      datalistElement.innerHTML = sanitizeWildcardHistory(history)
+        .map((value) => `<option value="${value.replace(/[&<>"']/g, (char) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]))}"></option>`)
+        .join("");
+    }
+
+    function persistWildcardHistory(settingsKey, history) {
+      fetch("/settings/update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ [settingsKey]: sanitizeWildcardHistory(history) })
+      }).catch(() => {});
+    }
+
+    function rememberWildcardPattern(rawValue, settingsKey, currentHistory, datalistElement) {
+      const normalized = normalizeWildcardPattern(rawValue);
+      if (!normalized) return currentHistory;
+      const nextHistory = [normalized, ...sanitizeWildcardHistory(currentHistory).filter((item) => item !== normalized)].slice(0, 10);
+      renderWildcardHistory(datalistElement, nextHistory);
+      persistWildcardHistory(settingsKey, nextHistory);
+      return nextHistory;
     }
 
     function persistAdminExecutionAutoCheckedState(isChecked) {
@@ -831,7 +870,8 @@
     selectUserRunsCombo?.addEventListener("change", () => { applyAdminRunsFilters(); updateSelectionSizeLabels(); });
 
     adminRunsPatternFilterCombo?.addEventListener("input", () => { applyAdminRunsFilters(); updateSelectionSizeLabels(); });
-    adminRunsPatternFilterCombo?.addEventListener("change", () => { applyAdminRunsFilters(); updateSelectionSizeLabels(); });
+    adminRunsPatternFilterCombo?.addEventListener("change", () => { persistedExecutionsWildcardHistory = rememberWildcardPattern(adminRunsPatternFilterCombo?.value, "wildcard_history_executions", persistedExecutionsWildcardHistory, document.getElementById("admin_runs_pattern_filter_presets")); applyAdminRunsFilters(); updateSelectionSizeLabels(); });
+    adminRunsPatternFilterCombo?.addEventListener("blur", () => { persistedExecutionsWildcardHistory = rememberWildcardPattern(adminRunsPatternFilterCombo?.value, "wildcard_history_executions", persistedExecutionsWildcardHistory, document.getElementById("admin_runs_pattern_filter_presets")); });
 
     const olderDatePicker = document.getElementById("older_date_picker");
     if (olderDatePicker) {
@@ -1045,7 +1085,8 @@
     }
     selectUserInputsCombo?.addEventListener("change", () => { applyAdminInputsFilters(); updateSelectionSizeLabels(); });
     adminInputsNameFilterCombo?.addEventListener("input", () => { applyAdminInputsFilters(); updateSelectionSizeLabels(); });
-    adminInputsNameFilterCombo?.addEventListener("change", () => { applyAdminInputsFilters(); updateSelectionSizeLabels(); });
+    adminInputsNameFilterCombo?.addEventListener("change", () => { persistedInputsWildcardHistory = rememberWildcardPattern(adminInputsNameFilterCombo?.value, "wildcard_history_inputs", persistedInputsWildcardHistory, document.getElementById("admin_inputs_name_filter_presets")); applyAdminInputsFilters(); updateSelectionSizeLabels(); });
+    adminInputsNameFilterCombo?.addEventListener("blur", () => { persistedInputsWildcardHistory = rememberWildcardPattern(adminInputsNameFilterCombo?.value, "wildcard_history_inputs", persistedInputsWildcardHistory, document.getElementById("admin_inputs_name_filter_presets")); });
     renameInputsButton?.addEventListener("click", async () => {
       if (!adminInputRenameMode) {
         enterAdminInputRenameMode();
@@ -1497,6 +1538,10 @@
     if (runsTotalSizeLabel) {
       runsTotalSizeLabel.dataset.totalSize = "{{ global_runs_size }}";
     }
+    persistedInputsWildcardHistory = sanitizeWildcardHistory(persistedInputsWildcardHistory);
+    persistedExecutionsWildcardHistory = sanitizeWildcardHistory(persistedExecutionsWildcardHistory);
+    renderWildcardHistory(document.getElementById("admin_inputs_name_filter_presets"), persistedInputsWildcardHistory);
+    renderWildcardHistory(document.getElementById("admin_runs_pattern_filter_presets"), persistedExecutionsWildcardHistory);
     applyAdminRunsFilters();
     applyAdminInputsFilters();
     document.addEventListener("change", (event) => {
