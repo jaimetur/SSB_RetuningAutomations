@@ -65,7 +65,7 @@
 
     <section class="card">
       <div class="runs-header">
-        <h2>Users</h2>
+        <h2>Users <span id="connected_users_badge" class="connected-users-badge">Connected: {{ connected_users_count }}</span></h2>
         <div class="runs-actions">
           <select id="users_filter_combo" aria-label="Users filter">
             <option value="all" selected>Select All</option>
@@ -420,6 +420,7 @@
     const toggleUsersPanelButton = document.getElementById("toggle_users_panel");
     const usersPanelTable = document.getElementById("users_panel_table");
     const usersFilterCombo = document.getElementById("users_filter_combo");
+    const connectedUsersBadge = document.getElementById("connected_users_badge");
     const adminLogRunSelector = document.getElementById("admin_log_run_selector");
     const adminRefreshLogButton = document.getElementById("admin_refresh_log");
     const adminClearLogButton = document.getElementById("admin_clear_log");
@@ -604,6 +605,29 @@
         else if (mode === "inactive_users") show = !active;
         row.classList.toggle('hidden', !show);
       });
+    }
+
+    function countConnectedUsersInTable() {
+      return Array.from(document.querySelectorAll('#users_panel_table tbody tr'))
+        .filter((row) => String(row.dataset.userConnected || "0") === "1")
+        .length;
+    }
+
+    function updateConnectedUsersBadge(count) {
+      if (!connectedUsersBadge) return;
+      connectedUsersBadge.textContent = `Connected: ${Number(count) || 0}`;
+    }
+
+    async function refreshConnectedUsersBadge() {
+      try {
+        const response = await fetch(`/admin/users/connected_status?_=${Date.now()}`);
+        if (!response.ok) throw new Error("bad status");
+        const data = await response.json();
+        if (!data?.ok) throw new Error("invalid payload");
+        updateConnectedUsersBadge(data.connected_users);
+      } catch (_error) {
+        updateConnectedUsersBadge(countConnectedUsersInTable());
+      }
     }
 
     function toggleVisibleCheckboxes(tableSelector, checkboxSelector, checked) {
@@ -1435,6 +1459,10 @@
     applyUsersPanelFilter();
 
     updateSelectionSizeLabels();
+    updateConnectedUsersBadge(countConnectedUsersInTable());
+    refreshConnectedUsersBadge();
+    setInterval(refreshConnectedUsersBadge, 15000);
+
     refreshInputsRepository();
     runAdminBackgroundRefreshCycle();
     if (adminSystemLogSource) {

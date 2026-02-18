@@ -750,6 +750,25 @@ def apply_session_idle_timeout(
     return True
 
 
+def build_connected_users_snapshot(conn: sqlite3.Connection) -> tuple[dict[int, bool], int]:
+    """Return connected status per user based on active sessions updated within timeout window."""
+    now_dt = datetime.now().astimezone()
+    connected_users: dict[int, bool] = {}
+    active_sessions = conn.execute(
+        "SELECT user_id, last_seen_at FROM sessions WHERE active = 1"
+    ).fetchall()
+    for session_row in active_sessions:
+        user_id = int(session_row["user_id"])
+        if connected_users.get(user_id):
+            continue
+        last_seen = parse_iso_datetime(session_row["last_seen_at"])
+        if not last_seen:
+            continue
+        if (now_dt - last_seen).total_seconds() <= SESSION_IDLE_TIMEOUT_SECONDS:
+            connected_users[user_id] = True
+    return connected_users, len(connected_users)
+
+
 def get_current_user(request: Request) -> sqlite3.Row | None:
     token = request.cookies.get("session_token")
     if not token:
@@ -2430,6 +2449,20 @@ def admin_runs_active_status(request: Request):
     active_count = int(row["active_count"] or 0) if row else 0
     return JSONResponse({"ok": True, "has_active_tasks": active_count > 0}, headers=NO_CACHE_HEADERS)
 
+
+@app.get("/admin/users/connected_status", tags=["Administration"])
+def admin_users_connected_status(request: Request):
+    try:
+        require_admin(request)
+    except PermissionError:
+        return JSONResponse({"ok": False, "connected_users": 0}, headers=NO_CACHE_HEADERS)
+
+    conn = get_conn()
+    _, connected_users_count = build_connected_users_snapshot(conn)
+    conn.close()
+    return JSONResponse({"ok": True, "connected_users": connected_users_count}, headers=NO_CACHE_HEADERS)
+
+
 @app.get("/runs/list", tags=["Runs & Logs"])
 def runs_list(request: Request):
     try:
@@ -2962,7 +2995,7 @@ def admin_panel(request: Request):
         (SESSION_IDLE_TIMEOUT_SECONDS, SESSION_IDLE_TIMEOUT_SECONDS),
     ).fetchall()
     users = [dict(row) for row in users]
-    now_dt = datetime.now().astimezone()
+    connected_users, connected_users_count = build_connected_users_snapshot(conn)
     for row in users:
         dirs = get_user_storage_dirs(row["username"])
         uploads_size = compute_dir_size(dirs["uploads"])
@@ -2971,19 +3004,7 @@ def admin_panel(request: Request):
         row["total_login_hms"] = format_seconds_hms(row.get("total_login_seconds"))
         row["total_execution_hms"] = format_seconds_hms(row.get("total_execution_seconds"))
 
-        active_sessions = conn.execute(
-            "SELECT active, last_seen_at FROM sessions WHERE user_id = ? AND active = 1",
-            (row["id"],),
-        ).fetchall()
-        connected = False
-        for session_row in active_sessions:
-            last_seen = parse_iso_datetime(session_row["last_seen_at"])
-            if not last_seen:
-                continue
-            if (now_dt - last_seen).total_seconds() <= SESSION_IDLE_TIMEOUT_SECONDS:
-                connected = True
-                break
-        row["connected"] = connected
+        row["connected"] = bool(connected_users.get(row["id"], False))
     recent_runs = conn.execute(
         """
         SELECT tr.id, u.username, tr.module, tr.tool_version, tr.input_name, tr.status, tr.started_at, tr.finished_at, tr.duration_seconds, tr.output_zip, tr.output_log_file, tr.input_dir, tr.output_dir
@@ -3023,6 +3044,7 @@ def admin_panel(request: Request):
             "user_settings": admin_user_settings,
             "tool_meta": tool_meta,
             "editable_tables": editable_tables,
+            "connected_users_count": connected_users_count,
         },
     )
 
@@ -3382,6 +3404,5 @@ async def release_notes(request: Request, user=Depends(get_current_user)):
     changelog_md = changelog_path.read_text(encoding="utf-8", errors="replace") if changelog_path.exists() else "CHANGELOG.md not found at /app/CHANGELOG.md"
     tool_meta = load_tool_metadata()
     return templates.TemplateResponse("release_notes.html", {"request": request, "tool_meta": tool_meta, "user": user, "changelog_md": changelog_md})
-
 
 
