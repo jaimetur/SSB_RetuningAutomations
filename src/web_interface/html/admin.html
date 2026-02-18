@@ -124,6 +124,11 @@
           <span class="runs-total" id="inputs_total_size">Total size: {{ inputs_total_size }} · Selected size: 0.00 MB</span>
         </div>
         <div class="runs-actions">
+          <input id="admin_inputs_name_filter_combo" class="combo-filter" list="admin_inputs_name_filter_presets" value="View All" placeholder="View All or pattern (*text*)" aria-label="Input name pattern filter" />
+          <datalist id="admin_inputs_name_filter_presets">
+            <option value="View All"></option>
+            <option value="*Mkt188*"></option>
+          </datalist>
           <select id="select_user_inputs_combo"><option value="__all__" selected>All Users</option></select>
           <select id="inputs_bulk_select_action" aria-label="Bulk input selection">
             <option value="" selected>Select</option>
@@ -393,6 +398,7 @@
     const runsTable = document.getElementById("runs_panel_table");
     const inputsBulkSelectAction = document.getElementById("inputs_bulk_select_action");
     const selectUserInputsCombo = document.getElementById("select_user_inputs_combo");
+    const adminInputsNameFilterCombo = document.getElementById("admin_inputs_name_filter_combo");
     const adminUploadInputsButton = document.getElementById("admin_upload_inputs");
     const adminInputsUploadPicker = document.getElementById("admin_inputs_upload_picker");
     const deleteSelectedInputsButton = document.getElementById("delete_selected_inputs");
@@ -515,6 +521,40 @@
         const rowUser = row?.cells?.[columnIndex]?.textContent?.trim() || "";
         const shouldShow = mode === "__all__" || rowUser === mode;
         row.classList.toggle("hidden", !shouldShow);
+      });
+    }
+
+    function wildcardPatternToRegex(pattern) {
+      const escaped = String(pattern || "")
+        .split("*")
+        .map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+        .join(".*");
+      return new RegExp(`^${escaped}$`, "i");
+    }
+
+    function matchesInputNamePattern(inputName, rawPattern) {
+      const value = String(rawPattern || "").trim();
+      if (!value || value.toLowerCase() === "view all") return true;
+      const candidate = String(inputName || "");
+      if (value.includes("*")) {
+        try {
+          return wildcardPatternToRegex(value).test(candidate);
+        } catch (_error) {
+          return true;
+        }
+      }
+      return candidate.toLowerCase().includes(value.toLowerCase());
+    }
+
+    function applyAdminInputsFilters() {
+      const mode = selectUserInputsCombo?.value || "__all__";
+      const pattern = adminInputsNameFilterCombo?.value || "View All";
+      document.querySelectorAll('#inputs_panel_table tbody tr').forEach((row) => {
+        const rowUser = row?.cells?.[2]?.textContent?.trim() || "";
+        const inputName = row?.cells?.[1]?.textContent?.trim() || "";
+        const matchesUser = mode === "__all__" || rowUser === mode;
+        const matchesName = matchesInputNamePattern(inputName, pattern);
+        row.classList.toggle('hidden', !(matchesUser && matchesName));
       });
     }
 
@@ -817,7 +857,9 @@
     function getSelectedInputIds() {
       return Array.from(document.querySelectorAll(".input-checkbox:checked")).map((box) => Number(box.value));
     }
-    selectUserInputsCombo?.addEventListener("change", () => { applyScopeFilter(selectUserInputsCombo, "#inputs_panel_table", 2); updateSelectionSizeLabels(); });
+    selectUserInputsCombo?.addEventListener("change", () => { applyAdminInputsFilters(); updateSelectionSizeLabels(); });
+    adminInputsNameFilterCombo?.addEventListener("input", () => { applyAdminInputsFilters(); updateSelectionSizeLabels(); });
+    adminInputsNameFilterCombo?.addEventListener("change", () => { applyAdminInputsFilters(); updateSelectionSizeLabels(); });
     inputsBulkSelectAction?.addEventListener("change", () => {
       const action = inputsBulkSelectAction.value;
       if (action === "all") {
@@ -972,7 +1014,7 @@
           if (!Array.isArray(data.items) || data.items.length === 0) {
             tbody.innerHTML = '<tr><td colspan="5">No inputs yet.</td></tr>';
             populateScopeCombo(selectUserInputsCombo, "#inputs_panel_table", 2);
-            applyScopeFilter(selectUserInputsCombo, "#inputs_panel_table", 2);
+            applyAdminInputsFilters();
             updateSelectionSizeLabels();
             return;
           }
@@ -991,7 +1033,7 @@
           }).join("");
 
           populateScopeCombo(selectUserInputsCombo, "#inputs_panel_table", 2);
-          applyScopeFilter(selectUserInputsCombo, "#inputs_panel_table", 2);
+          applyAdminInputsFilters();
           updateSelectionSizeLabels();
         })
         .catch(() => {});
@@ -1257,7 +1299,7 @@
       runsTotalSizeLabel.dataset.totalSize = "{{ global_runs_size }}";
     }
     applyScopeFilter(selectUserRunsCombo, "#runs_panel_table", 2);
-    applyScopeFilter(selectUserInputsCombo, "#inputs_panel_table", 2);
+    applyAdminInputsFilters();
     document.addEventListener("change", (event) => {
       const target = event.target;
       if (target && (target.classList?.contains("input-checkbox") || target.classList?.contains("run-checkbox"))) {

@@ -213,6 +213,11 @@
           <span class="runs-total" id="inputs_total_size">Total size: {{ inputs_total_size }} · Selected size: 0.00 MB</span>
         </div>
         <div class="runs-actions">
+          <input id="inputs_name_filter_combo" class="combo-filter" list="inputs_name_filter_presets" value="View All" placeholder="View All or pattern (*text*)" aria-label="Input name pattern filter" />
+          <datalist id="inputs_name_filter_presets">
+            <option value="View All"></option>
+            <option value="*Mkt188*"></option>
+          </datalist>
           <select id="select_user_inputs_combo"><option value="__all__">All Users</option>{% for uploader in input_uploaders %}<option value="{{ uploader }}" {% if uploader == user.username %}selected{% endif %}>{{ uploader }}</option>{% endfor %}{% if user.username not in input_uploaders %}<option value="{{ user.username }}" selected>{{ user.username }}</option>{% endif %}</select>
           <select id="inputs_bulk_select_action" aria-label="Bulk input selection">
             <option value="" selected>Select</option>
@@ -436,6 +441,7 @@
     const toggleSystemLogPanelButton = document.getElementById("toggle_system_log_panel");
     const inputsBulkSelectAction = document.getElementById("inputs_bulk_select_action");
     const selectUserInputsCombo = document.getElementById("select_user_inputs_combo");
+    const inputsNameFilterCombo = document.getElementById("inputs_name_filter_combo");
     const sendSelectedInputsButton = document.getElementById("send_selected_inputs");
     const userUploadInputsButton = document.getElementById("user_upload_inputs");
     const userInputsUploadPicker = document.getElementById("user_inputs_upload_picker");
@@ -738,7 +744,7 @@
 
           applyCurrentOrDefaultSort("#inputs_panel_table table");
           populateInputScopeSelector(data.uploaders || []);
-          applyScopeFilter("#inputs_panel_table", (row) => row?.cells?.[2]?.textContent?.trim() || "", selectUserInputsCombo?.value);
+          applyInputsFilters();
           updateSelectionSizeLabels();
         })
         .catch(() => {});
@@ -767,6 +773,40 @@
         const rowUser = getRowUser(row);
         const shouldShow = mode === "__all__" || rowUser === mode;
         row.classList.toggle("hidden", !shouldShow);
+      });
+    }
+
+    function wildcardPatternToRegex(pattern) {
+      const escaped = String(pattern || "")
+        .split("*")
+        .map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+        .join(".*");
+      return new RegExp(`^${escaped}$`, "i");
+    }
+
+    function matchesInputNamePattern(inputName, rawPattern) {
+      const value = String(rawPattern || "").trim();
+      if (!value || value.toLowerCase() === "view all") return true;
+      const candidate = String(inputName || "");
+      if (value.includes("*")) {
+        try {
+          return wildcardPatternToRegex(value).test(candidate);
+        } catch (_error) {
+          return true;
+        }
+      }
+      return candidate.toLowerCase().includes(value.toLowerCase());
+    }
+
+    function applyInputsFilters() {
+      const selectedUser = selectUserInputsCombo?.value || "__all__";
+      const pattern = inputsNameFilterCombo?.value || "View All";
+      document.querySelectorAll('#inputs_panel_table tbody tr').forEach((row) => {
+        const rowUser = row?.cells?.[2]?.textContent?.trim() || "";
+        const inputName = row?.cells?.[1]?.textContent?.trim() || "";
+        const matchesUser = selectedUser === "__all__" || rowUser === selectedUser;
+        const matchesName = matchesInputNamePattern(inputName, pattern);
+        row.classList.toggle('hidden', !(matchesUser && matchesName));
       });
     }
 
@@ -1795,7 +1835,16 @@
     }
 
     selectUserInputsCombo?.addEventListener("change", () => {
-      applyScopeFilter("#inputs_panel_table", (row) => row?.cells?.[2]?.textContent?.trim() || "", selectUserInputsCombo.value);
+      applyInputsFilters();
+      updateSelectionSizeLabels();
+    });
+
+    inputsNameFilterCombo?.addEventListener("input", () => {
+      applyInputsFilters();
+      updateSelectionSizeLabels();
+    });
+    inputsNameFilterCombo?.addEventListener("change", () => {
+      applyInputsFilters();
       updateSelectionSizeLabels();
     });
 
@@ -2092,7 +2141,7 @@
     if (inputsTotalSizeLabel) inputsTotalSizeLabel.dataset.totalSize = "{{ inputs_total_size }}";
     if (runsTotalSizeLabel) runsTotalSizeLabel.dataset.totalSize = "{{ total_runs_size }}";
 
-    applyScopeFilter("#inputs_panel_table", (row) => row?.cells?.[2]?.textContent?.trim() || "", selectUserInputsCombo?.value);
+    applyInputsFilters();
     applyScopeFilter("#runs_panel_table", (row) => row?.dataset?.runUser || currentUsername, selectUserRunsCombo?.value);
     updateSelectionSizeLabels();
 
