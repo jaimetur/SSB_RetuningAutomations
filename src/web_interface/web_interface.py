@@ -2959,6 +2959,7 @@ def admin_panel(request: Request):
         (SESSION_IDLE_TIMEOUT_SECONDS, SESSION_IDLE_TIMEOUT_SECONDS),
     ).fetchall()
     users = [dict(row) for row in users]
+    now_dt = datetime.now().astimezone()
     for row in users:
         dirs = get_user_storage_dirs(row["username"])
         uploads_size = compute_dir_size(dirs["uploads"])
@@ -2966,6 +2967,20 @@ def admin_panel(request: Request):
         row["storage_size"] = format_mb(uploads_size + outputs_size)
         row["total_login_hms"] = format_seconds_hms(row.get("total_login_seconds"))
         row["total_execution_hms"] = format_seconds_hms(row.get("total_execution_seconds"))
+
+        active_sessions = conn.execute(
+            "SELECT active, last_seen_at FROM sessions WHERE user_id = ? AND active = 1",
+            (row["id"],),
+        ).fetchall()
+        connected = False
+        for session_row in active_sessions:
+            last_seen = parse_iso_datetime(session_row["last_seen_at"])
+            if not last_seen:
+                continue
+            if (now_dt - last_seen).total_seconds() <= SESSION_IDLE_TIMEOUT_SECONDS:
+                connected = True
+                break
+        row["connected"] = connected
     recent_runs = conn.execute(
         """
         SELECT tr.id, u.username, tr.module, tr.tool_version, tr.input_name, tr.status, tr.started_at, tr.finished_at, tr.duration_seconds, tr.output_zip, tr.output_log_file, tr.input_dir, tr.output_dir

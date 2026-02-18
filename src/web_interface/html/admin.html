@@ -67,15 +67,24 @@
       <div class="runs-header">
         <h2>Users</h2>
         <div class="runs-actions">
+          <select id="users_filter_combo" aria-label="Users filter">
+            <option value="all" selected>Select All</option>
+            <option value="connected">Connected Users</option>
+            <option value="not_connected">No Connected Users</option>
+            <option value="admin_role">Admin Role</option>
+            <option value="user_role">User Role</option>
+            <option value="active_users">Active Users</option>
+            <option value="inactive_users">Innactive Users</option>
+          </select>
           <button type="button" id="toggle_users_panel" class="panel-toggle" aria-label="Collapse users panel" title="Collapse/Expand">▾</button>
         </div>
       </div>
       <div class="table-scroll latest-global-scroll" id="users_panel_table">
       <table>
-        <thead><tr><th>User</th><th>Password</th><th>Role</th><th>Status</th><th>Logged time</th><th>Execution time</th><th>Storage</th><th>Actions</th></tr></thead>
+        <thead><tr><th>User</th><th>Password</th><th>Role</th><th>Status</th><th>Connected</th><th>Logged time</th><th>Execution time</th><th>Storage</th><th>Actions</th></tr></thead>
         <tbody>
           {% for u in users %}
-          <tr>
+          <tr data-user-role="{{ u.role }}" data-user-active="{{ 1 if u.active else 0 }}" data-user-connected="{{ 1 if u.connected else 0 }}">
             <td>
                 <input type="text" name="username" value="{{ u.username }}" form="update_user_{{ u.id }}" required class="user-input" />
             </td>
@@ -94,6 +103,7 @@
                   <option value="0" {% if not u.active %}selected{% endif %}>inactive</option>
                 </select>
             </td>
+            <td class="cell-middle">{{ "connected" if u.connected else "not connected" }}</td>
             <td class="cell-middle">{{ u.total_login_hms }}</td>
             <td class="cell-middle">{{ u.total_execution_hms }}</td>
             <td class="storage-cell cell-middle">{{ u.storage_size }}</td>
@@ -409,6 +419,7 @@
     const inputsPanelTable = document.getElementById("inputs_panel_table");
     const toggleUsersPanelButton = document.getElementById("toggle_users_panel");
     const usersPanelTable = document.getElementById("users_panel_table");
+    const usersFilterCombo = document.getElementById("users_filter_combo");
     const adminLogRunSelector = document.getElementById("admin_log_run_selector");
     const adminRefreshLogButton = document.getElementById("admin_refresh_log");
     const adminClearLogButton = document.getElementById("admin_clear_log");
@@ -443,6 +454,7 @@
     let adminPersistedSystemLogAutoChecked = false;
     const persistedPanelStates = {{ (user_settings.get("ui_panels", {}) if user_settings else {}) | tojson }};
     const persistedAdminSystemLogSource = {{ (user_settings.get("admin_system_log_source") if user_settings else "app") | tojson }};
+    const persistedAdminUsersFilter = {{ (user_settings.get("admin_users_filter") if user_settings else "all") | tojson }};
     let panelStateSaveTimeout = null;
     try {
       adminPersistedExecutionAutoChecked = window.sessionStorage?.getItem(ADMIN_EXECUTION_AUTO_CHECKED_KEY) === "1";
@@ -468,6 +480,14 @@
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ admin_system_log_source: source || "app" })
+      }).catch(() => {});
+    }
+
+    function persistAdminUsersFilter(filterValue) {
+      fetch("/settings/update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ admin_users_filter: filterValue || "all" })
       }).catch(() => {});
     }
 
@@ -566,6 +586,23 @@
         const matchesUser = mode === "__all__" || rowUser === mode;
         const matchesName = matchesInputNamePattern(inputName, pattern);
         row.classList.toggle('hidden', !(matchesUser && matchesName));
+      });
+    }
+
+    function applyUsersPanelFilter() {
+      const mode = usersFilterCombo?.value || "all";
+      document.querySelectorAll('#users_panel_table tbody tr').forEach((row) => {
+        const role = (row.dataset.userRole || "").toLowerCase();
+        const active = String(row.dataset.userActive || "0") === "1";
+        const connected = String(row.dataset.userConnected || "0") === "1";
+        let show = true;
+        if (mode === "connected") show = connected;
+        else if (mode === "not_connected") show = !connected;
+        else if (mode === "admin_role") show = role === "admin";
+        else if (mode === "user_role") show = role === "user";
+        else if (mode === "active_users") show = active;
+        else if (mode === "inactive_users") show = !active;
+        row.classList.toggle('hidden', !show);
       });
     }
 
@@ -1364,6 +1401,11 @@
       scheduleAdminBackgroundRefresh();
     });
 
+    usersFilterCombo?.addEventListener("change", () => {
+      applyUsersPanelFilter();
+      persistAdminUsersFilter(usersFilterCombo?.value || "all");
+    });
+
     adminDbTableSelector?.addEventListener("change", loadAdminDbTable);
     adminDbReloadTableButton?.addEventListener("click", loadAdminDbTable);
     adminDbCancelChangesButton?.addEventListener("click", loadAdminDbTable);
@@ -1386,6 +1428,12 @@
         updateSelectionSizeLabels();
       }
     });
+    if (usersFilterCombo) {
+      const hasPersistedOption = Array.from(usersFilterCombo.options || []).some((opt) => opt.value === persistedAdminUsersFilter);
+      usersFilterCombo.value = hasPersistedOption ? persistedAdminUsersFilter : "all";
+    }
+    applyUsersPanelFilter();
+
     updateSelectionSizeLabels();
     refreshInputsRepository();
     runAdminBackgroundRefreshCycle();
