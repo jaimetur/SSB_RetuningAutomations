@@ -19,12 +19,14 @@
   - Made this Users filter persistent per admin user in user_settings (admin_users_filter) and restored it on page load, with save-on-change behavior via /settings/update. 
   - Added Wildcard filter and Last 24h filters to Inputs and Execution History (user/admin).
   - Added live connected users counter badge in administrator section.
+  - Added re-run selected action for user and admin in execution history panel.
 
 - #### 🚀 Enhancements:
   - Persisted collapsed/expanded state of panels per user in both user and admin dashboards. 
   - Persisted selected System Logs source per user for both user and admin views across page refreshes. 
   - Refined wildcard filter UX defaults and expand Inputs filter coverage.
   - Persist wildcard filter history for inputs and executions.
+  - Compact SSB frequency section to reduce GUI dialog height to adapt the resolution for a small screen.
 
 - #### 🐛 Bug fixes:
   - Fixed duplicated System/Application log lines by de-duplicating uvicorn logger handler wiring and propagation. 

@@ -283,7 +283,7 @@ def gui_config_dialog(
 
     # --- Center window ONCE with fixed size ---
     WIDTH = 940
-    HEIGHT = 920
+    HEIGHT = 850
     # NOTE: Centering must happen after all widgets are created and Tk has computed the final layout.
     def _center_window_fixed(win: "tk.Tk", width: int, height: int) -> None:
         try:
