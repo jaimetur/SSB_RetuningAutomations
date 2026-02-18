@@ -213,12 +213,9 @@
           <span class="runs-total" id="inputs_total_size">Total size: {{ inputs_total_size }} · Selected size: 0.00 MB</span>
         </div>
         <div class="runs-actions">
-          <select id="select_user_inputs_combo"><option value="__all__">All Users</option>{% for uploader in input_uploaders %}<option value="{{ uploader }}" {% if uploader == user.username %}selected{% endif %}>{{ uploader }}</option>{% endfor %}{% if user.username not in input_uploaders %}<option value="{{ user.username }}" selected>{{ user.username }}</option>{% endif %}</select>
-          <input id="inputs_name_filter_combo" class="combo-filter" list="inputs_name_filter_presets" value="Pattern Filter" placeholder="Pattern Filter or wildcard (*text*)" aria-label="Input name pattern filter" />
-          <datalist id="inputs_name_filter_presets">
-            <option value="Pattern Filter"></option>
-            <option value="*Mkt188*"></option>
-          </datalist>
+          <select id="select_user_inputs_combo"><option value="__all__">All Users</option><option value="__last24h__">Last 24h</option>{% for uploader in input_uploaders %}<option value="{{ uploader }}" {% if uploader == user.username %}selected{% endif %}>{{ uploader }}</option>{% endfor %}{% if user.username not in input_uploaders %}<option value="{{ user.username }}" selected>{{ user.username }}</option>{% endif %}</select>
+          <input id="inputs_name_filter_combo" class="combo-filter" list="inputs_name_filter_presets" value="" placeholder="Wildcard Filter (*text*)" aria-label="Input name pattern filter" />
+          <datalist id="inputs_name_filter_presets"></datalist>
           <select id="inputs_bulk_select_action" aria-label="Bulk input selection">
             <option value="" selected>Select</option>
             <option value="all">Select All</option>
@@ -280,10 +277,13 @@
         <div class="runs-actions">
           <select id="select_user_runs_combo">
             <option value="__all__">All users</option>
+            <option value="__last24h__">Last 24h</option>
             {% for run_user in runs_users %}
               <option value="{{ run_user }}" {% if run_user == user.username %}selected{% endif %}>{{ run_user }}</option>
             {% endfor %}
           </select>
+          <input id="runs_pattern_filter_combo" class="combo-filter" list="runs_pattern_filter_presets" value="" placeholder="Wildcard Filter (*text*)" aria-label="Runs pattern filter" />
+          <datalist id="runs_pattern_filter_presets"></datalist>
           <select id="runs_bulk_select_action" aria-label="Bulk run selection">
             <option value="" selected>Select</option>
             <option value="all">Select All</option>
@@ -443,6 +443,7 @@
     const inputsBulkSelectAction = document.getElementById("inputs_bulk_select_action");
     const selectUserInputsCombo = document.getElementById("select_user_inputs_combo");
     const inputsNameFilterCombo = document.getElementById("inputs_name_filter_combo");
+    const runsPatternFilterCombo = document.getElementById("runs_pattern_filter_combo");
     const sendSelectedInputsButton = document.getElementById("send_selected_inputs");
     const userUploadInputsButton = document.getElementById("user_upload_inputs");
     const userInputsUploadPicker = document.getElementById("user_inputs_upload_picker");
@@ -480,6 +481,8 @@
     let moduleInputsMap = {{ module_inputs_map | tojson }};
     const persistedPanelStates = {{ (settings.get("ui_panels", {}) if settings else {}) | tojson }};
     const persistedUserSystemLogSource = {{ ((settings.get("user_system_log_source") or settings.get("system_log_source") or "app") if settings else "app") | tojson }};
+    let persistedInputsWildcardHistory = {{ (settings.get("wildcard_history_inputs", []) if settings else []) | tojson }};
+    let persistedExecutionsWildcardHistory = {{ (settings.get("wildcard_history_executions", []) if settings else []) | tojson }};
     let panelStateSaveTimeout = null;
 
     const inputFields = {
@@ -760,8 +763,9 @@
       const fallback = options.fallback || "__all__";
       const uniqueUsers = Array.from(new Set(users.filter((value) => value && value !== "—"))).sort((a, b) => a.localeCompare(b));
       const allOption = includeAll ? '<option value="__all__">All Users</option>' : "";
-      combo.innerHTML = allOption + uniqueUsers.map((user) => `<option value="${escapeHtml(user)}">${escapeHtml(user)}</option>`).join("");
-      if (uniqueUsers.includes(previous) || (includeAll && previous === "__all__")) {
+      const last24Option = '<option value="__last24h__">Last 24h</option>';
+      combo.innerHTML = allOption + last24Option + uniqueUsers.map((user) => `<option value="${escapeHtml(user)}">${escapeHtml(user)}</option>`).join("");
+      if (uniqueUsers.includes(previous) || (includeAll && previous === "__all__") || previous === "__last24h__") {
         combo.value = previous;
       } else if (uniqueUsers.includes(fallback) || (includeAll && fallback === "__all__")) {
         combo.value = fallback;
@@ -770,11 +774,29 @@
       }
     }
 
-    function applyScopeFilter(tableSelector, getRowUser, selectedValue) {
+    function parseTableDateTime(rawValue) {
+      const value = (rawValue || "").trim();
+      if (!value || value === "—") return null;
+      const normalized = value.replace(/^(\d{4})-(\d{2})-(\d{2})-(\d{2}:\d{2}:\d{2})$/, "$1-$2-$3T$4");
+      const timestamp = Date.parse(normalized);
+      if (Number.isNaN(timestamp)) return null;
+      return new Date(timestamp);
+    }
+
+    function isWithinLast24Hours(rawValue) {
+      const parsed = parseTableDateTime(rawValue);
+      if (!parsed) return false;
+      return (Date.now() - parsed.getTime()) <= 24 * 60 * 60 * 1000;
+    }
+
+    function applyScopeFilter(tableSelector, getRowUser, selectedValue, getRowDateTime = null) {
       const mode = selectedValue || "__all__";
       document.querySelectorAll(`${tableSelector} tbody tr`).forEach((row) => {
         const rowUser = getRowUser(row);
-        const shouldShow = mode === "__all__" || rowUser === mode;
+        let shouldShow = mode === "__all__" || rowUser === mode;
+        if (mode === "__last24h__") {
+          shouldShow = typeof getRowDateTime === "function" && isWithinLast24Hours(getRowDateTime(row));
+        }
         row.classList.toggle("hidden", !shouldShow);
       });
     }
@@ -787,29 +809,66 @@
       return new RegExp(`^${escaped}$`, "i");
     }
 
-    function matchesInputNamePattern(inputName, rawPattern) {
+    function matchesInputsPattern(candidates, rawPattern) {
       const value = String(rawPattern || "").trim();
-      if (!value || value.toLowerCase() === "pattern filter") return true;
-      const candidate = String(inputName || "");
+      if (!value || value.toLowerCase() === "pattern filter" || value.toLowerCase() === "wildcard filter (*text*)") return true;
+      const values = Array.isArray(candidates) ? candidates.map((candidate) => String(candidate || "")) : [];
       if (value.includes("*")) {
         try {
-          return wildcardPatternToRegex(value).test(candidate);
+          const regex = wildcardPatternToRegex(value);
+          return values.some((candidate) => regex.test(candidate));
         } catch (_error) {
           return true;
         }
       }
-      return candidate.toLowerCase().includes(value.toLowerCase());
+      const lowered = value.toLowerCase();
+      return values.some((candidate) => candidate.toLowerCase().includes(lowered));
+    }
+
+    function matchesRunsPattern(row, rawPattern) {
+      const value = String(rawPattern || "").trim();
+      if (!value || value.toLowerCase() === "pattern filter" || value.toLowerCase() === "wildcard filter (*text*)") return true;
+      const candidates = [
+        row?.cells?.[2]?.textContent?.trim() || "", // Module
+        row?.cells?.[3]?.textContent?.trim() || "", // Version
+        row?.cells?.[4]?.textContent?.trim() || "", // Input
+        row?.cells?.[5]?.textContent?.trim() || "", // Status
+        row?.cells?.[6]?.textContent?.trim() || "", // Start
+      ];
+      if (value.includes("*")) {
+        try {
+          const regex = wildcardPatternToRegex(value);
+          return candidates.some((candidate) => regex.test(candidate));
+        } catch (_error) {
+          return true;
+        }
+      }
+      const lowered = value.toLowerCase();
+      return candidates.some((candidate) => candidate.toLowerCase().includes(lowered));
+    }
+
+    function applyRunsFilters() {
+      const selectedUser = selectUserRunsCombo?.value || "__all__";
+      const pattern = runsPatternFilterCombo?.value || "";
+      document.querySelectorAll('#runs_panel_table tbody tr').forEach((row) => {
+        const rowUser = row?.dataset?.runUser || currentUsername;
+        const matchesUser = selectedUser === "__all__" || rowUser === selectedUser || (selectedUser === "__last24h__" && isWithinLast24Hours(row?.cells?.[6]?.textContent || ""));
+        const matchesPattern = matchesRunsPattern(row, pattern);
+        row.classList.toggle('hidden', !(matchesUser && matchesPattern));
+      });
     }
 
     function applyInputsFilters() {
       const selectedUser = selectUserInputsCombo?.value || "__all__";
-      const pattern = inputsNameFilterCombo?.value || "Pattern Filter";
+      const pattern = inputsNameFilterCombo?.value || "";
       document.querySelectorAll('#inputs_panel_table tbody tr').forEach((row) => {
         const rowUser = row?.cells?.[2]?.textContent?.trim() || "";
         const inputName = row?.cells?.[1]?.textContent?.trim() || "";
-        const matchesUser = selectedUser === "__all__" || rowUser === selectedUser;
-        const matchesName = matchesInputNamePattern(inputName, pattern);
-        row.classList.toggle('hidden', !(matchesUser && matchesName));
+        const uploadedBy = row?.cells?.[2]?.textContent?.trim() || "";
+        const uploadedAt = row?.cells?.[3]?.textContent?.trim() || "";
+        const matchesUser = selectedUser === "__all__" || rowUser === selectedUser || (selectedUser === "__last24h__" && isWithinLast24Hours(uploadedAt));
+        const matchesPattern = matchesInputsPattern([inputName, uploadedBy, uploadedAt], pattern);
+        row.classList.toggle('hidden', !(matchesUser && matchesPattern));
       });
     }
 
@@ -1361,15 +1420,6 @@
       return items[0] ? String(items[0].id) : "";
     }
 
-    function parseRunDateTime(rawValue) {
-      const value = (rawValue || "").trim();
-      if (!value) return null;
-      const normalized = value.replace(/^(\d{4})-(\d{2})-(\d{2})-(\d{2}:\d{2}:\d{2})$/, "$1-$2-$3T$4");
-      const timestamp = Date.parse(normalized);
-      if (Number.isNaN(timestamp)) return null;
-      return new Date(timestamp);
-    }
-
     function buildRunStatusSummary(items) {
       const normalizedItems = Array.isArray(items) ? items : [];
       const hasRunningOrQueued = normalizedItems.some((item) => ["running", "queued", "canceling"].includes(item.status_lower));
@@ -1387,7 +1437,7 @@
       const recentFinished = normalizedItems.filter((item) => {
         const status = (item.status_lower || "").toLowerCase();
         if (!["success", "error", "ok"].includes(status)) return false;
-        const finishedAt = parseRunDateTime(item.finished_at || item.finished_at_raw || "");
+        const finishedAt = parseTableDateTime(item.finished_at || item.finished_at_raw || "");
         if (!finishedAt) return false;
         return (now - finishedAt.getTime()) <= lookbackMs;
       });
@@ -1505,7 +1555,7 @@
 
           applyCurrentOrDefaultSort("#runs_panel_table table");
           populateRunScopeSelector();
-          applyScopeFilter("#runs_panel_table", (row) => row?.dataset?.runUser || currentUsername, selectUserRunsCombo?.value);
+          applyRunsFilters();
           updateExecutionAutoRefreshAvailability(activeTasksFound);
           updateSelectionSizeLabels();
           return { hasActiveTasks: activeTasksFound };
@@ -1550,6 +1600,49 @@
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ user_system_log_source: source || "app" })
       }).catch(() => {});
+    }
+
+    function normalizeWildcardPattern(rawValue) {
+      const value = String(rawValue || "").trim();
+      const lowered = value.toLowerCase();
+      if (!value || lowered === "pattern filter" || lowered === "wildcard filter (*text*)") return "";
+      return value;
+    }
+
+    function sanitizeWildcardHistory(items) {
+      if (!Array.isArray(items)) return [];
+      const result = [];
+      for (const rawItem of items) {
+        const normalized = normalizeWildcardPattern(rawItem);
+        if (!normalized) continue;
+        if (!result.includes(normalized)) result.push(normalized);
+        if (result.length >= 10) break;
+      }
+      return result;
+    }
+
+    function renderWildcardHistory(datalistElement, history) {
+      if (!datalistElement) return;
+      datalistElement.innerHTML = sanitizeWildcardHistory(history)
+        .map((value) => `<option value="${escapeHtml(value)}"></option>`)
+        .join("");
+    }
+
+    function persistWildcardHistory(settingsKey, history) {
+      fetch("/settings/update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ [settingsKey]: sanitizeWildcardHistory(history) })
+      }).catch(() => {});
+    }
+
+    function rememberWildcardPattern(rawValue, settingsKey, currentHistory, datalistElement) {
+      const normalized = normalizeWildcardPattern(rawValue);
+      if (!normalized) return currentHistory;
+      const nextHistory = [normalized, ...sanitizeWildcardHistory(currentHistory).filter((item) => item !== normalized)].slice(0, 10);
+      renderWildcardHistory(datalistElement, nextHistory);
+      persistWildcardHistory(settingsKey, nextHistory);
+      return nextHistory;
     }
 
     function collectFormValues() {
@@ -1756,8 +1849,32 @@
     });
 
     selectUserRunsCombo?.addEventListener("change", () => {
-      applyScopeFilter("#runs_panel_table", (row) => row?.dataset?.runUser || currentUsername, selectUserRunsCombo.value);
+      applyRunsFilters();
       updateSelectionSizeLabels();
+    });
+
+    runsPatternFilterCombo?.addEventListener("input", () => {
+      applyRunsFilters();
+      updateSelectionSizeLabels();
+    });
+    runsPatternFilterCombo?.addEventListener("change", () => {
+      persistedExecutionsWildcardHistory = rememberWildcardPattern(
+        runsPatternFilterCombo?.value,
+        "wildcard_history_executions",
+        persistedExecutionsWildcardHistory,
+        document.getElementById("runs_pattern_filter_presets")
+      );
+      applyRunsFilters();
+      updateSelectionSizeLabels();
+    });
+
+    runsPatternFilterCombo?.addEventListener("blur", () => {
+      persistedExecutionsWildcardHistory = rememberWildcardPattern(
+        runsPatternFilterCombo?.value,
+        "wildcard_history_executions",
+        persistedExecutionsWildcardHistory,
+        document.getElementById("runs_pattern_filter_presets")
+      );
     });
 
 
@@ -1925,8 +2042,23 @@
       updateSelectionSizeLabels();
     });
     inputsNameFilterCombo?.addEventListener("change", () => {
+      persistedInputsWildcardHistory = rememberWildcardPattern(
+        inputsNameFilterCombo?.value,
+        "wildcard_history_inputs",
+        persistedInputsWildcardHistory,
+        document.getElementById("inputs_name_filter_presets")
+      );
       applyInputsFilters();
       updateSelectionSizeLabels();
+    });
+
+    inputsNameFilterCombo?.addEventListener("blur", () => {
+      persistedInputsWildcardHistory = rememberWildcardPattern(
+        inputsNameFilterCombo?.value,
+        "wildcard_history_inputs",
+        persistedInputsWildcardHistory,
+        document.getElementById("inputs_name_filter_presets")
+      );
     });
 
     renameInputsButton?.addEventListener("click", async () => {
@@ -2235,8 +2367,13 @@
     if (inputsTotalSizeLabel) inputsTotalSizeLabel.dataset.totalSize = "{{ inputs_total_size }}";
     if (runsTotalSizeLabel) runsTotalSizeLabel.dataset.totalSize = "{{ total_runs_size }}";
 
+    persistedInputsWildcardHistory = sanitizeWildcardHistory(persistedInputsWildcardHistory);
+    persistedExecutionsWildcardHistory = sanitizeWildcardHistory(persistedExecutionsWildcardHistory);
+    renderWildcardHistory(document.getElementById("inputs_name_filter_presets"), persistedInputsWildcardHistory);
+    renderWildcardHistory(document.getElementById("runs_pattern_filter_presets"), persistedExecutionsWildcardHistory);
+
     applyInputsFilters();
-    applyScopeFilter("#runs_panel_table", (row) => row?.dataset?.runUser || currentUsername, selectUserRunsCombo?.value);
+    applyRunsFilters();
     updateSelectionSizeLabels();
 
   </script>
