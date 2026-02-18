@@ -308,6 +308,7 @@
             <tr>
               <th></th>
               <th class="sortable" data-sort-key="number" data-default-sort="desc">ID</th>
+              <th class="sortable" data-sort-key="text">User</th>
               <th class="sortable" data-sort-key="text">Module</th>
               <th class="sortable" data-sort-key="text">Version</th>
               <th class="sortable" data-sort-key="text">Input</th>
@@ -326,6 +327,7 @@
                 data-run-id="{{ r.id }}" data-status="{{ r.status_lower }}" data-run-user="{{ r.username or "unknown" }}">
               <td><input type="checkbox" class="run-checkbox" value="{{ r.id }}" data-start="{{ r.started_at }}" data-status="{{ r.status_lower }}" /></td>
               <td>{{ r.id }}</td>
+              <td>{{ r.username or 'unknown' }}</td>
               <td>{{ r.module }}</td>
               <td>{{ r.tool_version or '—' }}</td>
               <td>{{ r.input_name or "—" }}</td>
@@ -334,14 +336,14 @@
               <td class="run-finished-cell">{{ r.finished_at }}</td>
               <td class="run-duration-cell">{{ r.duration_hms }}</td>
               <td class="run-output-cell">
-                {% if r.output_zip and (r.username or '') == user.username %}
+                {% if r.output_zip %}
                   <a href="/runs/{{ r.id }}/download">Download zip</a>
                 {% else %}
                   —
                 {% endif %}
               </td>
               <td class="run-log-cell">
-                {% if r.output_log_file and (r.username or '') == user.username %}
+                {% if r.output_log_file %}
                   <a href="/runs/{{ r.id }}/log">Download log</a>
                 {% else %}
                   —
@@ -350,7 +352,7 @@
               <td>{{ r.size_mb }}</td>
             </tr>
           {% else %}
-            <tr><td colspan="12">No executions yet.</td></tr>
+            <tr><td colspan="13">No executions yet.</td></tr>
           {% endfor %}
           </tbody>
         </table>
@@ -833,11 +835,12 @@
       const value = String(rawPattern || "").trim();
       if (!value || value.toLowerCase() === "pattern filter" || value.toLowerCase() === "wildcard filter (*text*)") return true;
       const candidates = [
-        row?.cells?.[2]?.textContent?.trim() || "", // Module
-        row?.cells?.[3]?.textContent?.trim() || "", // Version
-        row?.cells?.[4]?.textContent?.trim() || "", // Input
-        row?.cells?.[5]?.textContent?.trim() || "", // Status
-        row?.cells?.[6]?.textContent?.trim() || "", // Start
+        row?.cells?.[2]?.textContent?.trim() || "", // User
+        row?.cells?.[3]?.textContent?.trim() || "", // Module
+        row?.cells?.[4]?.textContent?.trim() || "", // Version
+        row?.cells?.[5]?.textContent?.trim() || "", // Input
+        row?.cells?.[6]?.textContent?.trim() || "", // Status
+        row?.cells?.[7]?.textContent?.trim() || "", // Start
       ];
       if (value.includes("*")) {
         try {
@@ -856,7 +859,7 @@
       const pattern = runsPatternFilterCombo?.value || "";
       document.querySelectorAll('#runs_panel_table tbody tr').forEach((row) => {
         const rowUser = row?.dataset?.runUser || currentUsername;
-        const matchesUser = selectedUser === "__all__" || rowUser === selectedUser || (selectedUser === "__last24h__" && isWithinLast24Hours(row?.cells?.[6]?.textContent || ""));
+        const matchesUser = selectedUser === "__all__" || rowUser === selectedUser || (selectedUser === "__last24h__" && isWithinLast24Hours(row?.cells?.[7]?.textContent || ""));
         const matchesPattern = matchesRunsPattern(row, pattern);
         row.classList.toggle('hidden', !(matchesUser && matchesPattern));
       });
@@ -914,7 +917,7 @@
         let selectedMb = 0;
         document.querySelectorAll('#runs_panel_table tbody tr').forEach((row) => {
           if (row.classList.contains('hidden')) return;
-          const rowSize = parseSizeMb(row?.cells?.[11]?.textContent || '0 MB');
+          const rowSize = parseSizeMb(row?.cells?.[12]?.textContent || '0 MB');
           visibleTotalMb += rowSize;
           const box = row.querySelector('.run-checkbox');
           if (box?.checked) selectedMb += rowSize;
@@ -1498,7 +1501,7 @@
 
           const selectedIds = new Set(Array.from(document.querySelectorAll(".run-checkbox:checked")).map((box) => Number(box.value)));
           if (!data.items || data.items.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="12">No executions yet.</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="13">No executions yet.</td></tr>';
             hasActiveTasks = false;
             applyRunStatusSummary([]);
             applyCurrentOrDefaultSort("#runs_panel_table table");
@@ -1516,15 +1519,15 @@
                 : (item.status_lower === "canceled" ? "run-row run-canceled" : "run-row"));
 
             const runUser = item.username || "unknown";
-            const isOwnRun = runUser === currentUsername;
             const checked = selectedIds.has(item.id) ? 'checked' : '';
-            const outputCell = item.output_zip && isOwnRun ? `<a href="/runs/${item.id}/download">Download zip</a>` : "—";
-            const logCell = item.output_log_file && isOwnRun ? `<a href="/runs/${item.id}/log">Download log</a>` : "—";
+            const outputCell = item.output_zip ? `<a href="/runs/${item.id}/download">Download zip</a>` : "—";
+            const logCell = item.output_log_file ? `<a href="/runs/${item.id}/log">Download log</a>` : "—";
 
             return `
               <tr class="${rowClass}" data-run-id="${item.id}" data-status="${item.status_lower}" data-run-user="${escapeHtml(runUser)}">
                 <td><input type="checkbox" class="run-checkbox" value="${item.id}" data-start="${item.started_at}" data-status="${item.status_lower}" ${checked} /></td>
                 <td>${escapeHtml(item.id)}</td>
+                <td>${escapeHtml(runUser)}</td>
                 <td>${escapeHtml(item.module)}</td>
                 <td>${escapeHtml(item.tool_version || "—")}</td>
                 <td>${escapeHtml(item.input_name || "—")}</td>
@@ -1990,6 +1993,20 @@
     deleteSelectedRunsButton?.addEventListener("click", async () => {
       const ids = getSelectedRunIds();
       if (!ids.length) return;
+      const hasForeignRuns = ids.some((id) => {
+        const row = document.querySelector(`#runs_panel_table tr[data-run-id="${id}"]`);
+        const runUser = row?.dataset?.runUser || "";
+        return runUser !== currentUsername;
+      });
+      if (hasForeignRuns) {
+        await showModal({
+          title: "Delete executions",
+          message: "Solo puedes borrar ejecuciones que hayan sido lanzadas por tu usuario.",
+          confirmText: "Accept",
+          tone: "error"
+        });
+        return;
+      }
       const removeRunsAnswer = await showModal({
         title: "Delete executions",
         message: "This will delete the Uploads and Exports for the selected executions. Continue?",
@@ -2001,7 +2018,28 @@
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ids })
-      }).then(() => window.location.reload());
+      })
+        .then((res) => res.json().catch(() => ({})))
+        .then(async (data) => {
+          if (!data?.ok) {
+            await showModal({
+              title: "Delete executions",
+              message: data?.error || "Unable to delete selected executions.",
+              confirmText: "Accept",
+              tone: "error"
+            });
+            return;
+          }
+          window.location.reload();
+        })
+        .catch(async () => {
+          await showModal({
+            title: "Delete executions",
+            message: "Unable to delete selected executions.",
+            confirmText: "Accept",
+            tone: "error"
+          });
+        });
     });
 
     function buildSessionId() {
