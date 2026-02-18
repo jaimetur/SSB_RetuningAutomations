@@ -272,7 +272,12 @@
           <span class="runs-total" id="runs_total_size">Total size: {{ total_runs_size }} · Selected size: 0.00 MB</span>
         </div>
         <div class="runs-actions">
-          <select id="select_user_runs_combo"><option value="{{ user.username }}" selected>{{ user.username }}</option></select>
+          <select id="select_user_runs_combo">
+            <option value="__all__">All users</option>
+            {% for run_user in runs_users %}
+              <option value="{{ run_user }}" {% if run_user == user.username %}selected{% endif %}>{{ run_user }}</option>
+            {% endfor %}
+          </select>
           <select id="runs_bulk_select_action" aria-label="Bulk run selection">
             <option value="" selected>Select</option>
             <option value="all">Select All</option>
@@ -311,8 +316,8 @@
           <tbody>
           {% for r in latest_runs %}
             <tr class="run-row {% if r.status_lower == 'error' %}run-error{% elif r.status_lower == 'success' %}run-success{% elif r.status_lower == 'canceled' %}run-canceled{% endif %}"
-                data-run-id="{{ r.id }}" data-status="{{ r.status_lower }}" data-run-user="{{ user.username }}">
-              <td><input type="checkbox" class="run-checkbox" value="{{ r.id }}" data-start="{{ r.started_at }}" data-status="{{ r.status_lower }}" /></td>
+                data-run-id="{{ r.id }}" data-status="{{ r.status_lower }}" data-run-user="{{ r.username or "unknown" }}">
+              <td><input type="checkbox" class="run-checkbox" value="{{ r.id }}" data-start="{{ r.started_at }}" data-status="{{ r.status_lower }}" {% if (r.username or "") != user.username %}disabled title="You can only manage your own runs"{% endif %} /></td>
               <td>{{ r.id }}</td>
               <td>{{ r.module }}</td>
               <td>{{ r.tool_version or '—' }}</td>
@@ -322,14 +327,14 @@
               <td class="run-finished-cell">{{ r.finished_at }}</td>
               <td class="run-duration-cell">{{ r.duration_hms }}</td>
               <td class="run-output-cell">
-                {% if r.output_zip %}
+                {% if r.output_zip and (r.username or '') == user.username %}
                   <a href="/runs/{{ r.id }}/download">Download zip</a>
                 {% else %}
                   —
                 {% endif %}
               </td>
               <td class="run-log-cell">
-                {% if r.output_log_file %}
+                {% if r.output_log_file and (r.username or '') == user.username %}
                   <a href="/runs/{{ r.id }}/log">Download log</a>
                 {% else %}
                   —
@@ -351,7 +356,7 @@
         <h2>Executions Logs</h2>
         <div class="log-actions">
           <select id="log_run_selector">
-            {% for r in latest_runs %}
+            {% for r in latest_runs if (r.username or "") == user.username %}
               <option value="{{ r.id }}" {% if loop.first %}selected{% endif %}>{{ r.run_label }}</option>
             {% endfor %}
           </select>
@@ -820,7 +825,7 @@
     function populateRunScopeSelector() {
       const users = Array.from(document.querySelectorAll("#runs_panel_table tbody tr"))
         .map((row) => row.dataset.runUser || currentUsername);
-      populateScopeCombo(selectUserRunsCombo, users, { includeAll: false, fallback: currentUsername });
+      populateScopeCombo(selectUserRunsCombo, users, { includeAll: true, fallback: currentUsername });
     }
 
     function collectSelectedInputsByTarget() {
@@ -1411,13 +1416,16 @@
                 ? "run-row run-success"
                 : (item.status_lower === "canceled" ? "run-row run-canceled" : "run-row"));
 
-            const checked = selectedIds.has(item.id) ? 'checked' : '';
-            const outputCell = item.output_zip ? `<a href="/runs/${item.id}/download">Download zip</a>` : "—";
-            const logCell = item.output_log_file ? `<a href="/runs/${item.id}/log">Download log</a>` : "—";
+            const runUser = item.username || "unknown";
+            const isOwnRun = runUser === currentUsername;
+            const checked = selectedIds.has(item.id) && isOwnRun ? 'checked' : '';
+            const outputCell = item.output_zip && isOwnRun ? `<a href="/runs/${item.id}/download">Download zip</a>` : "—";
+            const logCell = item.output_log_file && isOwnRun ? `<a href="/runs/${item.id}/log">Download log</a>` : "—";
+            const disabledAttr = isOwnRun ? "" : 'disabled title="You can only manage your own runs"';
 
             return `
-              <tr class="${rowClass}" data-run-id="${item.id}" data-status="${item.status_lower}" data-run-user="${escapeHtml(currentUsername)}">
-                <td><input type="checkbox" class="run-checkbox" value="${item.id}" data-start="${item.started_at}" data-status="${item.status_lower}" ${checked} /></td>
+              <tr class="${rowClass}" data-run-id="${item.id}" data-status="${item.status_lower}" data-run-user="${escapeHtml(runUser)}">
+                <td><input type="checkbox" class="run-checkbox" value="${item.id}" data-start="${item.started_at}" data-status="${item.status_lower}" ${checked} ${disabledAttr} /></td>
                 <td>${escapeHtml(item.id)}</td>
                 <td>${escapeHtml(item.module)}</td>
                 <td>${escapeHtml(item.tool_version || "—")}</td>
@@ -1434,9 +1442,13 @@
 
           if (logRunSelector && opts.updateExecutionLogPanel) {
             const nextRunId = pickExecutionLogRunId(data.items, logRunSelector.value);
-            logRunSelector.innerHTML = data.items.map((item) => `<option value="${item.id}">${escapeHtml(item.run_label)}</option>`).join("");
-            if (nextRunId) logRunSelector.value = nextRunId;
-            fetchLogByRun();
+            logRunSelector.innerHTML = data.items.filter((item) => (item.username || "") === currentUsername).map((item) => `<option value="${item.id}">${escapeHtml(item.run_label)}</option>`).join("");
+            if (nextRunId && logRunSelector.options.length > 0) {
+              logRunSelector.value = nextRunId;
+              fetchLogByRun();
+            } else {
+              logOutput.textContent = "No logs yet.";
+            }
           }
 
           const hasRunning = data.items.some((item) => item.status_lower === "running" || item.status_lower === "canceling");

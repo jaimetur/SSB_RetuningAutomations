@@ -1510,20 +1510,15 @@ def index(request: Request):
     conn = get_conn()
     latest_runs = conn.execute(
         """
-        SELECT id, module, tool_version, input_name, status, started_at, finished_at, duration_seconds, output_zip, output_log_file
-        FROM task_runs
-        WHERE user_id = ?
-        ORDER BY id DESC
-
-        """,
-        (user["id"],),
+        SELECT tr.id, tr.user_id, u.username, tr.module, tr.tool_version, tr.input_name, tr.status, tr.started_at, tr.finished_at, tr.duration_seconds, tr.output_zip, tr.output_log_file
+        FROM task_runs tr
+        JOIN users u ON u.id = tr.user_id
+        ORDER BY tr.id DESC
+        """
     ).fetchall()
     latest_runs = [dict(row) for row in latest_runs]
 
-    all_runs = conn.execute(
-        "SELECT id, status, input_dir, output_dir, output_zip FROM task_runs WHERE user_id = ?",
-        (user["id"],),
-    ).fetchall()
+    all_runs = conn.execute("SELECT id, status, input_dir, output_dir, output_zip FROM task_runs").fetchall()
     conn.close()
 
     run_sizes, total_bytes = compute_runs_size(all_runs)
@@ -1550,6 +1545,7 @@ def index(request: Request):
             "input_items": input_items,
             "input_uploaders": input_uploaders,
             "inputs_total_size": inputs_total_size,
+            "runs_users": sorted({user["username"], *{str(row.get("username") or "") for row in latest_runs if row.get("username")}}),
         },
     )
 
@@ -2323,15 +2319,14 @@ def runs_list(request: Request):
     conn = get_conn()
     latest_runs = conn.execute(
         """
-        SELECT id, module, tool_version, input_name, status, started_at, finished_at, duration_seconds, output_zip, output_log_file
-        FROM task_runs
-        WHERE user_id = ?
-        ORDER BY id DESC
-        """,
-        (user["id"],),
+        SELECT tr.id, tr.user_id, u.username, tr.module, tr.tool_version, tr.input_name, tr.status, tr.started_at, tr.finished_at, tr.duration_seconds, tr.output_zip, tr.output_log_file
+        FROM task_runs tr
+        JOIN users u ON u.id = tr.user_id
+        ORDER BY tr.id DESC
+        """
     ).fetchall()
     latest_runs = [dict(row) for row in latest_runs]
-    all_runs = conn.execute("SELECT id, status, input_dir, output_dir, output_zip FROM task_runs WHERE user_id = ?", (user["id"],)).fetchall()
+    all_runs = conn.execute("SELECT id, status, input_dir, output_dir, output_zip FROM task_runs").fetchall()
     conn.close()
 
     run_sizes, _ = compute_runs_size(all_runs)
