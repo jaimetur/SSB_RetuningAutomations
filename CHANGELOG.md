@@ -3,17 +3,27 @@
 ---
 
 ## Release: v0.7.6
-### Release Date: 2026-02-19
+### Release Date: 2026-02-20
   
 - #### 🚨 Breaking Changes:
+  - The web interface storage layout was refactored so the SQLite database is now under data/db and system logs under data/system_logs, with automatic migration from legacy data/* locations when files already exist. 
+  - All existing Username have been migrated from Ericsson Mail format to Ericsson Signum format
 
 - #### 🌟 New Features:
+  - Automatic User renaming in Admin panel → When a change in Username is detecte, the tool now migrates automatically user-owned filesystem/database references (inputs, run paths, payload JSON paths) and renames upload/output folders atomically with rollback protection on errors. 
+  - The login screen now shows the Ericsson Signum guidance message and includes a full “Request Access” section with username, password, and reason fields. 
+  - A new /request-access flow creates requested users in uppercase and inactive state (active=0) until admin approval, with duplicate checks and request logging. 
+  - The access-request reason is now persisted in users.access_request_reason (including schema migration support for existing DBs). 
+  - Admin Users now exposes that stored access-request reason as a tooltip when hovering over the username field. 
+  - New Database Backup scheduler has been added to Database Backup panel with mode-based automation (Disabled, Daily, Weekly, Monthly), inline path/hour inputs, folder-select button, and max-retention configuration. 
+  - Admin settings save endpoint was extended to persist the new backup automation fields (mode, path, hour, max_to_store). 
 
 - #### 🚀 Enhancements:
   - Enhanced the script to generate user guide from Markdown files to support images and links.
   - Compact GUI dialog by reducing `SSB frequencies` section to adapt the resolution for a small screen.
   - Compact GUI dialog by reducing `Allowed SSB & ARFCN` section to adapt the resolution for a small screen.
   - GUI dialog now has a dimension of 940x770 pixels.
+  - Login username matching is now case-insensitive, so users can authenticate regardless of uppercase/lowercase username input. 
 
 - #### 🐛 Bug fixes:
 
