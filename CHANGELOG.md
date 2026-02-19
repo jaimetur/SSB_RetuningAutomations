@@ -15,7 +15,8 @@
 - #### 🐛 Bug fixes:
 
 - #### 📚 Documentation:
-  - Updated Documentation to include screenshots to the User Guide.
+  - Updated Documentation to include `SSB Retuning Automations - Interfaces` section into the User Guide.
+  - Adjusted PPT image layouts and placeholders by section.
 
 ---
 

@@ -1786,7 +1786,7 @@ def download_user_guide(request: Request, file_format: str, mode: str = "downloa
 
         base_guide_title = "Technical User Guide — SSB Retuning Automations"
         if guide_version and guide_version != "unknown":
-            rendered_guide_title = f"{base_guide_title} {guide_version}"
+            rendered_guide_title = f"{base_guide_title} v{guide_version}"
             md_text = re.sub(
                 rf"^(\s*#\s*){re.escape(base_guide_title)}\s*$",
                 rf"\1{rendered_guide_title}",

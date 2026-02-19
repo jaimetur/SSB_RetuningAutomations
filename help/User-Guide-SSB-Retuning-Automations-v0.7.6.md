@@ -1,33 +1,6 @@
 # Technical User Guide — SSB Retuning Automations
 
-## 0) SSB Retuning Automations - Interfaces 
-
-### Graphical User Interface - GUI Panel
-![Module Selector](../assets/screenshots/module_selector.png)
-
-- This is the main Graphical User Interface for SSB Retuning Automations.. From this panel you can select the modules you want to run and the inputs you want to provide.
-- You can also configure some settings like the network frequencies to use or the Input folder to use.
-- The tool will then run the selected modules and generate the outputs.
-
-## Web Interface - User Section
-![Web Interface User Panel](../assets/screenshots/web-interface-user-panel.png)
-
-- This is the main Web Interface for SSB Retuning Automations. From this panel you can select the modules you want to run and the inputs you want to provide.
-- You can also configure some settings like the network frequencies to use or the Input folder to use.
-- The tool will then run the selected modules and generate the outputs.
-
-## Web Interface - Admin Section
-![Web Interface Admin Panel](../assets/screenshots/web-interface-admin-panel.png)
-
-- This is the main Administrator Panel for SSB Retuning Automations. From this panel you can manage the configuration of the tool, view logs and manage user access.
-
-## Web Interface - Inputs, Executions and Logs Panels
-![Web Interface Inputs Executions Panels](../assets/screenshots/web-interface-inputs-executions-panels.png)
-![Web Interface Logs Panels](../assets/screenshots/web-interface-logs-panels.png)
-
-- You can see some information about the Inputs Repository, Last Executions and Logs of the tool.
-
-## 1) Service overview
+## 1) Service Overview
 
 SSB Retuning Automations parses network logs, performs ConfigurationAudit checks, optionally compares PRE/POST states with ConsistencyChecks, and generates Excel deliverables and correction command exports.
 
@@ -95,7 +68,7 @@ For each ENM identify retune+border clusters with markets being planned on diffe
   -	Remove MCPC profiles containing old SSB names, not referenced anymore after NRFreqRelation deletion 
 
 
-## 2) Tool overview
+## 2) SSB Retuning Automations - Overview
 
 **SSB Retuning Automations** is an automation platform for SSB retuning projects that can run in GUI or CLI mode or through a Web Interface (using a server/client infrastructure) and orchestrates five functional modules:
 
@@ -149,9 +122,84 @@ This guarantees traceability and avoids collisions between runs.
 
 ---
 
-## 3) Ccontent per module
+## 3) SSB Retuning Automations - Interfaces 
 
-### 3.1 Module 0 — Update Network Frequencies
+### Graphical User Interface - GUI Panel
+![Module Selector](../assets/screenshots/module_selector.png)
+
+- This is the main Graphical User Interface for SSB Retuning Automations.. From this panel you can select the modules you want to run and the inputs you want to provide.
+- You can also configure some settings like the network frequencies to use or the Input folder to use.
+- The tool will then run the selected modules and generate the outputs.
+
+
+### Web Interface - User Section
+![Web Interface User Panel](../assets/screenshots/web-interface-user-panel.png)
+
+- This is the main Web Interface for SSB Retuning Automations. From this panel you can select the modules you want to run and the inputs you want to provide.
+- You can also configure some settings like the network frequencies to use or the Input folder to use.
+- The tool will then run the selected modules and generate the outputs.
+
+
+### Web Interface - Admin Section
+![Web Interface Admin Panel](../assets/screenshots/web-interface-admin-panel.png)
+
+- This is the main Administrator Panel for SSB Retuning Automations. From this panel you can manage the configuration of the tool, view logs and manage user access.
+
+
+### Web Interface - Inputs Repository Panel
+![Web Interface Inputs Executions Panels](../assets/screenshots/web-interface-inputs-executions-panels.png)
+
+- You can see some information about the Inputs Repository.
+
+
+### Web Interface - Executions and System Logs Panels
+![Web Interface Logs Panels](../assets/screenshots/web-interface-logs-panels.png)
+
+- You can see some information about  Last Executions and some useful System Logs of the tool.
+
+
+### Command Line Interface - CLI
+
+With the CLI you can run the modules you want to run and provide all different arguments you need.
+
+ ▶️ Basic Syntax:
+
+- **SSB_RetuningAutomations.exe --module <module-name> [options]**
+
+- If `--module` is omitted and **no other arguments** are provided, the GUI will launch automatically unless `--no-gui` is specified.
+
+⚙️ Main Options:
+
+| Argument     | Description                                                                                                                |
+|--------------|----------------------------------------------------------------------------------------------------------------------------|
+| --module     | Module to run: [`configuration-audit`, `consistency-check`, `consistency-check-bulk`, `final-cleanup`]                     |
+| --input      | Input folder to process (single-input modules)                                                                             |
+| --inputs     | Input folders to process module in batch mode. Example: `--module configuration-audit --inputs dir1 dir2 dir3`             |
+| --input-pre  | PRE input folder (only for `consistency-check`)                                                                            |
+| --input-post | POST input folder (only for `consistency-check`)                                                                           |
+| --output     | Output root folder override (all modules). The tool still creates the same module/version subfolder logic under this root. |
+
+| Argument                 | Description                                                                                                                                                                |
+|--------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| --n77-ssb-pre`           | N77 SSB frequency before refarming (Pre), e.g. `647328`                                                                                                                    |
+| --n77-ssb-post           | N77 SSB frequency after refarming (Post), e.g. `653952`                                                                                                                    |
+| --n77b-ssb               | N77B SSB frequency (ARFCN), e.g. `650334`                                                                                                                                  |
+| --allowed-n77-ssb-pre    | Comma-separated allowed N77 SSB (Pre) values for Configuration Audit                                                                                                       |
+| --allowed-n77-arfcn-pre  | Comma-separated allowed N77 ARFCN (Pre) values for Configuration Audit                                                                                                     |
+| --allowed-n77-ssb-post   | Comma-separated allowed N77 SSB (Post) values for Configuration Audit                                                                                                      |
+| --allowed-n77-arfcn-post | Comma-separated allowed N77 ARFCN (Post) values for Configuration Audit                                                                                                    |
+| --ca-freq-filters        | Comma-separated list of frequency substrings to filter pivot columns in Configuration Audit module                                                                         |
+| --cc-freq-filters        | Comma-separated list of frequency substrings to filter relations in Consistency Check module                                                                               |
+| --frequency-audit        | Enable/disable Frequency Audit (integrated into Configuration Audit). Default Value: Enabled (use `--no-frequency-audit` to disable it)                                    |
+| --profiles-audit         | Enable/disable Profiles Audit (integrated into Configuration Audit). Default Value: Enabled (use `--no-profiles-audit` to disable it)                                      |
+| --export-correction-cmd  | Enable/disable exporting correction command to text files (slow). Default Value: Enabled (use `--no-export-correction-cmd` to disable it).                                 |
+| --fast-excel             | Enable/disable fast Excel export using xlsxwriter engine (reduced formatting features if compared to openpyxl). Default Value: Disabled (use `--fast-excel` to enable it). |
+
+---
+
+## 4) SSB Retuning Automations - Modules Included
+
+### 4.1 Module 0 — Update Network Frequencies
 
 #### Input
 - Input folder (may contain subfolders/ZIPs already supported by the IO layer).
@@ -181,7 +229,7 @@ This guarantees traceability and avoids collisions between runs.
 
 ---
 
-### 3.2 Module 1 — Configuration Audit & Logs Parser
+### 4.2 Module 1 — Configuration Audit & Logs Parser
 
 ConfigurationAudit performs a detailed validation of a single configuration snapshot. It parses network logs, builds Managed Object (MO) tables, and evaluates multiple consistency and retuning-related rules.  
 
@@ -232,7 +280,7 @@ ConfigurationAudit can be executed in two main modes:
 
 ---
 
-### 3.3 Module 2 — Consistency Check (manual Pre/Post)
+### 4.3 Module 2 — Consistency Check (manual Pre/Post)
 
 ConsistencyChecks compares PRE and POST relation tables (NRCellRelation and GUtranCellRelation). The comparison uses a stable key per relation (e.g., NodeId + CellId + RelationId).  
 
@@ -285,7 +333,7 @@ Frequency discrepancies are identified by extracting a normalized base frequency
 
 ---
 
-### 3.4 Module 3 — Consistency Check Bulk (automatic Pre/Post detection by market)
+### 4.4 Module 3 — Consistency Check Bulk (automatic Pre/Post detection by market)
 
 #### Inputs
 - Root folder with subfolders like `yyyymmdd_hhmm_step0` (optionally nested by market).
@@ -301,7 +349,7 @@ Frequency discrepancies are identified by extracting a normalized base frequency
 
 ---
 
-### 3.5 Module 4 — Final Clean-Up
+### 4.5 Module 4 — Final Clean-Up
 
 #### Inputs
 - Final retune working folder.
@@ -314,15 +362,15 @@ Frequency discrepancies are identified by extracting a normalized base frequency
 
 ---
 
-## 4) Configuration Audit module in detail
+## 5) Configuration Audit module in detail
 
-### 4.1 SummaryAudit checks philosophy
+### 5.1 SummaryAudit checks philosophy
 SummaryAudit sheet contains a high-level checks table by categories. The flow:
 1. Excludes `UNSYNCHRONIZED` nodes based on `MeContext`.
 2. Evaluates NR, LTE, ENDC, Externals, TermPoints, cardinalities, and profiles.
 3. Records each check as a row (`Category/SubCategory/Metric/Value/ExtraInfo`).
 
-### 4.2 Operational meaning of SummaryAudit rows
+### 5.2 Operational meaning of SummaryAudit rows
 - **Category**: audited technical domain (NR/LTE/ENDC/MeContext/etc.).
 - **SubCategory**: type of analysis (Audit/Inconsistencies/Profiles).
 - **Metric**: specific rule evaluated.
@@ -332,7 +380,7 @@ SummaryAudit sheet contains a high-level checks table by categories. The flow:
   - Text: captured status or error.
 - **ExtraInfo**: list of nodes or bounded detail for troubleshooting.
 
-### 4.3 SummaryAudit checks catalog
+### 5.3 SummaryAudit checks catalog
 
 ### A) MeContext Audit
 **Source tables**: `MeContext`.
@@ -389,7 +437,7 @@ Main checks:
 | NRFreqRelation   | NR Frequency Audit           | NR nodes with the new N77 SSB (647328)                                                                                                                 |                                                                                            |
 | NRFreqRelation   | NR Frequency Audit           | NR nodes with both, the old N77 SSB (648672) and the new N77 SSB (647328)                                                                              |                                                                                            |
 | NRFreqRelation   | NR Frequency Audit           | NR nodes with the old N77 SSB (648672) but without the new N77 SSB (647328)                                                                            | Need to run Step1 on these nodes                                                           |
-| NRFreqRelation   | NR Frequency Audit           | NR nodes with some cells missing relations to new SSB (647328)                                                                                    | Nodes with any relations Step1 pending                                                     |
+| NRFreqRelation   | NR Frequency Audit           | NR nodes with some cells missing relations to new SSB (647328)                                                                                         | Nodes with any relations Step1 pending                                                     |
 | NRFreqRelation   | NR Frequency Audit           | NR nodes with the new N77 SSB (647328) NRFreqRelation pointing to mcpcPCellNrFreqRelProfileRef containing new SSB name (cloned) or Other               | Nodes with Step1 completed                                                                 |
 | NRFreqRelation   | NR Frequency Inconsistencies | NR nodes with the N77 SSB not in (648672, 647328)                                                                                                      |                                                                                            |
 | NRFreqRelation   | NR Frequency Inconsistencies | NR nodes with Auto-created NRFreqRelationId to new N77 SSB (647328) but not following VZ naming convention (e.g. with extra characters: 'auto_647328') |                                                                                            |
@@ -420,7 +468,7 @@ Main checks:
 | GUtranFreqRelation | LTE Frequency Audit           | LTE nodes with the new N77 SSB (647328)                                                                                            |                                                                                                                                                                                                              |
 | GUtranFreqRelation | LTE Frequency Audit           | LTE nodes with both, the old N77 SSB (648672) and the new N77 SSB (647328)                                                         | Nodes with Step1 completed                                                                                                                                                                                   |
 | GUtranFreqRelation | LTE Frequency Audit           | LTE nodes with the old N77 SSB (648672) but without the new SSB (647328)                                                           | Need to run Step1 on this nodes                                                                                                                                                                              |
-| GUtranFreqRelation | LTE Frequency Audit           | LTE nodes with some cells missing relations to new SSB  (647328)                                                              |                                                                                                                                                                                                              |
+| GUtranFreqRelation | LTE Frequency Audit           | LTE nodes with some cells missing relations to new SSB  (647328)                                                                   |                                                                                                                                                                                                              |
 | GUtranFreqRelation | LTE Frequency Inconsistencies | LTE nodes with the N77 SSB not in (648672, 647328)                                                                                 |                                                                                                                                                                                                              |
 | GUtranFreqRelation | LTE Frequency Inconsistencies | LTE nodes with Auto-created GUtranFreqRelationId to new N77 SSB (647328) but not following VZ naming convention (647328-30-20-0-1) | Not an issue, unless other inconsistencies raised                                                                                                                                                            |
 | GUtranFreqRelation | LTE Frequency Inconsistencies | LTE nodes with same endcB1MeasPriority in old N77 SSB (648672) and new N77 SSB (647328)                                            | Need to review and fix with Step1 or Step2c                                                                                                                                                                  |
@@ -534,7 +582,7 @@ Cardinality checks per relation table (per node and/or per cell) to detect overp
 
 ---
 
-### 4.4 Detailed check execution order and gating rules
+### 5.4 Detailed check execution order and gating rules
 1. **MeContext pre-processing**
    - Computes total nodes and `UNSYNCHRONIZED` nodes.
    - Builds an exclusion list and filters all other MO dataframes by `NodeId` before running any other checks.
@@ -551,7 +599,7 @@ Cardinality checks per relation table (per node and/or per cell) to detect overp
    - If required columns are missing: emits `N/A` rows.
    - If exceptions occur: emits `ERROR: ...` rows without aborting the full SummaryAudit generation.
 
-### 4.5 Additional columns injected into parsed MO sheets
+### 5.5 Additional columns injected into parsed MO sheets
 Besides SummaryAudit, Module 1 enriches several raw MO sheets with operational columns for execution/cleanup.
 
 #### A) `MeContext` enrichment (main planning helper)
@@ -594,7 +642,7 @@ Both relation tables are normalized with helper columns used for discrepancy tar
 - Adds consolidated termpoint health/status fields and `SSB needs update` boolean.
 - Adds `GNodeB_SSB_Target` and generated `Correction_Cmd` when target and frequency logic indicates migration to post-retune SSB.
 
-### 4.6 Key SummaryAudit checks by source table (implementation-level)
+### 5.6 Key SummaryAudit checks by source table (implementation-level)
 Below is the practical checklist implemented by the processors:
 
 - **NRCellDU**:
@@ -639,12 +687,12 @@ Below is the practical checklist implemented by the processors:
 
 ---
 
-## 5) Consistency Check module in detail
+## 6) Consistency Check module in detail
 
-### 5.1 Filtering by non-retuned nodes
+### 6.1 Filtering by non-retuned nodes
 If a POST SummaryAudit exists, the module obtains PRE/POST node lists and can exclude discrepancies whose target points to nodes that did not complete retune, reducing operational noise.
 
-### 5.2 How it detects parameter discrepancies
+### 6.2 How it detects parameter discrepancies
 1. Selects common PRE and POST relations by composite key:
    - GU: typically `NodeId`, `EUtranCellFDDId`, `GUtranCellRelationId`.
    - NR: typically `NodeId`, `NRCellCUId`, `NRCellRelationId`.
@@ -653,7 +701,7 @@ If a POST SummaryAudit exists, the module obtains PRE/POST node lists and can ex
 4. Sets `ParamDiff=True` if at least one column differs.
 5. In GU it ignores `timeOfCreation` and `mobilityStatusNR` to avoid false positives.
 
-### 5.3 How it detects frequency discrepancies
+### 6.3 How it detects frequency discrepancies
 1. Extracts base frequency from relation references (`extract_gu_freq_base` / `extract_nr_freq_base`).
 2. Discrepancy rule:
    - if PRE had `freq_before` or `freq_after`, and POST does **not** end up in `freq_after`, it marks `FreqDiff=True`.
@@ -661,13 +709,13 @@ If a POST SummaryAudit exists, the module obtains PRE/POST node lists and can ex
    - `FreqDiff_SSBPost` (target identified as SSB-Post),
    - `FreqDiff_Unknown` (cannot be associated to a known target).
 
-### 5.4 How it detects neighbor discrepancies
+### 6.4 How it detects neighbor discrepancies
 They are split into three groups:
 - **New relations**: keys present in POST and absent in PRE.
 - **Missing relations**: keys present in PRE and absent in POST.
 - **Discrepancies**: same key in PRE/POST but with parametric or frequency differences.
 
-### 5.5 Content of each ConsistencyChecks output sheet
+### 6.5 Content of each ConsistencyChecks output sheet
 - **Summary**: KPIs per table (PRE/POST volume, discrepancies, new/missing, source files).
 - **SummaryAuditComparisson**: diff of SummaryAudit PRE vs POST metrics (without `ExtraInfo` to keep the comparison clean).
 - **Summary_CellRelation**: KPI per `Freq_Pre/Freq_Post` pair and per technology.
@@ -681,7 +729,7 @@ They are split into three groups:
 
 ---
 
-## 6) Quick module reference
+## 7) Quick module reference
 
 | Module                       | Main input               | Main output                 | Goal                             |
 |------------------------------|--------------------------|-----------------------------|----------------------------------|
@@ -693,7 +741,7 @@ They are split into three groups:
 
 ---
 
-## 7) Inputs Naming Convention
+## 8) Inputs Naming Convention
 
 - Keep market log exports in a consistent structure and following the below naming convention (for both the parent folder and the zip file contining Step0 logs):
   - Recommended naming convention for folders and zips: **`<TIMESTAMP>_Step0_<MARKET_ID>_<MARKET_NAME>_<PHASE>`**
@@ -706,7 +754,7 @@ They are split into three groups:
 
 ---
 
-## 8) Operational Best Practices
+## 9) Operational Best Practices
 
 - Validate that PRE/POST have the same table granularity and consistent naming.
 - Validate frequency inputs (`n77_ssb_pre`, `n77_ssb_post`, `n77b_ssb`) before batch execution.
@@ -718,7 +766,7 @@ They are split into three groups:
 
 ---
 
-## 9) Known limitations and considerations
+## 10) Known limitations and considerations
 
 - The engine depends on log quality and structure: missing columns downgrade checks to `N/A`.
 - Some rules depend on naming conventions in references (NR/GU relation refs).

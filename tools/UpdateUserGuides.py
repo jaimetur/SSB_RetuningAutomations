@@ -35,7 +35,7 @@ PPT_FONT_SIZE_TABLES_HEADER = 10    # Font size for table header
 PPT_FONT_SIZE_TABLES_BODY = 7       # Font size for table body
 
 PPT_MAX_CONTENT_LINES = 24          # Max number of lines per slide
-PPT_MAX_TABLE_DATA_ROWS = 12        # Max number of Rows per table (header doesn' t count)
+PPT_MAX_TABLE_DATA_ROWS = 13        # Max number of Rows per table (header doesn' t count)
 PPT_CUT_SLIDE_WEIGHT = 85           # Increasing this value makes to add more content to previous slide
                                     # Decreasing this value makes the lists and paragraph to be cut to next slide earlier
 
@@ -1221,7 +1221,7 @@ def build_pptx_summary(md_file: Path, pptx_file: Path, version: str) -> None:
     # Cover
     slide = prs.slides.add_slide(prs.slide_layouts[0])
     slide.shapes.title.text = "Technical User Guide"
-    slide.placeholders[1].text = "SSB Retuning Automations"
+    slide.placeholders[1].text = f"SSB Retuning Automations v{version}"
 
     for section in sections:
         slide_title = section["title"]
