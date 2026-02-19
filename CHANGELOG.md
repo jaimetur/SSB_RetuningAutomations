@@ -56,7 +56,7 @@
 
 - #### 📚 Documentation:
   - Updated Documentation to align with the latest changes.
-  - Updated the Markdown User Guide web view so it uses the same favicon as the main app (/static/logo_02.png).
+  - Updated the Markdown User Guide web view so it uses the same favicon as the main app (/assets/logos/logo_02.png).
   - Changed the web-rendered Markdown guide title to include the tool version dynamically, now shown as Technical User Guide — SSB Retuning Automations <version> (without modifying the guide file itself).
 
 ---
