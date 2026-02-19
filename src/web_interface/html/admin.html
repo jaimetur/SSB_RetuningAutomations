@@ -259,17 +259,38 @@
         </form>
       </div>
       <p class="db-backup-warning"><small>Import replaces the current database file after basic validation.</small></p>
-      <form method="post" action="/admin/settings" class="admin-db-backup-auto-form">
+      <form method="post" action="/admin/settings" class="admin-db-backup-auto-form" style="margin-top: 1rem;">
         <input type="hidden" name="max_cpu_percent" value="{{ admin_settings.max_cpu_percent }}" />
         <input type="hidden" name="max_memory_percent" value="{{ admin_settings.max_memory_percent }}" />
         <input type="hidden" name="max_parallel_tasks" value="{{ admin_settings.max_parallel_tasks }}" />
-        <label class="checkbox">
-          <input type="checkbox" name="db_backup_auto_enabled" value="1" {% if admin_settings.db_backup_auto_enabled %}checked{% endif %} />
-          Enable daily automatic DB backup
-        </label>
-        <label>Backup path <input type="text" name="db_backup_auto_path" value="{{ admin_settings.db_backup_auto_path }}" placeholder="/path/to/backups" /></label>
-        <label>Backup hour (0-23) <input type="number" name="db_backup_auto_hour" min="0" max="23" value="{{ admin_settings.db_backup_auto_hour }}" /></label>
-        <button type="submit" class="btn btn-primary">Save backup automation</button>
+
+        <div class="inline" style="align-items: center; gap: .6rem; flex-wrap: wrap;">
+          <label for="db_backup_auto_mode">Automatic DB Backup</label>
+          <select id="db_backup_auto_mode" name="db_backup_auto_mode">
+            <option value="disabled" {% if admin_settings.db_backup_auto_mode == 'disabled' %}selected{% endif %}>Disabled</option>
+            <option value="daily" {% if admin_settings.db_backup_auto_mode == 'daily' %}selected{% endif %}>Daily</option>
+            <option value="weekly" {% if admin_settings.db_backup_auto_mode == 'weekly' %}selected{% endif %}>Weekly (every Mondays)</option>
+            <option value="monthly" {% if admin_settings.db_backup_auto_mode == 'monthly' %}selected{% endif %}>Monthly (every 1st)</option>
+          </select>
+        </div>
+
+        <div class="inline" style="align-items: center; gap: .6rem; flex-wrap: wrap; margin-top: .5rem;">
+          <label for="db_backup_auto_path">Backup path</label>
+          <input id="db_backup_auto_path" type="text" name="db_backup_auto_path" value="{{ admin_settings.db_backup_auto_path }}" placeholder="/path/to/backups" style="min-width: 26rem;" />
+          <button type="button" class="btn btn-neutral" id="db_backup_pick_folder">Select Folder</button>
+        </div>
+
+        <div class="inline" style="align-items: center; gap: .6rem; flex-wrap: wrap; margin-top: .5rem;">
+          <label for="db_backup_auto_hour">Backup hour (0-23)</label>
+          <input id="db_backup_auto_hour" type="number" name="db_backup_auto_hour" min="0" max="23" value="{{ admin_settings.db_backup_auto_hour }}" style="width: 4.6rem;" />
+        </div>
+
+        <div class="inline" style="align-items: center; gap: .6rem; flex-wrap: wrap; margin-top: .5rem;">
+          <label for="db_backup_max_to_store">Max. Backups to store</label>
+          <input id="db_backup_max_to_store" type="number" name="db_backup_max_to_store" min="1" max="3650" value="{{ admin_settings.db_backup_max_to_store }}" style="width: 6rem;" />
+        </div>
+
+        <button type="submit" class="btn btn-primary" style="margin-top: .5rem;">Save backup automation</button>
       </form>
       </div>
     </section>
@@ -461,6 +482,8 @@
     const dbBackupFileInput = document.getElementById("db_backup_file_input");
     const dbBackupPickFileButton = document.getElementById("db_backup_pick_file");
     const dbBackupFileName = document.getElementById("db_backup_file_name");
+    const dbBackupPickFolderButton = document.getElementById("db_backup_pick_folder");
+    const dbBackupAutoPathInput = document.getElementById("db_backup_auto_path");
     const inputsTotalSizeLabel = document.getElementById("inputs_total_size");
     const runsTotalSizeLabel = document.getElementById("runs_total_size");
     const ADMIN_EXECUTION_AUTO_CHECKED_KEY = "admin_execution_log_auto_checked";
@@ -587,6 +610,26 @@
     dbBackupFileInput?.addEventListener("change", () => {
       const selectedName = dbBackupFileInput.files?.[0]?.name || "No file selected";
       if (dbBackupFileName) dbBackupFileName.textContent = selectedName;
+    });
+
+    dbBackupPickFolderButton?.addEventListener("click", async () => {
+      if (!dbBackupAutoPathInput) return;
+      if (!("showDirectoryPicker" in window)) {
+        alert("Folder picker is not supported in this browser. Please type the path manually.");
+        return;
+      }
+      try {
+        const handle = await window.showDirectoryPicker();
+        if (handle?.name) {
+          const currentValue = String(dbBackupAutoPathInput.value || "").trim();
+          const guessedPath = currentValue
+            ? `${currentValue.replace(/[\/]+$/, "")}/${handle.name}`
+            : handle.name;
+          dbBackupAutoPathInput.value = guessedPath;
+        }
+      } catch (_error) {
+        // User cancelled folder selection.
+      }
     });
 
     dbBackupImportForm?.addEventListener("submit", async (event) => {

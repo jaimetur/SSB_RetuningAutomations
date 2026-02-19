@@ -965,9 +965,17 @@ def coerce_int(value: Any, default: int, minimum: int, maximum: int) -> int:
     return max(minimum, min(maximum, parsed))
 
 
+def get_admin_settings_storage_user_id() -> int:
+    conn = get_conn()
+    admin_row = conn.execute("SELECT id FROM users WHERE LOWER(username) = 'admin' ORDER BY id ASC LIMIT 1").fetchone()
+    conn.close()
+    return int(admin_row["id"]) if admin_row else -1
+
+
 def load_admin_settings_payload() -> dict[str, Any]:
     conn = get_conn()
-    row = conn.execute("SELECT settings_json FROM user_settings WHERE user_id = -1").fetchone()
+    storage_user_id = get_admin_settings_storage_user_id()
+    row = conn.execute("SELECT settings_json FROM user_settings WHERE user_id = ?", (storage_user_id,)).fetchone()
     conn.close()
     if not row:
         return {}
@@ -983,10 +991,10 @@ def save_admin_settings_payload(payload: dict[str, Any]) -> None:
     conn.execute(
         """
         INSERT INTO user_settings(user_id, settings_json, updated_at)
-        VALUES(-1, ?, ?)
+        VALUES(?, ?, ?)
         ON CONFLICT(user_id) DO UPDATE SET settings_json = excluded.settings_json, updated_at = excluded.updated_at
         """,
-        (json.dumps(payload, ensure_ascii=False), now_iso()),
+        (get_admin_settings_storage_user_id(), json.dumps(payload, ensure_ascii=False), now_iso()),
     )
     conn.commit()
     conn.close()
@@ -994,6 +1002,17 @@ def save_admin_settings_payload(payload: dict[str, Any]) -> None:
 
 def coerce_hour(value: Any, default: int = 2) -> int:
     return coerce_int(value, default, 0, 23)
+
+
+def coerce_backup_mode(value: Any) -> str:
+    allowed = {"disabled", "daily", "weekly", "monthly"}
+    normalized = str(value or "").strip().lower()
+    if normalized in allowed:
+        return normalized
+    # Backward compatibility with previous boolean flag.
+    if parse_bool(value):
+        return "daily"
+    return "disabled"
 
 
 def get_admin_settings() -> dict[str, Any]:
@@ -1005,9 +1024,10 @@ def get_admin_settings() -> dict[str, Any]:
         "max_cpu_percent": coerce_int(payload.get("max_cpu_percent"), MAX_CPU_DEFAULT, 10, 100),
         "max_memory_percent": coerce_int(payload.get("max_memory_percent"), MAX_MEMORY_DEFAULT, 10, 100),
         "max_parallel_tasks": coerce_int(payload.get("max_parallel_tasks"), MAX_PARALLEL_DEFAULT, 1, 8),
-        "db_backup_auto_enabled": parse_bool(payload.get("db_backup_auto_enabled")),
+        "db_backup_auto_mode": coerce_backup_mode(payload.get("db_backup_auto_mode", payload.get("db_backup_auto_enabled"))),
         "db_backup_auto_path": backup_auto_path,
         "db_backup_auto_hour": coerce_hour(payload.get("db_backup_auto_hour"), 2),
+        "db_backup_max_to_store": coerce_int(payload.get("db_backup_max_to_store"), 30, 1, 3650),
         "db_backup_last_run_date": str(payload.get("db_backup_last_run_date") or ""),
     }
 
@@ -1016,9 +1036,10 @@ def save_admin_settings(
     max_cpu_percent: int,
     max_memory_percent: int,
     max_parallel_tasks: int,
-    db_backup_auto_enabled: bool = False,
+    db_backup_auto_mode: str = "disabled",
     db_backup_auto_path: str = "",
     db_backup_auto_hour: int = 2,
+    db_backup_max_to_store: int = 30,
     db_backup_last_run_date: str | None = None,
 ) -> None:
     current = get_admin_settings()
@@ -1027,43 +1048,71 @@ def save_admin_settings(
         "max_cpu_percent": coerce_int(max_cpu_percent, MAX_CPU_DEFAULT, 10, 100),
         "max_memory_percent": coerce_int(max_memory_percent, MAX_MEMORY_DEFAULT, 10, 100),
         "max_parallel_tasks": coerce_int(max_parallel_tasks, MAX_PARALLEL_DEFAULT, 1, 8),
-        "db_backup_auto_enabled": bool(db_backup_auto_enabled),
+        "db_backup_auto_mode": coerce_backup_mode(db_backup_auto_mode),
         "db_backup_auto_path": backup_path,
         "db_backup_auto_hour": coerce_hour(db_backup_auto_hour, current["db_backup_auto_hour"]),
+        "db_backup_max_to_store": coerce_int(db_backup_max_to_store, current["db_backup_max_to_store"], 1, 3650),
         "db_backup_last_run_date": db_backup_last_run_date if db_backup_last_run_date is not None else current["db_backup_last_run_date"],
     }
     save_admin_settings_payload(settings)
 
 
-def create_database_backup(backup_dir: Path, reason: str = "manual") -> Path:
+def create_database_backup(backup_dir: Path, reason: str = "manual", max_to_store: int = 30) -> Path:
     backup_dir.mkdir(parents=True, exist_ok=True)
     backup_file = backup_dir / f"web_interface_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db"
     shutil.copy2(DB_PATH, backup_file)
+
+    max_keep = coerce_int(max_to_store, 30, 1, 3650)
+    backup_files = sorted(
+        [p for p in backup_dir.glob("web_interface_backup_*.db") if p.is_file()],
+        key=lambda p: p.stat().st_mtime,
+    )
+    overflow = len(backup_files) - max_keep
+    if overflow > 0:
+        for old_file in backup_files[:overflow]:
+            old_file.unlink(missing_ok=True)
+
     logger.info("Database backup created (%s): %s", reason, backup_file)
     return backup_file
 
 
 def run_scheduled_database_backup_if_needed() -> None:
     settings = get_admin_settings()
-    if not settings["db_backup_auto_enabled"]:
+    mode = settings["db_backup_auto_mode"]
+    if mode == "disabled":
         return
+
     now_dt = datetime.now().astimezone()
-    today = now_dt.date().isoformat()
-    if settings["db_backup_last_run_date"] == today:
+    today = now_dt.date()
+    today_str = today.isoformat()
+
+    if settings["db_backup_last_run_date"] == today_str:
         return
     if int(settings["db_backup_auto_hour"]) != now_dt.hour:
         return
 
+    should_run = False
+    if mode == "daily":
+        should_run = True
+    elif mode == "weekly":
+        should_run = today.weekday() == 0  # Monday
+    elif mode == "monthly":
+        should_run = today.day == 1
+
+    if not should_run:
+        return
+
     backup_dir = Path(str(settings["db_backup_auto_path"]).strip() or str((DATA_DB_DIR / "backups").resolve()))
-    create_database_backup(backup_dir, reason="auto")
+    create_database_backup(backup_dir, reason=f"auto-{mode}", max_to_store=int(settings["db_backup_max_to_store"]))
     save_admin_settings(
         settings["max_cpu_percent"],
         settings["max_memory_percent"],
         settings["max_parallel_tasks"],
-        db_backup_auto_enabled=settings["db_backup_auto_enabled"],
+        db_backup_auto_mode=mode,
         db_backup_auto_path=str(backup_dir),
         db_backup_auto_hour=settings["db_backup_auto_hour"],
-        db_backup_last_run_date=today,
+        db_backup_max_to_store=settings["db_backup_max_to_store"],
+        db_backup_last_run_date=today_str,
     )
 
 def detect_task_name_from_input(input_path: str) -> str:
@@ -3516,9 +3565,10 @@ def admin_settings_update(
     max_cpu_percent: int = Form(MAX_CPU_DEFAULT),
     max_memory_percent: int = Form(MAX_MEMORY_DEFAULT),
     max_parallel_tasks: int = Form(MAX_PARALLEL_DEFAULT),
-    db_backup_auto_enabled: str | None = Form(None),
+    db_backup_auto_mode: str = Form("disabled"),
     db_backup_auto_path: str = Form(""),
     db_backup_auto_hour: int = Form(2),
+    db_backup_max_to_store: int = Form(30),
 ):
     try:
         require_admin(request)
@@ -3529,9 +3579,10 @@ def admin_settings_update(
         max_cpu_percent,
         max_memory_percent,
         max_parallel_tasks,
-        db_backup_auto_enabled=parse_bool(db_backup_auto_enabled),
+        db_backup_auto_mode=db_backup_auto_mode,
         db_backup_auto_path=db_backup_auto_path,
         db_backup_auto_hour=db_backup_auto_hour,
+        db_backup_max_to_store=db_backup_max_to_store,
         db_backup_last_run_date=current["db_backup_last_run_date"],
     )
     queue_event.set()
