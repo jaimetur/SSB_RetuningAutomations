@@ -81,7 +81,7 @@
       </div>
       <div class="table-scroll latest-global-scroll" id="users_panel_table">
       <table>
-        <thead><tr><th>User</th><th>Password</th><th>Role</th><th>Status</th><th>Connected</th><th>Last Connection</th><th>Logged time</th><th>Execution time</th><th>Storage</th><th>Actions</th></tr></thead>
+        <thead><tr><th class="sortable" data-sort-id="user" data-sort-key="text" data-default-sort="asc">User</th><th class="sortable" data-sort-id="password" data-sort-key="text">Password</th><th class="sortable" data-sort-id="role" data-sort-key="text">Role</th><th class="sortable" data-sort-id="status" data-sort-key="text">Status</th><th class="sortable" data-sort-id="connected" data-sort-key="text">Connected</th><th class="sortable" data-sort-id="last_connection" data-sort-key="datetime">Last Connection</th><th class="sortable" data-sort-id="logged_time" data-sort-key="duration">Logged time</th><th class="sortable" data-sort-id="execution_time" data-sort-key="duration">Execution time</th><th class="sortable" data-sort-id="storage" data-sort-key="size">Storage</th><th class="sortable" data-sort-id="actions" data-sort-key="text">Actions</th></tr></thead>
         <tbody>
           {% for u in users %}
           <tr data-user-role="{{ u.role }}" data-user-active="{{ 1 if u.active else 0 }}" data-user-connected="{{ 1 if u.connected else 0 }}">
@@ -505,6 +505,7 @@
     const persistedAdminUsersFilter = {{ (user_settings.get("admin_users_filter") if user_settings else "all") | tojson }};
     const persistedAdminInputsFilter = {{ (user_settings.get("admin_inputs_filter") if user_settings else "__all__") | tojson }};
     const persistedAdminRunsFilter = {{ (user_settings.get("admin_runs_filter") if user_settings else "__all__") | tojson }};
+    const persistedAdminUsersSort = {{ (user_settings.get("admin_users_sort") if user_settings else {}) | tojson }};
     let persistedInputsWildcardHistory = {{ (user_settings.get("wildcard_history_inputs", []) if user_settings else []) | tojson }};
     let persistedExecutionsWildcardHistory = {{ (user_settings.get("wildcard_history_executions", []) if user_settings else []) | tojson }};
     let panelStateSaveTimeout = null;
@@ -667,14 +668,24 @@
         return -1;
       }
       if (sortType === "datetime") {
-        const normalized = value.replace(/^(\d{4})-(\d{2})-(\d{2})-(\d{2}:\d{2}:\d{2})$/, "$1-$2-$3T$4");
+        const normalized = value
+          .replace(/^(\d{4})-(\d{2})-(\d{2})-(\d{2}:\d{2}:\d{2})$/, "$1-$2-$3T$4")
+          .replace(/^(\d{4})-(\d{2})-(\d{2})\s(\d{2}:\d{2})$/, "$1-$2-$3T$4:00");
         const ts = Date.parse(normalized);
         return Number.isNaN(ts) ? -1 : ts;
       }
       return value.toLowerCase();
     }
 
-    function sortTableByHeader(table, header, forcedDirection = null) {
+    function persistAdminUsersSort(sortId, direction) {
+      fetch("/settings/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ admin_users_sort: { sort_id: sortId || "", direction: direction || "asc" } })
+      }).catch(() => {});
+    }
+
+    function sortTableByHeader(table, header, forcedDirection = null, onSortChange = null) {
       const tbody = table?.querySelector("tbody");
       if (!tbody || !header) return;
       const rows = Array.from(tbody.querySelectorAll("tr"));
@@ -712,38 +723,49 @@
       });
 
       rows.forEach((row) => tbody.appendChild(row));
+
+      if (typeof onSortChange === "function") {
+        onSortChange(header, currentDirection);
+      }
     }
 
-    function applyCurrentOrDefaultSort(tableSelector) {
+    function applyCurrentOrDefaultSort(tableSelector, onSortChange = null) {
       const table = document.querySelector(tableSelector);
       if (!table) return;
       const headers = Array.from(table.querySelectorAll("thead th.sortable"));
       const activeHeader = headers.find((header) => ["asc", "desc"].includes(header.dataset.sortDirection));
       if (activeHeader) {
-        sortTableByHeader(table, activeHeader, activeHeader.dataset.sortDirection);
+        sortTableByHeader(table, activeHeader, activeHeader.dataset.sortDirection, onSortChange);
         return;
       }
       const defaultHeader = headers.find((header) => header.dataset.defaultSort);
-      if (defaultHeader) sortTableByHeader(table, defaultHeader, defaultHeader.dataset.defaultSort);
+      if (defaultHeader) sortTableByHeader(table, defaultHeader, defaultHeader.dataset.defaultSort, onSortChange);
     }
 
-    function initSortableTable(tableSelector) {
+    function initSortableTable(tableSelector, options = {}) {
       const table = document.querySelector(tableSelector);
       if (!table) return;
       const headers = Array.from(table.querySelectorAll("thead th.sortable"));
+      const persistedSortId = options.persistedSort?.sort_id;
+      const persistedDirection = options.persistedSort?.direction;
       headers.forEach((header) => {
         header.dataset.sortDirection = "none";
         header.dataset.label = header.textContent.replace(/\s*[▲▼]$/, "").trim();
         header.title = "Sort";
-        header.addEventListener("click", () => sortTableByHeader(table, header));
+        if (persistedSortId && String(header.dataset.sortId || "") === String(persistedSortId)) {
+          header.dataset.sortDirection = ["asc", "desc"].includes(persistedDirection) ? persistedDirection : "none";
+        }
+        header.addEventListener("click", () => sortTableByHeader(table, header, null, options.onSortChange));
       });
-      applyCurrentOrDefaultSort(tableSelector);
+      applyCurrentOrDefaultSort(tableSelector, options.onSortChange);
     }
 
     function parseTableDateTime(rawValue) {
       const value = String(rawValue || "").trim();
       if (!value || value === "—") return null;
-      const normalized = value.replace(/^(\d{4})-(\d{2})-(\d{2})-(\d{2}:\d{2}:\d{2})$/, "$1-$2-$3T$4");
+      const normalized = value
+        .replace(/^(\d{4})-(\d{2})-(\d{2})-(\d{2}:\d{2}:\d{2})$/, "$1-$2-$3T$4")
+        .replace(/^(\d{4})-(\d{2})-(\d{2})\s(\d{2}:\d{2})$/, "$1-$2-$3T$4:00");
       const timestamp = Date.parse(normalized);
       if (Number.isNaN(timestamp)) return null;
       return new Date(timestamp);
@@ -1730,6 +1752,10 @@
     adminDbUpdateChangesButton?.addEventListener("click", applyAdminDbUpdates);
 
 
+    initSortableTable("#users_panel_table table", {
+      persistedSort: persistedAdminUsersSort,
+      onSortChange: (header, direction) => persistAdminUsersSort(header?.dataset?.sortId || "", direction)
+    });
     initSortableTable("#inputs_panel_table table");
     initSortableTable("#runs_panel_table table");
     populateScopeCombo(selectUserInputsCombo, "#inputs_panel_table", 2);
