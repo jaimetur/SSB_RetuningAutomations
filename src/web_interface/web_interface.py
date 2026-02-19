@@ -1489,6 +1489,7 @@ def custom_openapi():
 
 app.openapi = custom_openapi
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
+app.mount("/assets", StaticFiles(directory=str(PROJECT_ROOT / "assets")), name="assets")
 templates = Jinja2Templates(directory=str(BASE_DIR / "html"))
 
 
@@ -1773,6 +1774,9 @@ def download_user_guide(request: Request, file_format: str, mode: str = "downloa
             return "\n".join(out)
 
         md_text = _normalize_markdown_lists(md_text)
+        md_text = re.sub(r"^\s*<!--.*?-->\s*$", "", md_text, flags=re.MULTILINE)
+        md_text = re.sub(r"\]\(\.{2}/assets/", "](/assets/", md_text)
+        md_text = re.sub(r"\]\(assets/", "](/assets/", md_text)
         tool_meta = load_tool_metadata()
         guide_version = tool_meta.get("version", "unknown")
         if guide_version == "unknown":
@@ -1802,8 +1806,8 @@ def download_user_guide(request: Request, file_format: str, mode: str = "downloa
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>{guide_title}</title>
-  <link rel="icon" type="image/png" href="/static/logo_02.png" />
-  <link rel="shortcut icon" type="image/png" href="/static/logo_02.png" />
+  <link rel="icon" type="image/png" href="/assets/logos/logo_02.png" />
+  <link rel="shortcut icon" type="image/png" href="/assets/logos/logo_02.png" />
   <style>
     body {{ font-family: Arial, sans-serif; margin: 2rem auto; max-width: 980px; line-height: 1.5; color: #1f2937; padding: 0 1rem; }}
     h1,h2,h3,h4 {{ color: #0f172a; }}
@@ -3570,4 +3574,3 @@ async def release_notes(request: Request, user=Depends(get_current_user)):
     changelog_md = changelog_path.read_text(encoding="utf-8", errors="replace") if changelog_path.exists() else "CHANGELOG.md not found at /app/CHANGELOG.md"
     tool_meta = load_tool_metadata()
     return templates.TemplateResponse("release_notes.html", {"request": request, "tool_meta": tool_meta, "user": user, "changelog_md": changelog_md})
-

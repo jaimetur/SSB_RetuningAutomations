@@ -9,11 +9,12 @@ from pathlib import Path
 from docx import Document
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
+from docx.shared import Cm as DocxCm
 from docx.shared import Pt as DocxPt
 from pptx import Presentation
 from pptx.dml.color import RGBColor
 from pptx.enum.dml import MSO_THEME_COLOR
-from pptx.util import Pt
+from pptx.util import Inches, Pt
 import importlib
 import os
 import subprocess
@@ -52,6 +53,8 @@ TOOL_MAIN_PATH = ROOT / "src" / "SSB_RetuningAutomations.py"
 DOCX_TEMPLATE_CANDIDATES = [ROOT / "assets" / "templates_docx" / "UserGuideTemplate.docx"]
 PPTX_TEMPLATE_CANDIDATES = [ROOT / "assets" / "templates_pptx" / "UserGuideTemplate.pptx"]
 # =======================================
+
+IMAGE_MD_PATTERN = re.compile(r'^!\[(?P<alt>[^\]]*)\]\((?P<src>[^)\s]+)(?:\s+"[^"]*")?\)\s*$')
 
 
 def get_tool_version() -> str:
@@ -149,6 +152,31 @@ def normalize_markdown_inline(text: str) -> str:
     normalized = text.replace("`", '"').replace("'", '"')
     normalized = re.sub(r"\[(.*?)\]\((.*?)\)", r"\1 (\2)", normalized)
     return normalized
+
+
+def parse_markdown_image_line(line: str) -> tuple[str, str] | None:
+    match = IMAGE_MD_PATTERN.match(line.strip())
+    if not match:
+        return None
+    return match.group("alt").strip(), match.group("src").strip()
+
+
+def is_html_comment_line(line: str) -> bool:
+    stripped = line.strip()
+    return stripped.startswith("<!--") and stripped.endswith("-->")
+
+
+def resolve_markdown_image_path(md_file: Path, source: str) -> Path | None:
+    clean_source = source.split("?", 1)[0].strip()
+    if not clean_source:
+        return None
+    source_path = Path(clean_source)
+    candidate = source_path if source_path.is_absolute() else (md_file.parent / source_path)
+    try:
+        resolved = candidate.resolve()
+    except OSError:
+        return None
+    return resolved if resolved.exists() and resolved.is_file() else None
 
 
 def clean_heading_text(text: str) -> str:
@@ -286,6 +314,10 @@ def build_pdf_from_markdown(md_file: Path, pdf_file: Path) -> None:
             i += 1
             continue
 
+        if is_html_comment_line(line):
+            i += 1
+            continue
+
         if line.startswith("| ") and line.endswith(" |") and i + 1 < len(lines) and is_table_separator(lines[i + 1]):
             rows = [parse_table_row(line)]
             i += 2
@@ -304,6 +336,25 @@ def build_pdf_from_markdown(md_file: Path, pdf_file: Path) -> None:
             ]))
             story.append(table)
             story.append(Spacer(1, 0.2 * cm))
+            continue
+
+        image_info = parse_markdown_image_line(line)
+        if image_info:
+            _, image_src = image_info
+            image_path = resolve_markdown_image_path(md_file, image_src)
+            if image_path:
+                img = platypus.Image(str(image_path))
+                max_width = doc.width
+                max_height = 12 * cm
+                iw = float(getattr(img, "imageWidth", 0) or 0)
+                ih = float(getattr(img, "imageHeight", 0) or 0)
+                if iw > 0 and ih > 0:
+                    ratio = min(max_width / iw, max_height / ih, 1.0)
+                    img.drawWidth = iw * ratio
+                    img.drawHeight = ih * ratio
+                story.append(img)
+                story.append(Spacer(1, 0.2 * cm))
+            i += 1
             continue
 
         if line.startswith("# "):
@@ -528,6 +579,22 @@ def build_docx_from_markdown(md_file: Path, docx_file: Path, version: str) -> No
                 i += 1
             continue
 
+        if is_html_comment_line(s):
+            i += 1
+            continue
+
+        image_info = parse_markdown_image_line(s.strip())
+        if image_info:
+            _, image_src = image_info
+            image_path = resolve_markdown_image_path(md_file, image_src)
+            if image_path:
+                try:
+                    doc.add_picture(str(image_path), width=DocxCm(16))
+                except Exception:
+                    pass
+            i += 1
+            continue
+
         t = s.strip()
         if t.startswith("| ") and t.endswith(" |") and i + 1 < len(lines) and is_table_separator(lines[i + 1]):
             rows: list[list[str]] = [parse_table_row(t)]
@@ -651,6 +718,10 @@ def build_pptx_summary(md_file: Path, pptx_file: Path, version: str) -> None:
                 i += 1
                 continue
 
+            if is_html_comment_line(line):
+                i += 1
+                continue
+
             if line.startswith("# "):
                 i += 1
                 continue
@@ -683,6 +754,19 @@ def build_pptx_summary(md_file: Path, pptx_file: Path, version: str) -> None:
                     rows.append(parse_table_row(cand))
                     i += 1
                 current["blocks"].append({"type": "table", "rows": rows})
+                continue
+
+            image_info = parse_markdown_image_line(line)
+            if image_info:
+                alt_text, image_src = image_info
+                image_path = resolve_markdown_image_path(md_path, image_src)
+                if image_path:
+                    current["blocks"].append({
+                        "type": "image",
+                        "alt": _norm(alt_text) or "Screenshot",
+                        "path": str(image_path),
+                    })
+                i += 1
                 continue
 
             mb = bullet_pat.match(raw)
@@ -768,6 +852,8 @@ def build_pptx_summary(md_file: Path, pptx_file: Path, version: str) -> None:
             return 1 + sum(max(1, ceil(len(it["text"]) / PPT_CUT_SLIDE_WEIGHT)) for it in block["items"])
         if block["type"] == "table":
             return 6 + len(block["rows"])
+        if block["type"] == "image":
+            return 14
         return 2
 
     def _style_table(table) -> None:
@@ -991,6 +1077,40 @@ def build_pptx_summary(md_file: Path, pptx_file: Path, version: str) -> None:
         tbl_shape.height = min(total_h, h)
         tbl_shape.top = y
 
+    def _add_image_slide(prs: Presentation, slide_title: str, subtitle: str | None, image_path: str, caption: str | None, continuation: bool = False) -> None:
+        slide = prs.slides.add_slide(prs.slide_layouts[1])
+
+        title_shape = slide.shapes.title
+        title_shape.text = slide_title
+        if subtitle:
+            p = title_shape.text_frame.add_paragraph()
+            p.text = subtitle if not continuation else f"{subtitle} (cont.)"
+            p.level = 0
+            p.font.bold = False
+            p.font.size = Pt(PPT_FONT_SIZE_H3)
+            p.font.color.theme_color = MSO_THEME_COLOR.ACCENT_2
+
+        content = slide.shapes.placeholders[1]
+        x, y, w, h = content.left, content.top, content.width, content.height
+
+        tf = content.text_frame
+        tf.clear()
+        if caption:
+            p0 = tf.paragraphs[0]
+            p0.text = caption
+            p0.level = 0
+            p0.font.size = Pt(10)
+            p0.font.bold = True
+        else:
+            p0 = tf.paragraphs[0]
+            p0.text = " "
+            p0.font.size = Pt(1)
+            p0.font.color.rgb = RGBColor(255, 255, 255)
+
+        img_top = y + Inches(0.35)
+        img_max_h = max(Inches(1), h - Inches(0.35))
+        slide.shapes.add_picture(image_path, x, img_top, width=w, height=img_max_h)
+
     def _render_content(tf, blocks: list[dict]) -> None:
         from pptx.oxml.ns import qn as pptx_qn
         from pptx.oxml.xmlchemy import OxmlElement as PptxOxmlElement
@@ -1158,6 +1278,21 @@ def build_pptx_summary(md_file: Path, pptx_file: Path, version: str) -> None:
                             )
                         continuation = True
 
+                    i += 1
+                    continue
+
+                if b["type"] == "image":
+                    if buffer:
+                        flush()
+                    _add_image_slide(
+                        prs,
+                        slide_title,
+                        subtitle,
+                        b["path"],
+                        b.get("alt"),
+                        continuation=continuation,
+                    )
+                    continuation = True
                     i += 1
                     continue
 

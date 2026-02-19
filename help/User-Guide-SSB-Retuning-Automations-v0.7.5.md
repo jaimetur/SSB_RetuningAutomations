@@ -1,5 +1,19 @@
 # Technical User Guide — SSB Retuning Automations
 
+<!-- screenshots:auto:start -->
+
+![Module Selector](../assets/screenshots/module_selector.png)
+
+![Web Interface Admin Panel](../assets/screenshots/web-interface-admin-panel.png)
+
+![Web Interface Inputs Executions Panels](../assets/screenshots/web-interface-inputs-executions-panels.png)
+
+![Web Interface Logs Panels](../assets/screenshots/web-interface-logs-panels.png)
+
+![Web Interface User Panel](../assets/screenshots/web-interface-user-panel.png)
+
+<!-- screenshots:auto:end -->
+
 ## 1) Service overview
 
 SSB Retuning Automations parses network logs, performs ConfigurationAudit checks, optionally compares PRE/POST states with ConsistencyChecks, and generates Excel deliverables and correction command exports.
