@@ -161,6 +161,11 @@ def parse_markdown_image_line(line: str) -> tuple[str, str] | None:
     return match.group("alt").strip(), match.group("src").strip()
 
 
+def is_html_comment_line(line: str) -> bool:
+    stripped = line.strip()
+    return stripped.startswith("<!--") and stripped.endswith("-->")
+
+
 def resolve_markdown_image_path(md_file: Path, source: str) -> Path | None:
     clean_source = source.split("?", 1)[0].strip()
     if not clean_source:
@@ -306,6 +311,10 @@ def build_pdf_from_markdown(md_file: Path, pdf_file: Path) -> None:
 
         if not line or line == "---":
             story.append(Spacer(1, 0.2 * cm))
+            i += 1
+            continue
+
+        if is_html_comment_line(line):
             i += 1
             continue
 
@@ -570,6 +579,10 @@ def build_docx_from_markdown(md_file: Path, docx_file: Path, version: str) -> No
                 i += 1
             continue
 
+        if is_html_comment_line(s):
+            i += 1
+            continue
+
         image_info = parse_markdown_image_line(s.strip())
         if image_info:
             _, image_src = image_info
@@ -702,6 +715,10 @@ def build_pptx_summary(md_file: Path, pptx_file: Path, version: str) -> None:
             line = raw.strip()
 
             if not line or line == "---":
+                i += 1
+                continue
+
+            if is_html_comment_line(line):
                 i += 1
                 continue
 
