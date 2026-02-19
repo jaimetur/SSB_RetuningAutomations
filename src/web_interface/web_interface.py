@@ -694,7 +694,8 @@ def init_db() -> None:
             password_hash TEXT NOT NULL,
             role TEXT NOT NULL DEFAULT 'user',
             active INTEGER NOT NULL DEFAULT 1,
-            created_at TEXT NOT NULL
+            created_at TEXT NOT NULL,
+            access_request_reason TEXT
         )
         """
     )
@@ -772,6 +773,10 @@ def init_db() -> None:
         cur.execute("ALTER TABLE task_runs ADD COLUMN input_name TEXT")
     if "payload_json" not in existing_columns:
         cur.execute("ALTER TABLE task_runs ADD COLUMN payload_json TEXT")
+
+    user_columns = {row["name"] for row in cur.execute("PRAGMA table_info(users)").fetchall()}
+    if "access_request_reason" not in user_columns:
+        cur.execute("ALTER TABLE users ADD COLUMN access_request_reason TEXT")
 
     admin = cur.execute(
         "SELECT id, password_hash FROM users WHERE username = ?", ("admin",)
@@ -1972,8 +1977,8 @@ def request_access_post(request: Request, username: str = Form(...), password: s
         )
 
     conn.execute(
-        "INSERT INTO users(username, password_hash, role, active, created_at) VALUES (?, ?, 'user', 0, ?)",
-        (signum_username, pwd_context.hash(requested_password), now_iso()),
+        "INSERT INTO users(username, password_hash, role, active, created_at, access_request_reason) VALUES (?, ?, 'user', 0, ?, ?)",
+        (signum_username, pwd_context.hash(requested_password), now_iso(), request_reason),
     )
     conn.commit()
     conn.close()
@@ -3483,7 +3488,7 @@ def admin_panel(request: Request):
     conn = get_conn()
     users = conn.execute(
         """
-        SELECT u.id, u.username, u.role, u.active, u.created_at,
+        SELECT u.id, u.username, u.role, u.active, u.created_at, u.access_request_reason,
                COALESCE(SUM(
                     CASE
                         WHEN s.active = 1 THEN
@@ -3748,7 +3753,7 @@ def admin_create_user(request: Request, username: str = Form(...), password: str
     conn = get_conn()
     try:
         conn.execute(
-            "INSERT INTO users(username, password_hash, role, active, created_at) VALUES (?, ?, ?, 1, ?)",
+            "INSERT INTO users(username, password_hash, role, active, created_at, access_request_reason) VALUES (?, ?, ?, 1, ?, NULL)",
             (username.strip(), pwd_context.hash(password), "admin" if role == "admin" else "user", now_iso()),
         )
         conn.commit()

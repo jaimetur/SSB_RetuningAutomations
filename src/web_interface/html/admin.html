@@ -86,7 +86,7 @@
           {% for u in users %}
           <tr data-user-role="{{ u.role }}" data-user-active="{{ 1 if u.active else 0 }}" data-user-connected="{{ 1 if u.connected else 0 }}">
             <td>
-                <input type="text" name="username" value="{{ u.username }}" form="update_user_{{ u.id }}" required class="user-input" />
+                <input type="text" name="username" value="{{ u.username }}" form="update_user_{{ u.id }}" required class="user-input" {% if u.access_request_reason %}title="Access request reason: {{ u.access_request_reason }}"{% endif %} />
             </td>
             <td>
                 <input type="password" name="new_password" placeholder="new password" form="update_user_{{ u.id }}" class="password-input" />
