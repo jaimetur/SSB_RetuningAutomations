@@ -33,13 +33,20 @@ BASE_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = BASE_DIR.parents[1]
 DATA_DIR = PROJECT_ROOT / "data"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
-DB_PATH = DATA_DIR / "web_interface.db"
-LEGACY_DB_PATH = DATA_DIR / "web_frontend.db"  # legacy filename from previous Web Interface naming
-API_LOG_PATH = DATA_DIR / "web-api.log"
-WEB_ACCESS_LOG_PATH = DATA_DIR / "web-access.log"
-APP_LOG_PATH = DATA_DIR / "web-interface.log"
-LEGACY_ACCESS_LOG_PATH = DATA_DIR / "access.log"
-LEGACY_APP_LOG_PATH = DATA_DIR / "app.log"
+DATA_DB_DIR = DATA_DIR / "db"
+DATA_DB_DIR.mkdir(parents=True, exist_ok=True)
+SYSTEM_LOGS_DIR = DATA_DIR / "system_logs"
+SYSTEM_LOGS_DIR.mkdir(parents=True, exist_ok=True)
+DB_PATH = DATA_DB_DIR / "web_interface.db"
+LEGACY_DB_PATHS = [
+    DATA_DIR / "web_interface.db",
+    DATA_DIR / "web_frontend.db",  # legacy filename from previous Web Interface naming
+]
+API_LOG_PATH = SYSTEM_LOGS_DIR / "web-api.log"
+WEB_ACCESS_LOG_PATH = SYSTEM_LOGS_DIR / "web-access.log"
+APP_LOG_PATH = SYSTEM_LOGS_DIR / "web-interface.log"
+LEGACY_ACCESS_LOG_PATHS = [DATA_DIR / "web-api.log", DATA_DIR / "access.log"]
+LEGACY_APP_LOG_PATHS = [DATA_DIR / "web-interface.log", DATA_DIR / "app.log"]
 HELP_DIR = PROJECT_ROOT / "help"
 
 LOG_DATETIME_FORMAT = "%Y-%m-%d %H:%M:%S"
@@ -50,18 +57,30 @@ NO_CACHE_HEADERS = {
     "Expires": "0",
 }
 
-if not DB_PATH.exists() and LEGACY_DB_PATH.exists():
-    try:
-        LEGACY_DB_PATH.rename(DB_PATH)
-    except OSError:
-        pass
+if not DB_PATH.exists():
+    for legacy_db_path in LEGACY_DB_PATHS:
+        if legacy_db_path.exists():
+            try:
+                legacy_db_path.rename(DB_PATH)
+                break
+            except OSError:
+                continue
 
-for legacy_log_path, active_log_path in ((LEGACY_ACCESS_LOG_PATH, API_LOG_PATH), (LEGACY_APP_LOG_PATH, APP_LOG_PATH)):
-    if not active_log_path.exists() and legacy_log_path.exists():
+for legacy_log_path in LEGACY_ACCESS_LOG_PATHS:
+    if not API_LOG_PATH.exists() and legacy_log_path.exists():
         try:
-            legacy_log_path.rename(active_log_path)
+            legacy_log_path.rename(API_LOG_PATH)
+            break
         except OSError:
-            pass
+            continue
+
+for legacy_log_path in LEGACY_APP_LOG_PATHS:
+    if not APP_LOG_PATH.exists() and legacy_log_path.exists():
+        try:
+            legacy_log_path.rename(APP_LOG_PATH)
+            break
+        except OSError:
+            continue
 
 CONFIG_DIR = Path.home() / ".retuning_automations"
 CONFIG_PATH = CONFIG_DIR / "config.cfg"
@@ -191,6 +210,8 @@ SQLITE_CONNECT_TIMEOUT_S = 30
 queue_event = threading.Event()
 worker_started = False
 worker_lock = threading.Lock()
+backup_worker_started = False
+backup_worker_lock = threading.Lock()
 running_processes: dict[int, subprocess.Popen[str]] = {}
 running_processes_lock = threading.Lock()
 canceled_task_ids: set[int] = set()
@@ -944,30 +965,20 @@ def coerce_int(value: Any, default: int, minimum: int, maximum: int) -> int:
     return max(minimum, min(maximum, parsed))
 
 
-def get_admin_settings() -> dict[str, int]:
+def load_admin_settings_payload() -> dict[str, Any]:
     conn = get_conn()
     row = conn.execute("SELECT settings_json FROM user_settings WHERE user_id = -1").fetchone()
     conn.close()
-    if row:
-        try:
-            payload = json.loads(row["settings_json"])
-        except json.JSONDecodeError:
-            payload = {}
-    else:
-        payload = {}
-    return {
-        "max_cpu_percent": coerce_int(payload.get("max_cpu_percent"), MAX_CPU_DEFAULT, 10, 100),
-        "max_memory_percent": coerce_int(payload.get("max_memory_percent"), MAX_MEMORY_DEFAULT, 10, 100),
-        "max_parallel_tasks": coerce_int(payload.get("max_parallel_tasks"), MAX_PARALLEL_DEFAULT, 1, 8),
-    }
+    if not row:
+        return {}
+    try:
+        payload = json.loads(row["settings_json"])
+        return payload if isinstance(payload, dict) else {}
+    except json.JSONDecodeError:
+        return {}
 
 
-def save_admin_settings(max_cpu_percent: int, max_memory_percent: int, max_parallel_tasks: int) -> None:
-    settings = {
-        "max_cpu_percent": coerce_int(max_cpu_percent, MAX_CPU_DEFAULT, 10, 100),
-        "max_memory_percent": coerce_int(max_memory_percent, MAX_MEMORY_DEFAULT, 10, 100),
-        "max_parallel_tasks": coerce_int(max_parallel_tasks, MAX_PARALLEL_DEFAULT, 1, 8),
-    }
+def save_admin_settings_payload(payload: dict[str, Any]) -> None:
     conn = get_conn()
     conn.execute(
         """
@@ -975,11 +986,85 @@ def save_admin_settings(max_cpu_percent: int, max_memory_percent: int, max_paral
         VALUES(-1, ?, ?)
         ON CONFLICT(user_id) DO UPDATE SET settings_json = excluded.settings_json, updated_at = excluded.updated_at
         """,
-        (json.dumps(settings), now_iso()),
+        (json.dumps(payload, ensure_ascii=False), now_iso()),
     )
     conn.commit()
     conn.close()
 
+
+def coerce_hour(value: Any, default: int = 2) -> int:
+    return coerce_int(value, default, 0, 23)
+
+
+def get_admin_settings() -> dict[str, Any]:
+    payload = load_admin_settings_payload()
+    backup_auto_path = str(payload.get("db_backup_auto_path") or "").strip()
+    if not backup_auto_path:
+        backup_auto_path = str((DATA_DB_DIR / "backups").resolve())
+    return {
+        "max_cpu_percent": coerce_int(payload.get("max_cpu_percent"), MAX_CPU_DEFAULT, 10, 100),
+        "max_memory_percent": coerce_int(payload.get("max_memory_percent"), MAX_MEMORY_DEFAULT, 10, 100),
+        "max_parallel_tasks": coerce_int(payload.get("max_parallel_tasks"), MAX_PARALLEL_DEFAULT, 1, 8),
+        "db_backup_auto_enabled": parse_bool(payload.get("db_backup_auto_enabled")),
+        "db_backup_auto_path": backup_auto_path,
+        "db_backup_auto_hour": coerce_hour(payload.get("db_backup_auto_hour"), 2),
+        "db_backup_last_run_date": str(payload.get("db_backup_last_run_date") or ""),
+    }
+
+
+def save_admin_settings(
+    max_cpu_percent: int,
+    max_memory_percent: int,
+    max_parallel_tasks: int,
+    db_backup_auto_enabled: bool = False,
+    db_backup_auto_path: str = "",
+    db_backup_auto_hour: int = 2,
+    db_backup_last_run_date: str | None = None,
+) -> None:
+    current = get_admin_settings()
+    backup_path = str(db_backup_auto_path or "").strip() or current["db_backup_auto_path"]
+    settings = {
+        "max_cpu_percent": coerce_int(max_cpu_percent, MAX_CPU_DEFAULT, 10, 100),
+        "max_memory_percent": coerce_int(max_memory_percent, MAX_MEMORY_DEFAULT, 10, 100),
+        "max_parallel_tasks": coerce_int(max_parallel_tasks, MAX_PARALLEL_DEFAULT, 1, 8),
+        "db_backup_auto_enabled": bool(db_backup_auto_enabled),
+        "db_backup_auto_path": backup_path,
+        "db_backup_auto_hour": coerce_hour(db_backup_auto_hour, current["db_backup_auto_hour"]),
+        "db_backup_last_run_date": db_backup_last_run_date if db_backup_last_run_date is not None else current["db_backup_last_run_date"],
+    }
+    save_admin_settings_payload(settings)
+
+
+def create_database_backup(backup_dir: Path, reason: str = "manual") -> Path:
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    backup_file = backup_dir / f"web_interface_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db"
+    shutil.copy2(DB_PATH, backup_file)
+    logger.info("Database backup created (%s): %s", reason, backup_file)
+    return backup_file
+
+
+def run_scheduled_database_backup_if_needed() -> None:
+    settings = get_admin_settings()
+    if not settings["db_backup_auto_enabled"]:
+        return
+    now_dt = datetime.now().astimezone()
+    today = now_dt.date().isoformat()
+    if settings["db_backup_last_run_date"] == today:
+        return
+    if int(settings["db_backup_auto_hour"]) != now_dt.hour:
+        return
+
+    backup_dir = Path(str(settings["db_backup_auto_path"]).strip() or str((DATA_DB_DIR / "backups").resolve()))
+    create_database_backup(backup_dir, reason="auto")
+    save_admin_settings(
+        settings["max_cpu_percent"],
+        settings["max_memory_percent"],
+        settings["max_parallel_tasks"],
+        db_backup_auto_enabled=settings["db_backup_auto_enabled"],
+        db_backup_auto_path=str(backup_dir),
+        db_backup_auto_hour=settings["db_backup_auto_hour"],
+        db_backup_last_run_date=today,
+    )
 
 def detect_task_name_from_input(input_path: str) -> str:
     if not input_path:
@@ -1382,6 +1467,24 @@ def ensure_worker_started() -> None:
         threading.Thread(target=queue_worker, daemon=True, name="task-queue-worker").start()
         worker_started = True
 
+def database_backup_worker() -> None:
+    while True:
+        try:
+            run_scheduled_database_backup_if_needed()
+        except Exception as exc:
+            logger.exception("Automatic database backup worker error: %s", exc)
+        time.sleep(30)
+
+
+def ensure_backup_worker_started() -> None:
+    global backup_worker_started
+    with backup_worker_lock:
+        if backup_worker_started:
+            return
+        threading.Thread(target=database_backup_worker, daemon=True, name="db-backup-worker").start()
+        backup_worker_started = True
+
+
 
 def load_persistent_config() -> dict[str, str]:
     return load_cfg_values(CONFIG_PATH, CONFIG_SECTION, CFG_FIELD_MAP, *CFG_FIELDS)
@@ -1593,6 +1696,7 @@ def startup() -> None:
     init_db()
     recover_incomplete_tasks()
     ensure_worker_started()
+    ensure_backup_worker_started()
     queue_event.set()
 
 
@@ -3303,12 +3407,24 @@ def admin_settings_update(
     max_cpu_percent: int = Form(MAX_CPU_DEFAULT),
     max_memory_percent: int = Form(MAX_MEMORY_DEFAULT),
     max_parallel_tasks: int = Form(MAX_PARALLEL_DEFAULT),
+    db_backup_auto_enabled: str | None = Form(None),
+    db_backup_auto_path: str = Form(""),
+    db_backup_auto_hour: int = Form(2),
 ):
     try:
         require_admin(request)
     except PermissionError:
         return RedirectResponse("/login", status_code=302)
-    save_admin_settings(max_cpu_percent, max_memory_percent, max_parallel_tasks)
+    current = get_admin_settings()
+    save_admin_settings(
+        max_cpu_percent,
+        max_memory_percent,
+        max_parallel_tasks,
+        db_backup_auto_enabled=parse_bool(db_backup_auto_enabled),
+        db_backup_auto_path=db_backup_auto_path,
+        db_backup_auto_hour=db_backup_auto_hour,
+        db_backup_last_run_date=current["db_backup_last_run_date"],
+    )
     queue_event.set()
     return RedirectResponse("/admin", status_code=302)
 
@@ -3335,8 +3451,8 @@ async def admin_import_database(request: Request, backup_file: UploadFile = File
     suffix = Path(backup_file.filename or "backup.db").suffix or ".db"
     candidate_path: Path | None = None
     try:
-        DATA_DIR.mkdir(parents=True, exist_ok=True)
-        with tempfile.NamedTemporaryFile(delete=False, dir=str(DATA_DIR), prefix="db_import_", suffix=suffix) as tmp:
+        DATA_DB_DIR.mkdir(parents=True, exist_ok=True)
+        with tempfile.NamedTemporaryFile(delete=False, dir=str(DATA_DB_DIR), prefix="db_import_", suffix=suffix) as tmp:
             candidate_path = Path(tmp.name)
             while True:
                 chunk = await backup_file.read(1024 * 1024)
@@ -3361,7 +3477,7 @@ async def admin_import_database(request: Request, backup_file: UploadFile = File
             conn.close()
 
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        previous_backup_path = DATA_DIR / f"web_interface.db.pre_import_{timestamp}.bak"
+        previous_backup_path = DATA_DB_DIR / f"web_interface.db.pre_import_{timestamp}.bak"
         if DB_PATH.exists():
             shutil.copy2(DB_PATH, previous_backup_path)
 

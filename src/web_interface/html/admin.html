@@ -259,6 +259,18 @@
         </form>
       </div>
       <p class="db-backup-warning"><small>Import replaces the current database file after basic validation.</small></p>
+      <form method="post" action="/admin/settings" class="admin-db-backup-auto-form">
+        <input type="hidden" name="max_cpu_percent" value="{{ admin_settings.max_cpu_percent }}" />
+        <input type="hidden" name="max_memory_percent" value="{{ admin_settings.max_memory_percent }}" />
+        <input type="hidden" name="max_parallel_tasks" value="{{ admin_settings.max_parallel_tasks }}" />
+        <label class="checkbox">
+          <input type="checkbox" name="db_backup_auto_enabled" value="1" {% if admin_settings.db_backup_auto_enabled %}checked{% endif %} />
+          Enable daily automatic DB backup
+        </label>
+        <label>Backup path <input type="text" name="db_backup_auto_path" value="{{ admin_settings.db_backup_auto_path }}" placeholder="/path/to/backups" /></label>
+        <label>Backup hour (0-23) <input type="number" name="db_backup_auto_hour" min="0" max="23" value="{{ admin_settings.db_backup_auto_hour }}" /></label>
+        <button type="submit" class="btn btn-primary">Save backup automation</button>
+      </form>
       </div>
     </section>
 
