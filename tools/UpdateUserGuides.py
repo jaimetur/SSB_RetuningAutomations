@@ -15,6 +15,7 @@ from pptx import Presentation
 from pptx.dml.color import RGBColor
 from pptx.enum.dml import MSO_THEME_COLOR
 from pptx.util import Inches, Pt
+from pptx.enum.shapes import PP_PLACEHOLDER
 import importlib
 import os
 import subprocess
@@ -1077,6 +1078,15 @@ def build_pptx_summary(md_file: Path, pptx_file: Path, version: str) -> None:
         tbl_shape.height = min(total_h, h)
         tbl_shape.top = y
 
+    def _content_placeholders_in_order(slide) -> list:
+        placeholders = []
+        for ph in slide.shapes.placeholders:
+            if ph.placeholder_format.type == PP_PLACEHOLDER.TITLE:
+                continue
+            placeholders.append(ph)
+        placeholders.sort(key=lambda shape: (shape.top, shape.left))
+        return placeholders
+
     def _add_image_slide(
         prs: Presentation,
         slide_title: str,
@@ -1101,7 +1111,14 @@ def build_pptx_summary(md_file: Path, pptx_file: Path, version: str) -> None:
             p.font.size = Pt(PPT_FONT_SIZE_H3)
             p.font.color.theme_color = MSO_THEME_COLOR.ACCENT_2
 
-        first_image_placeholder = slide.shapes.placeholders[1]
+        content_placeholders = _content_placeholders_in_order(slide)
+        needed_placeholders = 3 if has_second_image else 2
+        if len(content_placeholders) < needed_placeholders:
+            raise RuntimeError(
+                f"Layout {layout_idx} must provide at least {needed_placeholders} content placeholders; found {len(content_placeholders)}"
+            )
+
+        first_image_placeholder = content_placeholders[0]
         slide.shapes.add_picture(
             image_path,
             first_image_placeholder.left,
@@ -1111,7 +1128,7 @@ def build_pptx_summary(md_file: Path, pptx_file: Path, version: str) -> None:
         )
 
         if has_second_image:
-            second_image_placeholder = slide.shapes.placeholders[2]
+            second_image_placeholder = content_placeholders[1]
             slide.shapes.add_picture(
                 second_image_path,
                 second_image_placeholder.left,
@@ -1119,11 +1136,10 @@ def build_pptx_summary(md_file: Path, pptx_file: Path, version: str) -> None:
                 width=second_image_placeholder.width,
                 height=second_image_placeholder.height,
             )
-            text_placeholder_idx = 3
+            text_placeholder = content_placeholders[2]
         else:
-            text_placeholder_idx = 2
+            text_placeholder = content_placeholders[1]
 
-        text_placeholder = slide.shapes.placeholders[text_placeholder_idx]
         tf = text_placeholder.text_frame
         if text_blocks:
             _render_content(tf, text_blocks)
