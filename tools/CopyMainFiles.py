@@ -32,6 +32,7 @@ DEST_FOLDER_NAME = "main_files"
 PRIORITY_FOLDERS = [
     r".\src",
     r".\src\utils",
+    r".\src\web_interface",
     r".\src\modules\Common",
     r".\src\modules\ConfigurationAudit",
     r".\src\modules\ConsistencyChecks",
