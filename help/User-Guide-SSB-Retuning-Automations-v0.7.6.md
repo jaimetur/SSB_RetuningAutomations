@@ -6,15 +6,46 @@ SSB Retuning Automations parses network logs, performs ConfigurationAudit checks
 
 This document provides the official user-facing documentation for the SSB Retuning Automations tool. It explains how to prepare inputs, how each module behaves, which execution modes are available, and how to interpret all generated outputs.
 
-### 1.1 Two Steps approach + Final Clean-Up
+### 1.1 Coexistence of old & new SSB:
+Coexistence of old/new SSB will split UE measurements in 2 frequencies. A cell ranked 3rd might become 1st after the split, increasing the risk of connecting to overshooting cells. 
+- To handle this, suggest setting lower priority for the SSB not collocated to minimize potential issues due to overshooting
+- Retune cluster sites with low priority to old SSB (priority change on Step2)
+- Neighboring sites with low priority to new SSB
+- UEs camping on neighboring sites to retune cluster will not try to reselect or add ENDC on new SSB (lower priority)
+- UEs camping on border sites in retune cluster will not try to reselect or add ENDC on old SSB (lower priority)
+- Step1 will add FreqRelation to new SSB in retune + neighboring clusters 
+- Step2 will not remove FreqRelation to old SSB
+- ENDC and Mobility allowed in border and neighboring sites with existing CellRelations
+
+### 1.2 Clusters definition and pre-checks
+![Cluster Definition](../assets/guide_images/clusters_definition.png)
+
+- Relations with old and new SSB will coexist in some nodes for a certain period, in some cases making intra-frequency relations become inter-frequency relations with impact on NR and ENDC mobility. Inter-frequency mobility will not be started until serving cell will go below a certain level entering the search zone, that might not be reached in locations that used to trigger intra-frequency mobility towards a best server. In addition, once the UE starts to measure either in idle or connected mode, the old and new SSBs will be reported in 2 separate frequencies and a cell ranked 3rd might become 1st after the split, creating the risk of connecting to cells suffering high interference. 
+- The amount and duration of such situations will depend on the retune clusterization and planning that should be aimed at minimizing the old and new SSB borders.
+- Mobility optimizations might be recommended to mitigate the impact on KPIs such as drop rate.
+- Full audit needed to evaluate the number of MOs and anticipate any additions that might be needed to the scripts for different markets.
+- Detect if any MOs exceeding the allowed cardinality adding the new SSB definitions: 
+  - Max NRFrequency definitions per node (limit 64)
+  - Max NRFreqRelation per NR cell (limit 16)
+  - Max GUtranSyncSignalFrequency definitions per node (limit 24)
+  - Max GUtranFreqRelation per LTE cell (limit 16)
+- Identify retune+border clusters with markets being planned on different nights 
+
+### 1.3 Process: Initial network audit + Two Steps approach + Final Clean-Up
+
+#### Step0, initial network audit
+- Pre-checks export with all relevant MOs and params in retune+border clusters, including cellRelation. Evaluate the number of MOs and anticipate any additions that might be needed to the scripts for different markets
 
 #### Step1, before SSB retune including neighboring sites
-- New GUtranSyncSignalFrequency/GUtranFreqRelation and NRFrequency/NRFreqRelation instances following VZ naming convention added manually before SSB retune. Nodes of all NR and LTE bands with FreqRelations to the retuned frequency are considered.
+- Retune readiness in retune + neighboring clusters
+- Following the clusterization and planning phase, there would be a first step preparing the network for the coexistence of old and new SSBs. 
+- New GUtranSyncSignalFrequency/GUtranFreqRelation and NRFrequency/NRFreqRelation instances following VZ naming convention added manually before SSB retune. Nodes of all NR and LTE bands with FreqRelations to the retuned frequency are considered
 - NrFreqRel profiles containing new SSB names
 - Low PRIO for new SSB: endcB1MeasPriority 2->1, to mitigate the impact in retune borders
-- Add new SSB to FreqPrioNR and EndcDistrProfile.MandatoryGUtranFreqRef
+- Add new SSB to FreqPrioNR 
 
 #### Step2, SSB retune cluster
+- Finally, in the second step we will proceed with the SSB retune in the retune clusters.
 - SSB retune NR N77 cells in a cluster
 - NrCell, NrFreqRel and EUtranFreqRel profiles containing new SSB names
 - Replace old SSB on EndcDistrProfile gUtranFreqRef and MandatoryGUtranFreqRef
@@ -30,59 +61,33 @@ This document provides the official user-facing documentation for the SSB Retuni
 - There should not be any CellRelation pointing to old SSB Freq
 - Remove old SSB GUtranSyncSignalFrequency/GUtranFreqRelation and NRFrequency/NRFreqRelation
 - Remove NrCell, NrFreqRel and EUtranFreqRel profiles containing old SSB names
-- Update SSB in Relations that failed to update automatically (unavailableTermpoints)
-- Remove CellRelations that ANR might have added due to outage during SSB retune
 
-### 1.2 Coexistence of old & new SSB:
-Coexistence of old/new SSB will split UE measurements in 2 frequencies. A cell ranked 3rd might become 1st after the split, increasing the risk of connecting to overshooting cells. 
-- To handle this, suggest setting lower priority for the SSB not collocated to minimize potential issues due to overshooting
-- Retune cluster sites with low priority to old SSB (priority change on Step2)
-- Neighboring sites with low priority to new SSB
-- UEs camping on neighboring sites to retune cluster will not try to reselect or add ENDC on new SSB (lower priority)
-- UEs camping on border sites in retune cluster will not try to reselect or add ENDC on old SSB (lower priority)
-- Step1 will add FreqRelation to new SSB in retune + neighboring clusters 
-- Step2 will not remove FreqRelation to old SSB
-- ENDC and Mobility allowed in border and neighboring sites with existing CellRelations
 
-### 1.3 Clusters definition and pre-checks
-For each ENM identify retune+border clusters with markets being planned on different nights 
-- Step0 all markets: Pre-checks export with all relevant MOs and params in retune+border clusters, including cellRelation. Evaluate the number of MOs and anticipate any additions that might be needed to the scripts for different markets
-- Step1 all clusters and neighboring markets to create all definitions needed for Old & new SSB  co-existence:
-  -	New GUtranSyncSignalFrequency/GUtranFreqRelation and NRFrequency/NRFreqRelation instances following VZ naming convention will be added manually before SSB retune
-  -	Mobility/Anchoring lower PRIO for new SSB: endcB1MeasPriority 0, cellReselectionSubPriority 0  (TBC)
-  -	Add new SSB to FreqPrioNR and EndcDistrProfile.MandatoryGUtranFreqRef
-- Step2, cluster of 1 or more markets each night during maintenance window
-  -	SSB retune
-  -	Mobility/Anchoring lower PRIO for old SSB (TBC endcB1MeasPriority 0, cellReselectionSubPriority 0) , normal priority for new SSB
-  -	Update EndcDistrProfile replacing old SSB in gUtranFreqRef
-  -	Change MCPC profiles containing old SSB names to new SSB names
-- Post Step2 full audit (including cellRelation)
-  -	Additional cellRelation instances might be created during night works, due to outages during SSB retune. 
-  -	Full audit and comparison of CellRelation to detect any additions and flag them for deletion
-- Step2 Cleanup:
-  -	Remove CellRelations that ANR might have added during SSB retune cells locked
-  -	Change MCPC profiles containing old SSB names to new SSB names
-  -	Final cleanup after all clusters done in one ENM and no borders with old SSB (including other vendor areas)
-  -	There should not be any CellRelation pointing to old SSB Freq
-  -	Remove old SSB GUtranSyncSignalFrequency/GUtranFreqRelation and NRFrequency/NRFreqRelation
-  -	Remove MCPC profiles containing old SSB names, not referenced anymore after NRFreqRelation deletion 
-
+### 1.5 Retune process roadmap
+![Retune Process Roadmap](../assets/guide_images/retune_process_roadmap.png)
 
 ## 2) SSB Retuning Automations - Overview
 
-**SSB Retuning Automations** is an automation platform for SSB retuning projects that can run in GUI or CLI mode or through a Web Interface (using a server/client infrastructure) and orchestrates five functional modules:
+### 2.1 Structure and Inputs/Outputs
 
-- **Module 0**: Update Network Frequencies.
-- **Module 1**: Configuration Audit & Logs Parser.
-- **Module 2**: Consistency Check (manual Pre/Post).
-- **Module 3**: Consistency Check Bulk (automatic Pre/Post detection by market).
-- **Module 4**: Final Clean-Up.
+#### Structure
+- **SSB Retuning Automations** is an automation platform for SSB retuning projects that can run in GUI or CLI mode or through a Web Interface (using a server/client infrastructure) and orchestrates five functional modules:
+  - **Module 0**: Update Network Frequencies.
+  - **Module 1**: Configuration Audit & Logs Parser.
+  - **Module 2**: Consistency Check (manual Pre/Post).
+  - **Module 3**: Consistency Check Bulk (automatic Pre/Post detection by market).
+  - **Module 4**: Final Clean-Up.
+- The main execution lives in `src/SSB_RetuningAutomations.py`, where CLI arguments, GUI, configuration persistence, input resolution (folders/ZIP), per-module execution, and artifact versioning are managed.
 
-The main execution lives in `src/SSB_RetuningAutomations.py`, where CLI arguments, GUI, configuration persistence, input resolution (folders/ZIP), per-module execution, and artifact versioning are managed.
+#### Inputs
+Inputs are folders (or ZIP archives) containing log files. The tool parses the logs into MO tables and runs checks on them. For ConsistencyChecks, provide either explicit PRE and POST folders or a single root folder where PRE/POST runs can be auto-detected.
+
+#### Outputs
+Each module generates a dedicated output folder containing Excel reports, logs, and optional correction command exports.
 
 ---
 
-### 2.1 Repository technical architecture
+### 2.2 Repository architecture, Execution modes and Versioning
 
 #### Orchestration core
 - `src/SSB_RetuningAutomations.py`: entry point, CLI/GUI parsing, module routing, batch/bulk execution, and versioning.
@@ -98,27 +103,14 @@ The main execution lives in `src/SSB_RetuningAutomations.py`, where CLI argument
 - `src/modules/Common/*.py`: correction command logic and shared functions.
 - `src/utils/*.py`: IO, parsing, frequency handling, Excel, pivots, sorting, infrastructure, and timing.
 
----
+#### Execution modes
+- The tool can be run in three different modes:
+  - **GUI mode**: run without CLI arguments.
+  - **CLI mode**: run with explicit module and options.
+  - **Web Interfacee**: the tool can be run in a server/client infrastructure, accessing the server through a Web Interface where you can unpload your inputs, enqueue different tasks and  export the results when finish..
 
-### 2.2 Inputs, outputs, and content per module
-
-#### Tool Inputs
-Inputs are folders (or ZIP archives) containing log files. The tool parses the logs into MO tables and runs checks on them. For ConsistencyChecks, provide either explicit PRE and POST folders or a single root folder where PRE/POST runs can be auto-detected.
-
-#### Tool Outputs
-Each module generates a dedicated output folder containing Excel reports, logs, and optional correction command exports.
-
----
-
-### 2.3 Execution Modes and Versioning
-
-- **GUI mode**: run without CLI arguments.
-- **CLI mode**: run with explicit module and options.
-- **Web Interfacee**: the tool can be run in a server/client infrastructure, accessing the server through a Web Interface where you can unpload your inputs, enqueue different tasks and  export the results when finish..
-
-All Generated artifacts include a versioned suffix: `<timestamp>_v<TOOL_VERSION>`. 
-
-This guarantees traceability and avoids collisions between runs.
+#### Versioning
+- All Generated artifacts include a versioned suffix: `<timestamp>_v<TOOL_VERSION>`. This guarantees traceability and avoids collisions between runs.
 
 ---
 

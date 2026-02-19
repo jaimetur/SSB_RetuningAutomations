@@ -34,12 +34,12 @@ PPT_FONT_SIZE_LISTS = 12            # Font size for lists
 PPT_FONT_SIZE_TABLES_HEADER = 10    # Font size for table header
 PPT_FONT_SIZE_TABLES_BODY = 7       # Font size for table body
 
-PPT_MAX_CONTENT_LINES = 24          # Max number of lines per slide
-PPT_MAX_TABLE_DATA_ROWS = 13        # Max number of Rows per table (header doesn' t count)
-PPT_CUT_SLIDE_WEIGHT = 85           # Increasing this value makes to add more content to previous slide
+PPT_MAX_CONTENT_LINES = 27          # Max number of lines per slide
+PPT_MAX_TABLE_DATA_ROWS = 15        # Max number of Rows per table (header doesn' t count)
+PPT_CUT_SLIDE_WEIGHT = 130          # Increasing this value makes to add more content to previous slide
                                     # Decreasing this value makes the lists and paragraph to be cut to next slide earlier
 
-PPT_COMBINE_MAX_DATA_ROWS = 10      # Only try to combine small tables (header excluded)
+PPT_COMBINE_MAX_DATA_ROWS = 12      # Only try to combine small tables (header excluded)
 PPT_GAP = Pt(6)                     # Gap between rows
 PPT_MIN_TEXT_H = Pt(70)             # Min Text Height to combine with a table in the same slide
 PPT_MIN_TABLE_H = Pt(160)           # Min Table Height to combine with text in the same slide
@@ -1098,7 +1098,14 @@ def build_pptx_summary(md_file: Path, pptx_file: Path, version: str) -> None:
         text_blocks: list[dict] | None = None,
     ) -> None:
         has_second_image = bool(second_image_path)
-        layout_idx = 3 if has_second_image else 2
+        has_text_blocks = bool(text_blocks)
+        # If the section contains only a single image, use layout 1.
+        if has_second_image:
+            layout_idx = 3
+        elif has_text_blocks:
+            layout_idx = 2
+        else:
+            layout_idx = 1
         slide = prs.slides.add_slide(prs.slide_layouts[layout_idx])
 
         title_shape = slide.shapes.title
@@ -1112,7 +1119,12 @@ def build_pptx_summary(md_file: Path, pptx_file: Path, version: str) -> None:
             p.font.color.theme_color = MSO_THEME_COLOR.ACCENT_2
 
         content_placeholders = _content_placeholders_in_order(slide)
-        needed_placeholders = 3 if has_second_image else 2
+        if has_second_image:
+            needed_placeholders = 3
+        elif has_text_blocks:
+            needed_placeholders = 2
+        else:
+            needed_placeholders = 1
         if len(content_placeholders) < needed_placeholders:
             raise RuntimeError(
                 f"Layout {layout_idx} must provide at least {needed_placeholders} content placeholders; found {len(content_placeholders)}"
@@ -1137,23 +1149,33 @@ def build_pptx_summary(md_file: Path, pptx_file: Path, version: str) -> None:
                 height=second_image_placeholder.height,
             )
             text_placeholder = content_placeholders[2]
-        else:
+        elif has_text_blocks:
             text_placeholder = content_placeholders[1]
-
-        tf = text_placeholder.text_frame
-        if text_blocks:
-            _render_content(tf, text_blocks)
         else:
-            tf.clear()
-            p0 = tf.paragraphs[0]
-            p0.text = caption if caption else " "
-            if caption:
-                p0.level = 0
-                p0.font.size = Pt(10)
-                p0.font.bold = True
+            text_placeholder = None
+
+        if text_placeholder is not None:
+            tf = text_placeholder.text_frame
+            if text_blocks:
+                _render_content(tf, text_blocks)
             else:
-                p0.font.size = Pt(1)
-                p0.font.color.rgb = RGBColor(255, 255, 255)
+                tf.clear()
+                p0 = tf.paragraphs[0]
+                p0.text = caption if caption else " "
+                if caption:
+                    p0.level = 0
+                    p0.font.size = Pt(10)
+                    p0.font.bold = True
+                else:
+                    p0.font.size = Pt(1)
+                    p0.font.color.rgb = RGBColor(255, 255, 255)
+        elif caption:
+            # No text placeholder available (image-only layout), so append caption to title.
+            p = title_shape.text_frame.add_paragraph()
+            p.text = caption
+            p.level = 0
+            p.font.bold = False
+            p.font.size = Pt(10)
 
     def _render_content(tf, blocks: list[dict]) -> None:
         from pptx.oxml.ns import qn as pptx_qn

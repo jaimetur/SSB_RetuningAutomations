@@ -283,7 +283,7 @@ def gui_config_dialog(
 
     # --- Center window ONCE with fixed size ---
     WIDTH = 940
-    HEIGHT = 850
+    HEIGHT = 770
     # NOTE: Centering must happen after all widgets are created and Tk has computed the final layout.
     def _center_window_fixed(win: "tk.Tk", width: int, height: int) -> None:
         try:
@@ -517,17 +517,22 @@ def gui_config_dialog(
     ttk.Separator(frm).grid(row=5, column=0, columnspan=3, sticky="ew", **pad)
     ttk.Label(frm, text="Allowed SSB & ARFCN sets for Configuration Audit (comma separated values):").grid(row=6, column=0, columnspan=3, sticky="w", **pad)
 
-    ttk.Label(frm, text="[PRE]: Allowed N77 SSB (comma separated values):").grid(row=7, column=0, sticky="w", **pad)
-    ttk.Entry(frm, textvariable=allowed_n77_ssb_pre_var, width=40).grid(row=7, column=1, columnspan=2, sticky="ew", **pad)
+    allowed_lists_frame = ttk.Frame(frm)
+    allowed_lists_frame.grid(row=7, column=0, columnspan=3, sticky="ew", **pad_tight)
+    allowed_lists_frame.columnconfigure(1, weight=1)
+    allowed_lists_frame.columnconfigure(3, weight=1)
 
-    ttk.Label(frm, text="[PRE]: Allowed N77 ARFCN (comma separated values):").grid(row=8, column=0, sticky="w", **pad)
-    ttk.Entry(frm, textvariable=allowed_n77_arfcn_pre_var, width=40).grid(row=8, column=1, columnspan=2, sticky="ew", **pad)
+    ttk.Label(allowed_lists_frame, text="[PRE]: Allowed N77 SSB:").grid(row=0, column=0, sticky="w", padx=(0, 6), pady=2)
+    ttk.Entry(allowed_lists_frame, textvariable=allowed_n77_ssb_pre_var, width=26).grid(row=0, column=1, sticky="ew", padx=(0, 16), pady=2)
 
-    ttk.Label(frm, text="[POST]: Allowed N77 SSB (comma separated values):").grid(row=9, column=0, sticky="w", **pad)
-    ttk.Entry(frm, textvariable=allowed_n77_ssb_post_var, width=40).grid(row=9, column=1, columnspan=2, sticky="ew", **pad)
+    ttk.Label(allowed_lists_frame, text="[POST]: Allowed N77 SSB:").grid(row=0, column=2, sticky="w", padx=(0, 6), pady=2)
+    ttk.Entry(allowed_lists_frame, textvariable=allowed_n77_ssb_post_var, width=26).grid(row=0, column=3, sticky="ew", pady=2)
 
-    ttk.Label(frm, text="[POST]: Allowed N77 ARFCN (comma separated values):").grid(row=10, column=0, sticky="w", **pad)
-    ttk.Entry(frm, textvariable=allowed_n77_arfcn_post_var, width=40).grid(row=10, column=1, columnspan=2, sticky="ew", **pad)
+    ttk.Label(allowed_lists_frame, text="[PRE]: Allowed N77 ARFCN:").grid(row=1, column=0, sticky="w", padx=(0, 6), pady=2)
+    ttk.Entry(allowed_lists_frame, textvariable=allowed_n77_arfcn_pre_var, width=26).grid(row=1, column=1, sticky="ew", padx=(0, 16), pady=2)
+
+    ttk.Label(allowed_lists_frame, text="[POST]: Allowed N77 ARFCN:").grid(row=1, column=2, sticky="w", padx=(0, 6), pady=2)
+    ttk.Entry(allowed_lists_frame, textvariable=allowed_n77_arfcn_post_var, width=26).grid(row=1, column=3, sticky="ew", pady=2)
 
     # Summary filters
     ttk.Separator(frm).grid(row=11, column=0, columnspan=3, sticky="ew", **pad)

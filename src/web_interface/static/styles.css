@@ -145,6 +145,10 @@ th,td{border-bottom:1px solid #e3e8ee;padding:.55rem;text-align:left;font-size:.
   .module-actions button,.module-actions .browse-button,.module-actions .panel-toggle{width:100%}
   .doc-inline-title{padding-top:0}
   .doc-links{justify-content:flex-start;width:100%}
+  .doc-link{flex:0 0 50%;max-width:50%;box-sizing:border-box}
+  #run_module_button{width:100%}
+  #select_user_inputs_combo{text-align:center;text-align-last:center}
+
 
   .runs-header,.log-header{align-items:flex-start;flex-direction:column}
   .runs-actions,.log-actions,.action-row,.inline{width:100%;align-items:stretch;gap:.45rem;flex-wrap:wrap}

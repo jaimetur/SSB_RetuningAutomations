@@ -11,6 +11,9 @@
 
 - #### 🚀 Enhancements:
   - Enhanced the script to generate user guide from Markdown files to support images and links.
+  - Compact GUI dialog by reducing `SSB frequencies` section to adapt the resolution for a small screen.
+  - Compact GUI dialog by reducing `Allowed SSB & ARFCN` section to adapt the resolution for a small screen.
+  - GUI dialog now has a dimension of 940x770 pixels.
 
 - #### 🐛 Bug fixes:
 
