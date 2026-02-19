@@ -473,6 +473,84 @@ def get_user_storage_dirs(username: str) -> dict[str, Path]:
     }
 
 
+def rewrite_user_owned_path(value: str | None, old_username: str, new_username: str) -> str:
+    raw = (value or "").strip()
+    if not raw:
+        return ""
+
+    old_safe = sanitize_component(old_username)
+    new_safe = sanitize_component(new_username)
+    old_new_pairs = [
+        (DATA_DIR / "users" / old_safe, DATA_DIR / "users" / new_safe),
+        (OUTPUTS_DIR / old_safe, OUTPUTS_DIR / new_safe),
+    ]
+
+    for old_root, new_root in old_new_pairs:
+        old_root_str = str(old_root)
+        if raw == old_root_str:
+            return str(new_root)
+        prefix = f"{old_root_str}{os.sep}"
+        if raw.startswith(prefix):
+            suffix = raw[len(prefix):]
+            return str(new_root / suffix)
+    return raw
+
+
+def rewrite_payload_user_paths(payload: Any, old_username: str, new_username: str) -> Any:
+    if isinstance(payload, dict):
+        return {key: rewrite_payload_user_paths(value, old_username, new_username) for key, value in payload.items()}
+    if isinstance(payload, list):
+        return [rewrite_payload_user_paths(value, old_username, new_username) for value in payload]
+    if isinstance(payload, str):
+        return rewrite_user_owned_path(payload, old_username, new_username)
+    return payload
+
+
+def migrate_user_references(conn: sqlite3.Connection, user_id: int, old_username: str, new_username: str) -> None:
+    if old_username == new_username:
+        return
+
+    input_rows = conn.execute(
+        "SELECT id, input_path FROM inputs_repository WHERE user_id = ?",
+        (user_id,),
+    ).fetchall()
+    for row in input_rows:
+        rewritten_input_path = rewrite_user_owned_path(row["input_path"], old_username, new_username)
+        if rewritten_input_path != (row["input_path"] or ""):
+            conn.execute("UPDATE inputs_repository SET input_path = ? WHERE id = ?", (rewritten_input_path, row["id"]))
+
+    run_rows = conn.execute(
+        "SELECT id, input_dir, output_dir, output_zip, output_log_file, payload_json FROM task_runs WHERE user_id = ?",
+        (user_id,),
+    ).fetchall()
+    for row in run_rows:
+        input_dir = rewrite_user_owned_path(row["input_dir"], old_username, new_username)
+        output_dir = rewrite_user_owned_path(row["output_dir"], old_username, new_username)
+        output_zip = rewrite_user_owned_path(row["output_zip"], old_username, new_username)
+        output_log_file = rewrite_user_owned_path(row["output_log_file"], old_username, new_username)
+
+        payload_json = row["payload_json"] or ""
+        rewritten_payload_json = payload_json
+        if payload_json:
+            try:
+                payload_obj = json.loads(payload_json)
+                rewritten_payload_json = json.dumps(
+                    rewrite_payload_user_paths(payload_obj, old_username, new_username),
+                    ensure_ascii=False,
+                )
+            except json.JSONDecodeError:
+                rewritten_payload_json = payload_json
+
+        conn.execute(
+            """
+            UPDATE task_runs
+            SET input_dir = ?, output_dir = ?, output_zip = ?, output_log_file = ?, payload_json = ?
+            WHERE id = ?
+            """,
+            (input_dir, output_dir, output_zip, output_log_file, rewritten_payload_json, row["id"]),
+        )
+
+
 def parse_frequency_csv(raw: str) -> list[str]:
     values = [v.strip() for v in (raw or "").split(",") if v.strip()]
     return values
@@ -3464,6 +3542,10 @@ def admin_update_user(
         return RedirectResponse("/admin", status_code=302)
 
     old_username = current["username"]
+    old_dirs = get_user_storage_dirs(old_username)
+    new_dirs = get_user_storage_dirs(new_username)
+    username_changed = old_username != new_username
+
     try:
         if old_username == new_username and new_role == "admin" and new_active == 0:
             new_active = 1
@@ -3471,6 +3553,10 @@ def admin_update_user(
             "UPDATE users SET username = ?, role = ?, active = ? WHERE id = ?",
             (new_username, new_role, new_active, user_id),
         )
+
+        if username_changed:
+            migrate_user_references(conn, user_id, old_username, new_username)
+
         if new_password.strip():
             conn.execute(
                 "UPDATE users SET password_hash = ? WHERE id = ?",
@@ -3479,20 +3565,25 @@ def admin_update_user(
             conn.execute("UPDATE sessions SET active = 0 WHERE user_id = ?", (user_id,))
         if new_active == 0:
             conn.execute("UPDATE sessions SET active = 0 WHERE user_id = ?", (user_id,))
+
+        if username_changed:
+            old_output_root = old_dirs["outputs"]
+            new_output_root = new_dirs["outputs"]
+            if old_output_root.exists():
+                new_output_root.parent.mkdir(parents=True, exist_ok=True)
+                old_output_root.rename(new_output_root)
+            old_upload_root = old_dirs["uploads"]
+            new_upload_root = new_dirs["uploads"]
+            if old_upload_root.exists():
+                new_upload_root.parent.mkdir(parents=True, exist_ok=True)
+                old_upload_root.rename(new_upload_root)
+
         conn.commit()
-    except sqlite3.IntegrityError:
-        conn.close()
+    except (sqlite3.IntegrityError, OSError):
+        conn.rollback()
         return RedirectResponse("/admin", status_code=302)
     finally:
         conn.close()
-
-    if old_username != new_username:
-        old_dirs = get_user_storage_dirs(old_username)
-        new_dirs = get_user_storage_dirs(new_username)
-        for key in ("uploads", "exports"):
-            if old_dirs[key].exists():
-                new_dirs[key].parent.mkdir(parents=True, exist_ok=True)
-                old_dirs[key].rename(new_dirs[key])
 
     return RedirectResponse("/admin", status_code=302)
 
