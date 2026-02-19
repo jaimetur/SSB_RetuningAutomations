@@ -2,6 +2,23 @@
 
 ---
 
+## Release: v0.7.6
+### Release Date: 2026-02-19
+  
+- #### 🚨 Breaking Changes:
+
+- #### 🌟 New Features:
+
+- #### 🚀 Enhancements:
+  - Enhanced the script to generate user guide from Markdown files to support images and links.
+
+- #### 🐛 Bug fixes:
+
+- #### 📚 Documentation:
+  - Updated Documentation to include screenshots to the User Guide.
+
+---
+
 ## Release: v0.7.5
 ### Release Date: 2026-02-18
   

@@ -1,0 +1,17 @@
+# --- VCS / CI ---
+.git/
+.github/
+.github_ignore/
+
+# --- IDE ---
+.idea/
+.run/
+
+# --- Virtualenv ---
+.venv/
+venv/
+
+# --- Python caches ---
+__pycache__/
+**/__pycache__/
+*.pyc
