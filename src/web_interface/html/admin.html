@@ -81,7 +81,7 @@
       </div>
       <div class="table-scroll latest-global-scroll" id="users_panel_table">
       <table>
-        <thead><tr><th>User</th><th>Password</th><th>Role</th><th>Status</th><th>Connected</th><th>Logged time</th><th>Execution time</th><th>Storage</th><th>Actions</th></tr></thead>
+        <thead><tr><th>User</th><th>Password</th><th>Role</th><th>Status</th><th>Connected</th><th>Last Connection</th><th>Logged time</th><th>Execution time</th><th>Storage</th><th>Actions</th></tr></thead>
         <tbody>
           {% for u in users %}
           <tr data-user-role="{{ u.role }}" data-user-active="{{ 1 if u.active else 0 }}" data-user-connected="{{ 1 if u.connected else 0 }}">
@@ -104,6 +104,7 @@
                 </select>
             </td>
             <td class="cell-middle">{{ "connected" if u.connected else "not connected" }}</td>
+            <td class="cell-middle cell-nowrap">{{ u.last_connection }}</td>
             <td class="cell-middle">{{ u.total_login_hms }}</td>
             <td class="cell-middle">{{ u.total_execution_hms }}</td>
             <td class="storage-cell cell-middle">{{ u.storage_size }}</td>
