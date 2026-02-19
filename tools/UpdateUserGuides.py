@@ -1077,8 +1077,19 @@ def build_pptx_summary(md_file: Path, pptx_file: Path, version: str) -> None:
         tbl_shape.height = min(total_h, h)
         tbl_shape.top = y
 
-    def _add_image_slide(prs: Presentation, slide_title: str, subtitle: str | None, image_path: str, caption: str | None, continuation: bool = False) -> None:
-        slide = prs.slides.add_slide(prs.slide_layouts[1])
+    def _add_image_slide(
+        prs: Presentation,
+        slide_title: str,
+        subtitle: str | None,
+        image_path: str,
+        caption: str | None,
+        continuation: bool = False,
+        second_image_path: str | None = None,
+        text_blocks: list[dict] | None = None,
+    ) -> None:
+        has_second_image = bool(second_image_path)
+        layout_idx = 3 if has_second_image else 2
+        slide = prs.slides.add_slide(prs.slide_layouts[layout_idx])
 
         title_shape = slide.shapes.title
         title_shape.text = slide_title
@@ -1090,26 +1101,43 @@ def build_pptx_summary(md_file: Path, pptx_file: Path, version: str) -> None:
             p.font.size = Pt(PPT_FONT_SIZE_H3)
             p.font.color.theme_color = MSO_THEME_COLOR.ACCENT_2
 
-        content = slide.shapes.placeholders[1]
-        x, y, w, h = content.left, content.top, content.width, content.height
+        first_image_placeholder = slide.shapes.placeholders[1]
+        slide.shapes.add_picture(
+            image_path,
+            first_image_placeholder.left,
+            first_image_placeholder.top,
+            width=first_image_placeholder.width,
+            height=first_image_placeholder.height,
+        )
 
-        tf = content.text_frame
-        tf.clear()
-        if caption:
-            p0 = tf.paragraphs[0]
-            p0.text = caption
-            p0.level = 0
-            p0.font.size = Pt(10)
-            p0.font.bold = True
+        if has_second_image:
+            second_image_placeholder = slide.shapes.placeholders[2]
+            slide.shapes.add_picture(
+                second_image_path,
+                second_image_placeholder.left,
+                second_image_placeholder.top,
+                width=second_image_placeholder.width,
+                height=second_image_placeholder.height,
+            )
+            text_placeholder_idx = 3
         else:
-            p0 = tf.paragraphs[0]
-            p0.text = " "
-            p0.font.size = Pt(1)
-            p0.font.color.rgb = RGBColor(255, 255, 255)
+            text_placeholder_idx = 2
 
-        img_top = y + Inches(0.35)
-        img_max_h = max(Inches(1), h - Inches(0.35))
-        slide.shapes.add_picture(image_path, x, img_top, width=w, height=img_max_h)
+        text_placeholder = slide.shapes.placeholders[text_placeholder_idx]
+        tf = text_placeholder.text_frame
+        if text_blocks:
+            _render_content(tf, text_blocks)
+        else:
+            tf.clear()
+            p0 = tf.paragraphs[0]
+            p0.text = caption if caption else " "
+            if caption:
+                p0.level = 0
+                p0.font.size = Pt(10)
+                p0.font.bold = True
+            else:
+                p0.font.size = Pt(1)
+                p0.font.color.rgb = RGBColor(255, 255, 255)
 
     def _render_content(tf, blocks: list[dict]) -> None:
         from pptx.oxml.ns import qn as pptx_qn
@@ -1284,6 +1312,20 @@ def build_pptx_summary(md_file: Path, pptx_file: Path, version: str) -> None:
                 if b["type"] == "image":
                     if buffer:
                         flush()
+
+                    second_image_path = None
+                    text_after_images: list[dict] = []
+
+                    if i + 1 < len(gblocks) and gblocks[i + 1]["type"] == "image":
+                        second_image_path = gblocks[i + 1]["path"]
+                        j = i + 2
+                    else:
+                        j = i + 1
+
+                    while j < len(gblocks) and gblocks[j]["type"] in {"paragraph", "list", "h4"}:
+                        text_after_images.append(gblocks[j])
+                        j += 1
+
                     _add_image_slide(
                         prs,
                         slide_title,
@@ -1291,9 +1333,11 @@ def build_pptx_summary(md_file: Path, pptx_file: Path, version: str) -> None:
                         b["path"],
                         b.get("alt"),
                         continuation=continuation,
+                        second_image_path=second_image_path,
+                        text_blocks=text_after_images,
                     )
                     continuation = True
-                    i += 1
+                    i = j
                     continue
 
                 # Special case: split long lists so they respect the per-slide line budget
