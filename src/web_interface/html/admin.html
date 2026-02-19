@@ -685,6 +685,18 @@
       }).catch(() => {});
     }
 
+    function getCellSortableText(cell) {
+      if (!cell) return "";
+      const input = cell.querySelector("input");
+      if (input) return String(input.value || "").trim();
+      const select = cell.querySelector("select");
+      if (select) {
+        const selectedOption = select.options?.[select.selectedIndex];
+        return String(selectedOption?.textContent || select.value || "").trim();
+      }
+      return String(cell.textContent || "").trim();
+    }
+
     function sortTableByHeader(table, header, forcedDirection = null, onSortChange = null) {
       const tbody = table?.querySelector("tbody");
       if (!tbody || !header) return;
@@ -713,8 +725,8 @@
       rows.sort((rowA, rowB) => {
         const aCell = rowA.cells[columnIndex];
         const bCell = rowB.cells[columnIndex];
-        const aText = aCell ? aCell.textContent : "";
-        const bText = bCell ? bCell.textContent : "";
+        const aText = getCellSortableText(aCell);
+        const bText = getCellSortableText(bCell);
         const aValue = parseSortableValue(aText, sortType);
         const bValue = parseSortableValue(bText, sortType);
         if (aValue < bValue) return currentDirection === "asc" ? -1 : 1;
