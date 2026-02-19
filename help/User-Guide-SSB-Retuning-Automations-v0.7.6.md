@@ -1,18 +1,31 @@
 # Technical User Guide — SSB Retuning Automations
 
-<!-- screenshots:auto:start -->
+## 0) SSB Retuning Automations - Interfaces 
 
+### Graphical User Interface - GUI Panel
 ![Module Selector](../assets/screenshots/module_selector.png)
 
-![Web Interface Admin Panel](../assets/screenshots/web-interface-admin-panel.png)
+- This is the main Graphical User Interface for SSB Retuning Automations.. From this panel you can select the modules you want to run and the inputs you want to provide.
+- You can also configure some settings like the network frequencies to use or the Input folder to use.
+- The tool will then run the selected modules and generate the outputs.
 
-![Web Interface Inputs Executions Panels](../assets/screenshots/web-interface-inputs-executions-panels.png)
-
-![Web Interface Logs Panels](../assets/screenshots/web-interface-logs-panels.png)
-
+## Web Interface - User Section
 ![Web Interface User Panel](../assets/screenshots/web-interface-user-panel.png)
 
-<!-- screenshots:auto:end -->
+- This is the main Web Interface for SSB Retuning Automations. From this panel you can select the modules you want to run and the inputs you want to provide.
+- You can also configure some settings like the network frequencies to use or the Input folder to use.
+- The tool will then run the selected modules and generate the outputs.
+
+## Web Interface - Admin Section
+![Web Interface Admin Panel](../assets/screenshots/web-interface-admin-panel.png)
+
+- This is the main Administrator Panel for SSB Retuning Automations. From this panel you can manage the configuration of the tool, view logs and manage user access.
+
+## Web Interface - Inputs, Executions and Logs Panels
+![Web Interface Inputs Executions Panels](../assets/screenshots/web-interface-inputs-executions-panels.png)
+![Web Interface Logs Panels](../assets/screenshots/web-interface-logs-panels.png)
+
+- You can see some information about the Inputs Repository, Last Executions and Logs of the tool.
 
 ## 1) Service overview
 
