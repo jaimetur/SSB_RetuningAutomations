@@ -1799,16 +1799,41 @@ def index(request: Request):
     )
 
 
+def list_request_access_admin_contacts() -> list[str]:
+    conn = get_conn()
+    rows = conn.execute(
+        """
+        SELECT username
+        FROM users
+        WHERE role = 'admin' AND LOWER(username) != 'admin'
+        ORDER BY username COLLATE NOCASE ASC
+        """
+    ).fetchall()
+    conn.close()
+    return [str(row["username"]) for row in rows if row["username"]]
+
+
 @app.get("/login", response_class=HTMLResponse, tags=["Authentication"])
 def login_get(request: Request):
-    return templates.TemplateResponse("login.html", {"request": request, "error": ""})
+    return templates.TemplateResponse(
+        "login.html",
+        {
+            "request": request,
+            "error": "",
+            "request_access_success": False,
+            "request_access_message": "",
+            "request_access_admin_contacts": list_request_access_admin_contacts(),
+            "request_access_reason": "",
+            "request_access_username": "",
+        },
+    )
 
 
 @app.post("/login", response_class=HTMLResponse, tags=["Authentication"])
 def login_post(request: Request, username: str = Form(...), password: str = Form(...)):
     conn = get_conn()
     user = conn.execute(
-        "SELECT * FROM users WHERE username = ? AND active = 1", (username.strip(),)
+        "SELECT * FROM users WHERE LOWER(username) = LOWER(?) AND active = 1", (username.strip(),)
     ).fetchone()
     try:
         verified = user and pwd_context.verify(password, user["password_hash"])
@@ -1823,7 +1848,15 @@ def login_post(request: Request, username: str = Form(...), password: str = Form
         conn.close()
         return templates.TemplateResponse(
             "login.html",
-            {"request": request, "error": "Invalid credentials or disabled user."},
+            {
+                "request": request,
+                "error": "Invalid credentials or disabled user.",
+                "request_access_success": False,
+                "request_access_message": "",
+                "request_access_admin_contacts": list_request_access_admin_contacts(),
+                "request_access_reason": "",
+                "request_access_username": "",
+            },
             status_code=401,
         )
 
@@ -1843,6 +1876,82 @@ def login_post(request: Request, username: str = Form(...), password: str = Form
     response = RedirectResponse(url="/", status_code=302)
     response.set_cookie("session_token", token, httponly=True, samesite="lax")
     return response
+
+
+@app.post("/request-access", response_class=HTMLResponse, tags=["Authentication"])
+def request_access_post(request: Request, username: str = Form(...), password: str = Form(...), reason: str = Form(...)):
+    requested_username = username.strip()
+    requested_password = password.strip()
+    request_reason = reason.strip()
+
+    if not requested_username or not requested_password or not request_reason:
+        return templates.TemplateResponse(
+            "login.html",
+            {
+                "request": request,
+                "error": "All request access fields are required.",
+                "request_access_success": False,
+                "request_access_message": "",
+                "request_access_admin_contacts": list_request_access_admin_contacts(),
+                "request_access_reason": request_reason,
+                "request_access_username": requested_username,
+            },
+            status_code=400,
+        )
+
+    signum_username = requested_username.upper()
+
+    conn = get_conn()
+    existing_user = conn.execute(
+        "SELECT id FROM users WHERE LOWER(username) = LOWER(?)",
+        (signum_username,),
+    ).fetchone()
+    if existing_user:
+        conn.close()
+        return templates.TemplateResponse(
+            "login.html",
+            {
+                "request": request,
+                "error": "This username already exists. Please contact an administrator.",
+                "request_access_success": False,
+                "request_access_message": "",
+                "request_access_admin_contacts": list_request_access_admin_contacts(),
+                "request_access_reason": request_reason,
+                "request_access_username": signum_username,
+            },
+            status_code=409,
+        )
+
+    conn.execute(
+        "INSERT INTO users(username, password_hash, role, active, created_at) VALUES (?, ?, 'user', 0, ?)",
+        (signum_username, pwd_context.hash(requested_password), now_iso()),
+    )
+    conn.commit()
+    conn.close()
+
+    web_access_logger.info(
+        "request access user=%s ip=%s reason=%s",
+        signum_username,
+        get_client_ip(request),
+        request_reason,
+    )
+
+    return templates.TemplateResponse(
+        "login.html",
+        {
+            "request": request,
+            "error": "",
+            "request_access_success": True,
+            "request_access_message": (
+                "Your user has been created and is currently inactive. "
+                "Please email any administrator below and include your reason to request access."
+            ),
+            "request_access_admin_contacts": list_request_access_admin_contacts(),
+            "request_access_reason": request_reason,
+            "request_access_username": signum_username,
+        },
+        status_code=201,
+    )
 
 
 @app.get("/logout", tags=["Authentication"])

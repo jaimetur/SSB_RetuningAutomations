@@ -23,6 +23,43 @@
       <button type="submit">Sign in</button>
     </form>
     <p class="hint">Initial user: <b>admin</b> / <b>admin123</b> (change it as soon as possible).</p>
+    <p class="error" style="color: #dc2626;"><b>Username now is your Ericsson Signum.</b></p>
+
+    <section class="card" style="margin-top: 1rem;">
+      <h3>Request Access</h3>
+      <form method="post" action="/request-access" class="inline" style="flex-direction: column; align-items: stretch; gap: .6rem;">
+        <label>Username (Ericsson Signum)
+          <input type="text" name="username" required />
+        </label>
+        <label>Password
+          <input type="password" name="password" required />
+        </label>
+        <label>Reason for access request
+          <textarea name="reason" rows="3" required></textarea>
+        </label>
+        <button type="submit">Request Access</button>
+      </form>
+    </section>
+
+    {% if request_access_success %}
+      <section class="card" style="margin-top: 1rem; border-left: 4px solid #2563eb;">
+        <h3>Access Request Submitted</h3>
+        <p>{{ request_access_message }}</p>
+        <p><b>Requested username:</b> {{ request_access_username }}</p>
+        <p><b>New user status:</b> Inactive (pending administrator activation).</p>
+        <p><b>Reason to include in your email:</b> {{ request_access_reason }}</p>
+        <p><b>Administrators you can contact:</b></p>
+        {% if request_access_admin_contacts %}
+          <ul>
+            {% for admin_username in request_access_admin_contacts %}
+              <li>{{ admin_username }}</li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <p>No additional administrators are currently available.</p>
+        {% endif %}
+      </section>
+    {% endif %}
   </main>
 </body>
 </html>
