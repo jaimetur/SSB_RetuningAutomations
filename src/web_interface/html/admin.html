@@ -418,11 +418,20 @@
 
     document.querySelectorAll(".confirm-form").forEach((form) => {
       form.addEventListener("submit", async (event) => {
+        if (form.dataset.confirmed === "1") {
+          delete form.dataset.confirmed;
+          return;
+        }
+
+        event.preventDefault();
         const message = form.dataset.confirm || "Are you sure?";
         const ok = await showModal({ title: "Please confirm", message, confirmText: "Accept", cancelText: "Cancel" });
         if (!ok) {
-          event.preventDefault();
+          return;
         }
+
+        form.dataset.confirmed = "1";
+        form.requestSubmit();
       });
     });
 
