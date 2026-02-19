@@ -279,6 +279,18 @@ def format_timestamp(value: str | None) -> str:
         return value
 
 
+def format_last_connection(value: str | None) -> str:
+    if not value:
+        return "—"
+    try:
+        parsed = datetime.fromisoformat(value)
+        if parsed.tzinfo:
+            parsed = parsed.astimezone()
+        return parsed.strftime("%Y-%m-%d %H:%M")
+    except ValueError:
+        return value
+
+
 def strip_ansi(text: str) -> str:
     if not text:
         return text
@@ -3489,6 +3501,7 @@ def admin_panel(request: Request):
     users = conn.execute(
         """
         SELECT u.id, u.username, u.role, u.active, u.created_at, u.access_request_reason,
+               MAX(s.last_seen_at) AS last_connection,
                COALESCE(SUM(
                     CASE
                         WHEN s.active = 1 THEN
@@ -3518,6 +3531,7 @@ def admin_panel(request: Request):
         row["storage_size"] = format_mb(uploads_size + outputs_size)
         row["total_login_hms"] = format_seconds_hms(row.get("total_login_seconds"))
         row["total_execution_hms"] = format_seconds_hms(row.get("total_execution_seconds"))
+        row["last_connection"] = format_last_connection(row.get("last_connection"))
 
         row["connected"] = bool(connected_users.get(row["id"], False))
     recent_runs = conn.execute(
