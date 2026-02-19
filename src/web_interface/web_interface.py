@@ -1806,8 +1806,8 @@ def download_user_guide(request: Request, file_format: str, mode: str = "downloa
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>{guide_title}</title>
-  <link rel="icon" type="image/png" href="/static/logo_02.png" />
-  <link rel="shortcut icon" type="image/png" href="/static/logo_02.png" />
+  <link rel="icon" type="image/png" href="/assets/logos/logo_02.png" />
+  <link rel="shortcut icon" type="image/png" href="/assets/logos/logo_02.png" />
   <style>
     body {{ font-family: Arial, sans-serif; margin: 2rem auto; max-width: 980px; line-height: 1.5; color: #1f2937; padding: 0 1rem; }}
     h1,h2,h3,h4 {{ color: #0f172a; }}
