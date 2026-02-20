@@ -88,7 +88,7 @@ th,td{border-bottom:1px solid #e3e8ee;padding:.55rem;text-align:left;font-size:.
 .form-actions{display:flex;justify-content:center;align-items:center;gap:.8rem;padding-top:.4rem;position:relative}
 .form-actions button{min-width:160px}
 .module-unavailable{position:absolute;left:50%;top:100%;transform:translate(-50%, 8px);color:#c0302b;font-size:.9rem;font-weight:600}
-.run-status{position:absolute;right:16px;bottom:4px;font-weight:700;font-size:.72rem}
+.run-status{position:absolute;left:16px;right:auto;bottom:4px;font-weight:700;font-size:.72rem;text-align:left}
 .status-running{color:#1b7f3a}
 .status-done{color:#1b7f3a}
 .status-error{color:#c0302b}
@@ -155,6 +155,7 @@ th,td{border-bottom:1px solid #e3e8ee;padding:.55rem;text-align:left;font-size:.
 
 
   .runs-header,.log-header{align-items:flex-start;flex-direction:column}
+  .run-status{left:50%;right:auto;transform:translateX(-50%);text-align:center}
   .runs-actions,.log-actions,.action-row,.inline{width:100%;align-items:stretch;gap:.45rem;flex-wrap:wrap}
   .runs-actions select,.log-actions select,.action-row select,.inline select{width:100%}
   .runs-actions button,.log-actions button,.action-row button,.inline button{width:100%;margin:0}
