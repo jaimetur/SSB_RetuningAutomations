@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import os
 import re
 import shutil
@@ -16,6 +17,7 @@ import threading
 import time
 import tempfile
 import importlib
+import resource
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -262,6 +264,75 @@ running_processes: dict[int, subprocess.Popen[str]] = {}
 running_processes_lock = threading.Lock()
 canceled_task_ids: set[int] = set()
 canceled_task_ids_lock = threading.Lock()
+
+
+def get_total_memory_bytes() -> int:
+    """Return total system memory in bytes (best effort)."""
+    try:
+        page_size = os.sysconf("SC_PAGE_SIZE")
+        total_pages = os.sysconf("SC_PHYS_PAGES")
+        if isinstance(page_size, int) and isinstance(total_pages, int) and page_size > 0 and total_pages > 0:
+            return page_size * total_pages
+    except (AttributeError, OSError, ValueError):
+        pass
+    return 0
+
+
+def rebalance_running_task_limits() -> None:
+    """Distribute configured CPU and memory caps across currently running tasks."""
+    if os.name != "posix":
+        return
+
+    settings = get_admin_settings()
+    max_cpu_percent = coerce_int(settings.get("max_cpu_percent"), MAX_CPU_DEFAULT, 10, 100)
+    max_memory_percent = coerce_int(settings.get("max_memory_percent"), MAX_MEMORY_DEFAULT, 10, 100)
+
+    with running_processes_lock:
+        active_processes = {
+            task_id: proc
+            for task_id, proc in running_processes.items()
+            if proc.poll() is None and proc.pid is not None
+        }
+        running_processes.clear()
+        running_processes.update(active_processes)
+
+    if not active_processes:
+        return
+
+    ordered_task_ids = sorted(active_processes.keys())
+    task_count = len(ordered_task_ids)
+
+    cpu_count = os.cpu_count() or 1
+    cpu_slots = max(1, int(math.floor(cpu_count * (max_cpu_percent / 100.0))))
+    cpu_slots = min(cpu_slots, cpu_count)
+
+    base_slots = max(1, cpu_slots // task_count)
+    extra_slots = cpu_slots % task_count
+
+    memory_total = get_total_memory_bytes()
+    memory_pool = int(memory_total * (max_memory_percent / 100.0)) if memory_total > 0 else 0
+    memory_per_task = int(memory_pool / task_count) if memory_pool > 0 else 0
+
+    for index, task_id in enumerate(ordered_task_ids):
+        proc = active_processes[task_id]
+        pid = proc.pid
+        if pid is None:
+            continue
+
+        slot_count = base_slots + (1 if index < extra_slots else 0)
+        start_cpu = (index * base_slots + min(index, extra_slots)) % cpu_count
+        cpu_set = {(start_cpu + offset) % cpu_count for offset in range(slot_count)}
+
+        try:
+            os.sched_setaffinity(pid, cpu_set)
+        except (AttributeError, OSError, PermissionError):
+            pass
+
+        if memory_per_task > 0:
+            try:
+                resource.prlimit(pid, resource.RLIMIT_AS, (memory_per_task, memory_per_task))
+            except (AttributeError, OSError, PermissionError, ValueError):
+                pass
 
 
 def get_conn() -> sqlite3.Connection:
@@ -1225,6 +1296,7 @@ def save_admin_settings(
         "network_frequencies": str(network_frequencies if network_frequencies is not None else current.get("network_frequencies", "")),
     }
     save_admin_settings_payload(settings)
+    rebalance_running_task_limits()
 
 
 def create_database_backup(backup_dir: Path, reason: str = "manual", max_to_store: int = 30) -> Path:
@@ -1485,6 +1557,7 @@ def run_queued_task(task_row: sqlite3.Row) -> None:
     finally:
         with running_processes_lock:
             running_processes.pop(task_id, None)
+        rebalance_running_task_limits()
 
     output_log = strip_ansi(output_log)
     duration = time.perf_counter() - start
@@ -1672,6 +1745,7 @@ def queue_worker() -> None:
                 continue
 
             threading.Thread(target=run_queued_task, args=(task_row,), daemon=True).start()
+            rebalance_running_task_limits()
             scheduled = True
 
         if not scheduled:
