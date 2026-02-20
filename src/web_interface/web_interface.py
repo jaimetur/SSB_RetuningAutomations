@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import os
 import re
 import shutil
@@ -16,6 +17,12 @@ import threading
 import time
 import tempfile
 import importlib
+import ctypes
+
+try:
+    import resource
+except ImportError:  # pragma: no cover - not available on Windows
+    resource = None
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -262,6 +269,232 @@ running_processes: dict[int, subprocess.Popen[str]] = {}
 running_processes_lock = threading.Lock()
 canceled_task_ids: set[int] = set()
 canceled_task_ids_lock = threading.Lock()
+
+
+def get_total_memory_bytes() -> int:
+    """Return total system memory in bytes (best effort)."""
+    if os.name == "nt":
+        try:
+            class MEMORYSTATUSEX(ctypes.Structure):
+                _fields_ = [
+                    ("dwLength", ctypes.c_ulong),
+                    ("dwMemoryLoad", ctypes.c_ulong),
+                    ("ullTotalPhys", ctypes.c_ulonglong),
+                    ("ullAvailPhys", ctypes.c_ulonglong),
+                    ("ullTotalPageFile", ctypes.c_ulonglong),
+                    ("ullAvailPageFile", ctypes.c_ulonglong),
+                    ("ullTotalVirtual", ctypes.c_ulonglong),
+                    ("ullAvailVirtual", ctypes.c_ulonglong),
+                    ("sullAvailExtendedVirtual", ctypes.c_ulonglong),
+                ]
+
+            mem_status = MEMORYSTATUSEX()
+            mem_status.dwLength = ctypes.sizeof(MEMORYSTATUSEX)
+            if ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(mem_status)):
+                return int(mem_status.ullTotalPhys)
+        except (AttributeError, OSError, ValueError):
+            return 0
+
+    try:
+        page_size = os.sysconf("SC_PAGE_SIZE")
+        total_pages = os.sysconf("SC_PHYS_PAGES")
+        if isinstance(page_size, int) and isinstance(total_pages, int) and page_size > 0 and total_pages > 0:
+            return page_size * total_pages
+    except (AttributeError, OSError, ValueError):
+        pass
+    return 0
+
+
+def ensure_windows_job(pid: int) -> int | None:
+    """Attach process to a dedicated Windows Job Object and cache its handle."""
+    if os.name != "nt":
+        return None
+
+    existing = windows_job_handles.get(pid)
+    if existing is not None:
+        return existing
+
+    try:
+        kernel32 = ctypes.windll.kernel32
+        job_handle = kernel32.CreateJobObjectW(None, None)
+        if not job_handle:
+            return None
+
+        PROCESS_SET_QUOTA = 0x0100
+        PROCESS_TERMINATE = 0x0001
+        PROCESS_QUERY_INFORMATION = 0x0400
+        process_handle = kernel32.OpenProcess(
+            PROCESS_SET_QUOTA | PROCESS_TERMINATE | PROCESS_QUERY_INFORMATION,
+            False,
+            pid,
+        )
+        if not process_handle:
+            kernel32.CloseHandle(job_handle)
+            return None
+
+        assigned = kernel32.AssignProcessToJobObject(job_handle, process_handle)
+        kernel32.CloseHandle(process_handle)
+        if not assigned:
+            kernel32.CloseHandle(job_handle)
+            return None
+
+        windows_job_handles[pid] = int(job_handle)
+        return int(job_handle)
+    except (AttributeError, OSError):
+        return None
+
+
+def cleanup_windows_job(pid: int) -> None:
+    if os.name != "nt":
+        return
+    job_handle = windows_job_handles.pop(pid, None)
+    if not job_handle:
+        return
+    try:
+        ctypes.windll.kernel32.CloseHandle(job_handle)
+    except (AttributeError, OSError):
+        pass
+
+
+def apply_windows_limits(pid: int, cpu_percent: int, memory_limit_bytes: int) -> None:
+    """Apply CPU and memory caps to a process in Windows via Job Objects."""
+    job_handle = ensure_windows_job(pid)
+    if not job_handle:
+        return
+
+    try:
+        kernel32 = ctypes.windll.kernel32
+
+        # JOBOBJECT_CPU_RATE_CONTROL_INFORMATION
+        class JOBOBJECT_CPU_RATE_CONTROL_INFORMATION(ctypes.Structure):
+            _fields_ = [
+                ("ControlFlags", ctypes.c_uint32),
+                ("CpuRate", ctypes.c_uint32),
+            ]
+
+        JOB_OBJECT_CPU_RATE_CONTROL_ENABLE = 0x1
+        JOB_OBJECT_CPU_RATE_CONTROL_HARD_CAP = 0x4
+        cpu_info = JOBOBJECT_CPU_RATE_CONTROL_INFORMATION()
+        cpu_info.ControlFlags = JOB_OBJECT_CPU_RATE_CONTROL_ENABLE | JOB_OBJECT_CPU_RATE_CONTROL_HARD_CAP
+        cpu_info.CpuRate = max(1, min(100, int(cpu_percent))) * 100
+
+        kernel32.SetInformationJobObject(
+            job_handle,
+            15,  # JobObjectCpuRateControlInformation
+            ctypes.byref(cpu_info),
+            ctypes.sizeof(cpu_info),
+        )
+
+        if memory_limit_bytes > 0:
+            class IO_COUNTERS(ctypes.Structure):
+                _fields_ = [
+                    ("ReadOperationCount", ctypes.c_uint64),
+                    ("WriteOperationCount", ctypes.c_uint64),
+                    ("OtherOperationCount", ctypes.c_uint64),
+                    ("ReadTransferCount", ctypes.c_uint64),
+                    ("WriteTransferCount", ctypes.c_uint64),
+                    ("OtherTransferCount", ctypes.c_uint64),
+                ]
+
+            class JOBOBJECT_BASIC_LIMIT_INFORMATION(ctypes.Structure):
+                _fields_ = [
+                    ("PerProcessUserTimeLimit", ctypes.c_int64),
+                    ("PerJobUserTimeLimit", ctypes.c_int64),
+                    ("LimitFlags", ctypes.c_uint32),
+                    ("MinimumWorkingSetSize", ctypes.c_size_t),
+                    ("MaximumWorkingSetSize", ctypes.c_size_t),
+                    ("ActiveProcessLimit", ctypes.c_uint32),
+                    ("Affinity", ctypes.c_size_t),
+                    ("PriorityClass", ctypes.c_uint32),
+                    ("SchedulingClass", ctypes.c_uint32),
+                ]
+
+            class JOBOBJECT_EXTENDED_LIMIT_INFORMATION(ctypes.Structure):
+                _fields_ = [
+                    ("BasicLimitInformation", JOBOBJECT_BASIC_LIMIT_INFORMATION),
+                    ("IoInfo", IO_COUNTERS),
+                    ("ProcessMemoryLimit", ctypes.c_size_t),
+                    ("JobMemoryLimit", ctypes.c_size_t),
+                    ("PeakProcessMemoryUsed", ctypes.c_size_t),
+                    ("PeakJobMemoryUsed", ctypes.c_size_t),
+                ]
+
+            JOB_OBJECT_LIMIT_PROCESS_MEMORY = 0x00000100
+            limit_info = JOBOBJECT_EXTENDED_LIMIT_INFORMATION()
+            limit_info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_PROCESS_MEMORY
+            limit_info.ProcessMemoryLimit = int(memory_limit_bytes)
+
+            kernel32.SetInformationJobObject(
+                job_handle,
+                9,  # JobObjectExtendedLimitInformation
+                ctypes.byref(limit_info),
+                ctypes.sizeof(limit_info),
+            )
+    except (AttributeError, OSError, ValueError):
+        return
+
+
+def rebalance_running_task_limits() -> None:
+    """Distribute configured CPU and memory caps across currently running tasks."""
+    settings = get_admin_settings()
+    max_cpu_percent = coerce_int(settings.get("max_cpu_percent"), MAX_CPU_DEFAULT, 10, 100)
+    max_memory_percent = coerce_int(settings.get("max_memory_percent"), MAX_MEMORY_DEFAULT, 10, 100)
+
+    with running_processes_lock:
+        active_processes = {
+            task_id: proc
+            for task_id, proc in running_processes.items()
+            if proc.poll() is None and proc.pid is not None
+        }
+        running_processes.clear()
+        running_processes.update(active_processes)
+
+    if not active_processes:
+        return
+
+    ordered_task_ids = sorted(active_processes.keys())
+    task_count = len(ordered_task_ids)
+
+    memory_total = get_total_memory_bytes()
+    memory_pool = int(memory_total * (max_memory_percent / 100.0)) if memory_total > 0 else 0
+    memory_per_task = int(memory_pool / task_count) if memory_pool > 0 else 0
+
+    if os.name == "nt":
+        cpu_per_task = max(1, int(max_cpu_percent / task_count))
+        for task_id in ordered_task_ids:
+            proc = active_processes[task_id]
+            if proc.pid is None:
+                continue
+            apply_windows_limits(proc.pid, cpu_per_task, memory_per_task)
+        return
+
+    cpu_count = os.cpu_count() or 1
+    cpu_slots = max(1, int(math.floor(cpu_count * (max_cpu_percent / 100.0))))
+    cpu_slots = min(cpu_slots, cpu_count)
+
+    base_slots = max(1, cpu_slots // task_count)
+    extra_slots = cpu_slots % task_count
+
+    for index, task_id in enumerate(ordered_task_ids):
+        proc = active_processes[task_id]
+        pid = proc.pid
+        if pid is None:
+            continue
+
+        slot_count = base_slots + (1 if index < extra_slots else 0)
+        start_cpu = (index * base_slots + min(index, extra_slots)) % cpu_count
+        cpu_set = {(start_cpu + offset) % cpu_count for offset in range(slot_count)}
+
+        try:
+            os.sched_setaffinity(pid, cpu_set)
+        except (AttributeError, OSError, PermissionError):
+            pass
+
+        if memory_per_task > 0 and resource is not None:
+            try:
+                resource.prlimit(pid, resource.RLIMIT_AS, (memory_per_task, memory_per_task))
+            except (AttributeError, OSError, PermissionError, ValueError):
+                pass
 
 
 def get_conn() -> sqlite3.Connection:
@@ -1225,6 +1458,7 @@ def save_admin_settings(
         "network_frequencies": str(network_frequencies if network_frequencies is not None else current.get("network_frequencies", "")),
     }
     save_admin_settings_payload(settings)
+    rebalance_running_task_limits()
 
 
 def create_database_backup(backup_dir: Path, reason: str = "manual", max_to_store: int = 30) -> Path:
@@ -1484,7 +1718,10 @@ def run_queued_task(task_row: sqlite3.Row) -> None:
         output_log = f"Execution error: {exc}"
     finally:
         with running_processes_lock:
-            running_processes.pop(task_id, None)
+            finished_proc = running_processes.pop(task_id, None)
+        if finished_proc is not None and finished_proc.pid is not None:
+            cleanup_windows_job(finished_proc.pid)
+        rebalance_running_task_limits()
 
     output_log = strip_ansi(output_log)
     duration = time.perf_counter() - start
@@ -1672,6 +1909,7 @@ def queue_worker() -> None:
                 continue
 
             threading.Thread(target=run_queued_task, args=(task_row,), daemon=True).start()
+            rebalance_running_task_limits()
             scheduled = True
 
         if not scheduled:
