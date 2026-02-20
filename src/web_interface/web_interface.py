@@ -272,8 +272,31 @@ canceled_task_ids_lock = threading.Lock()
 windows_job_handles: dict[int, int] = {}
 
 
+def _read_cgroup_memory_limit_bytes() -> int:
+    """Best-effort container/cgroup memory limit detection (Linux only)."""
+    if os.name == "nt":
+        return 0
+
+    candidates = [
+        "/sys/fs/cgroup/memory.max",  # cgroup v2
+        "/sys/fs/cgroup/memory/memory.limit_in_bytes",  # cgroup v1
+    ]
+    for path in candidates:
+        try:
+            raw = Path(path).read_text(encoding="utf-8", errors="ignore").strip().lower()
+            if not raw or raw == "max":
+                continue
+            limit = int(raw)
+            if limit > 0 and limit < (1 << 60):
+                return limit
+        except (OSError, ValueError):
+            continue
+    return 0
+
+
 def get_total_memory_bytes() -> int:
-    """Return total system memory in bytes (best effort)."""
+    """Return total memory available to this process (host or cgroup-capped)."""
+    host_total = 0
     if os.name == "nt":
         try:
             class MEMORYSTATUSEX(ctypes.Structure):
@@ -292,18 +315,24 @@ def get_total_memory_bytes() -> int:
             mem_status = MEMORYSTATUSEX()
             mem_status.dwLength = ctypes.sizeof(MEMORYSTATUSEX)
             if ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(mem_status)):
-                return int(mem_status.ullTotalPhys)
+                host_total = int(mem_status.ullTotalPhys)
         except (AttributeError, OSError, ValueError):
-            return 0
+            host_total = 0
+    else:
+        try:
+            page_size = os.sysconf("SC_PAGE_SIZE")
+            total_pages = os.sysconf("SC_PHYS_PAGES")
+            if isinstance(page_size, int) and isinstance(total_pages, int) and page_size > 0 and total_pages > 0:
+                host_total = page_size * total_pages
+        except (AttributeError, OSError, ValueError):
+            host_total = 0
 
-    try:
-        page_size = os.sysconf("SC_PAGE_SIZE")
-        total_pages = os.sysconf("SC_PHYS_PAGES")
-        if isinstance(page_size, int) and isinstance(total_pages, int) and page_size > 0 and total_pages > 0:
-            return page_size * total_pages
-    except (AttributeError, OSError, ValueError):
-        pass
-    return 0
+    cgroup_limit = _read_cgroup_memory_limit_bytes()
+    if host_total > 0 and cgroup_limit > 0:
+        return min(host_total, cgroup_limit)
+    if cgroup_limit > 0:
+        return cgroup_limit
+    return host_total
 
 
 def rebalance_running_task_limits() -> None:
@@ -340,7 +369,13 @@ def rebalance_running_task_limits() -> None:
             apply_windows_limits(proc.pid, cpu_per_task, memory_per_task)
         return
 
-    cpu_count = os.cpu_count() or 1
+    try:
+        available_cpus = sorted(os.sched_getaffinity(0))
+    except (AttributeError, OSError, PermissionError):
+        cpu_count = os.cpu_count() or 1
+        available_cpus = list(range(cpu_count))
+
+    cpu_count = max(1, len(available_cpus))
     cpu_slots = max(1, int(math.floor(cpu_count * (max_cpu_percent / 100.0))))
     cpu_slots = min(cpu_slots, cpu_count)
 
@@ -353,9 +388,9 @@ def rebalance_running_task_limits() -> None:
         if pid is None:
             continue
 
-        slot_count = base_slots + (1 if index < extra_slots else 0)
-        start_cpu = (index * base_slots + min(index, extra_slots)) % cpu_count
-        cpu_set = {(start_cpu + offset) % cpu_count for offset in range(slot_count)}
+        slot_count = min(cpu_count, base_slots + (1 if index < extra_slots else 0))
+        start_idx = (index * base_slots + min(index, extra_slots)) % cpu_count
+        cpu_set = {available_cpus[(start_idx + offset) % cpu_count] for offset in range(slot_count)}
 
         try:
             os.sched_setaffinity(pid, cpu_set)
