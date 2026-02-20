@@ -1366,11 +1366,19 @@
         return;
       }
       const lines = text.split(/\r?\n/);
+      const source = adminSystemLogSource?.value || "app";
       target.innerHTML = lines.map((line) => {
         let cls = "log-info";
         if (line.includes("[ERROR]")) cls = "log-error";
         else if (line.includes("[WARNING]")) cls = "log-warning";
         else if (line.includes("[DEBUG]")) cls = "log-debug";
+
+        if (source === "web-access") {
+          const normalizedLine = line.toLowerCase();
+          if (normalizedLine.includes("login")) cls = "log-web-login";
+          if (normalizedLine.includes("logout")) cls = "log-web-logout";
+          if (normalizedLine.includes("request access")) cls = "log-web-request-access";
+        }
         return `<span class="${cls}">${line.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")}</span>`;
       }).join("\n");
       if (shouldScrollToBottom) target.scrollTop = target.scrollHeight;

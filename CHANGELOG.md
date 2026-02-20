@@ -17,6 +17,7 @@
   - Admin Users now exposes that stored access-request reason as a tooltip when hovering over the username field. 
   - New Database Backup scheduler has been added to Database Backup panel with mode-based automation (Disabled, Daily, Weekly, Monthly), inline path/hour inputs, folder-select button, and max-retention configuration. 
   - Admin settings save endpoint was extended to persist the new backup automation fields (mode, path, hour, max_to_store). 
+  - User panel in Admin section is now sortable by any column and it shows last connection for every user.
 
 - #### 🚀 Enhancements:
   - Enhanced the script to generate user guide from Markdown files to support images and links.
@@ -24,6 +25,7 @@
   - Compact GUI dialog by reducing `Allowed SSB & ARFCN` section to adapt the resolution for a small screen.
   - GUI dialog now has a dimension of 940x770 pixels.
   - Login username matching is now case-insensitive, so users can authenticate regardless of uppercase/lowercase username input. 
+  - Web-Access log now show login in green, logout in red and request access in blue color for a better visualization.
 
 - #### 🐛 Bug fixes:
 

@@ -110,6 +110,9 @@ th,td{border-bottom:1px solid #e3e8ee;padding:.55rem;text-align:left;font-size:.
 .log-warning{color:#c87b00}
 .log-error{color:#c0302b}
 .log-debug{color:#0891b2}
+.log-web-login{color:#1b7f3a}
+.log-web-logout{color:#c0302b}
+.log-web-request-access{color:#2563eb}
 .freq-selector{display:grid;grid-template-columns:minmax(200px,1fr) 200px 120px;gap:1rem;align-items:start}
 .freq-list select{width:100%;min-height:110px}
 .freq-buttons{display:flex;flex-direction:column;gap:.6rem}

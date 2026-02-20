@@ -1582,11 +1582,20 @@
         return;
       }
       const lines = String(text).split(/\r?\n/);
+      const source = systemLogSource?.value || "app";
       systemLogOutput.innerHTML = lines.map((line) => {
         let cls = "log-info";
         if (line.includes("[ERROR]")) cls = "log-error";
         else if (line.includes("[WARNING]")) cls = "log-warning";
         else if (line.includes("[DEBUG]")) cls = "log-debug";
+
+        if (source === "web-access") {
+          const normalizedLine = line.toLowerCase();
+          if (normalizedLine.includes("login")) cls = "log-web-login";
+          if (normalizedLine.includes("logout")) cls = "log-web-logout";
+          if (normalizedLine.includes("request access")) cls = "log-web-request-access";
+        }
+
         return `<span class="${cls}">${escapeHtml(line)}</span>`;
       }).join("\n");
       if (systemLogAuto?.checked) systemLogOutput.scrollTop = systemLogOutput.scrollHeight;
