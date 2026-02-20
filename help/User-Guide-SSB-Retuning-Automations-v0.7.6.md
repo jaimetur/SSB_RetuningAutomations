@@ -130,11 +130,6 @@ Each module generates a dedicated output folder containing Excel reports, logs, 
 - The tool will then run the selected modules and generate the outputs.
 
 
-### Web Interface - Admin Section
-![Web Interface - Admin Panel](../assets/screenshots/web-interface-admin-panel.png)
-- This is the main Administrator Panel for SSB Retuning Automations. From this panel you can manage the configuration of the tool, view logs and manage user access.
-
-
 ### Web Interface - Inputs Repository Panel
 ![Web Interface - Inputs Executions Panels](../assets/screenshots/web-interface-inputs-executions-panels.png)
 - You can see some information about the Inputs Repository.
@@ -143,6 +138,11 @@ Each module generates a dedicated output folder containing Excel reports, logs, 
 ### Web Interface - Executions and System Logs Panels
 ![Web Interface - Logs Panels](../assets/screenshots/web-interface-logs-panels.png)
 - You can see some information about Last Executions and some useful System Logs of the tool.
+
+
+### Web Interface - Admin Section
+![Web Interface - Admin Panel](../assets/screenshots/web-interface-admin-panel.png)
+- This is the main Administrator Panel for SSB Retuning Automations. From this panel you can manage the configuration of the tool, view logs and manage user access.
 
 
 ### Web Interface - Database Management Panels

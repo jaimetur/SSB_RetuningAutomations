@@ -19,6 +19,8 @@
   - Admin settings save endpoint was extended to persist the new backup automation fields (mode, path, hour, max_to_store). 
   - User panel in Admin section is now sortable by any column and it shows last connection for every user.
   - Made admin processing limits and database backups settings global and not user-dependent.
+  - Added new table `app_settings` to store global admin settings (e.g., processing limits, database backups).
+  - Auto Sanitize user_settings to remove obsolete keys.
 
 - #### 🚀 Enhancements:
   - Enhanced the script to generate user guide from Markdown files to support images and links.
