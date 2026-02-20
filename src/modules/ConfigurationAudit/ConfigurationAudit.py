@@ -778,7 +778,13 @@ class ConfigurationAudit:
                         else:
                             writer = pd.ExcelWriter(tmp_excel_path_long, engine="openpyxl")
 
+                        keep_written_sheet_dfs = excel_engine == "xlsxwriter"
                         written_sheet_dfs: dict[str, pd.DataFrame] = {}
+
+                        def _remember_sheet_df(sheet_name: str, df: pd.DataFrame) -> None:
+                            if keep_written_sheet_dfs:
+                                written_sheet_dfs[sheet_name] = df
+
                         _log_info(f"PHASE 5.0: Using Excel engine: {excel_engine}")
 
                         t_open1 = time.perf_counter()
@@ -1075,12 +1081,13 @@ class ConfigurationAudit:
                         # ------------------------------------------------------------------
                         with log_phase_timer("PHASE 5.1: Write Summary + SummaryAudit", log_fn=_log_info, show_start=show_phase_starts, show_end=False, show_timing=show_phase_timings, line_prefix="", start_level="INFO", end_level="INFO", timing_level="INFO"):
                             # Write Summary first
-                            pd.DataFrame(summary_rows).to_excel(writer, sheet_name="Summary", index=False)
-                            written_sheet_dfs["Summary"] = pd.DataFrame(summary_rows)
+                            summary_df = pd.DataFrame(summary_rows)
+                            summary_df.to_excel(writer, sheet_name="Summary", index=False)
+                            _remember_sheet_df("Summary", summary_df)
 
                             # SummaryAudit with high-level checks
                             summary_audit_df.to_excel(writer, sheet_name="SummaryAudit", index=False)
-                            written_sheet_dfs["SummaryAudit"] = summary_audit_df
+                            _remember_sheet_df("SummaryAudit", summary_audit_df)
 
                             # Apply alternating background colors by Category for SummaryAudit sheet
                             # NOTE: apply_alternating_category_row_fills is openpyxl-only (xlsxwriter Worksheet is not subscriptable)
@@ -1092,11 +1099,11 @@ class ConfigurationAudit:
                             # New: separate NR / LTE param mismatching sheets
                             if not param_mismatch_nr_df.empty:
                                 param_mismatch_nr_df.to_excel(writer, sheet_name="Summary NR Param Mismatching", index=False)
-                                written_sheet_dfs["Summary NR Param Mismatching"] = param_mismatch_nr_df
+                                _remember_sheet_df("Summary NR Param Mismatching", param_mismatch_nr_df)
 
                             if not param_mismatch_gu_df.empty:
                                 param_mismatch_gu_df.to_excel(writer, sheet_name="Summary LTE Param Mismatching", index=False)
-                                written_sheet_dfs["Summary LTE Param Mismatching"] = param_mismatch_gu_df
+                                _remember_sheet_df("Summary LTE Param Mismatching", param_mismatch_gu_df)
 
                         # ------------------------------------------------------------------
                         # PHASE 5.2: Write pivot summary sheets
@@ -1104,17 +1111,17 @@ class ConfigurationAudit:
                         with log_phase_timer("PHASE 5.2: Write pivot summary sheets", log_fn=_log_info, show_start=show_phase_starts, show_end=False, show_timing=show_phase_timings, line_prefix="", start_level="INFO", end_level="INFO", timing_level="INFO"):
                             # Extra summary sheets
                             pivot_nr_cells_du.to_excel(writer, sheet_name="Summary NR_CellDU", index=False)
-                            written_sheet_dfs["Summary NR_CellDU"] = pivot_nr_cells_du
+                            _remember_sheet_df("Summary NR_CellDU", pivot_nr_cells_du)
                             pivot_nr_sector_carrier.to_excel(writer, sheet_name="Summary NR_SectorCarrier", index=False)
-                            written_sheet_dfs["Summary NR_SectorCarrier"] = pivot_nr_sector_carrier
+                            _remember_sheet_df("Summary NR_SectorCarrier", pivot_nr_sector_carrier)
                             pivot_nr_freq.to_excel(writer, sheet_name="Summary NR_Frequency", index=False)
-                            written_sheet_dfs["Summary NR_Frequency"] = pivot_nr_freq
+                            _remember_sheet_df("Summary NR_Frequency", pivot_nr_freq)
                             pivot_nr_freq_rel.to_excel(writer, sheet_name="Summary NR_FreqRelation", index=False)
-                            written_sheet_dfs["Summary NR_FreqRelation"] = pivot_nr_freq_rel
+                            _remember_sheet_df("Summary NR_FreqRelation", pivot_nr_freq_rel)
                             pivot_gu_sync_signal_freq.to_excel(writer, sheet_name="Summary GU_SyncSignalFrequency", index=False)
-                            written_sheet_dfs["Summary GU_SyncSignalFrequency"] = pivot_gu_sync_signal_freq
+                            _remember_sheet_df("Summary GU_SyncSignalFrequency", pivot_gu_sync_signal_freq)
                             pivot_gu_freq_rel.to_excel(writer, sheet_name="Summary GU_FreqRelation", index=False)
-                            written_sheet_dfs["Summary GU_FreqRelation"] = pivot_gu_freq_rel
+                            _remember_sheet_df("Summary GU_FreqRelation", pivot_gu_freq_rel)
 
 
                         # ------------------------------------------------------------------
@@ -1132,8 +1139,14 @@ class ConfigurationAudit:
 
                                 written += 1
                                 sheet_start = time.perf_counter()
-                                entry["df"].to_excel(writer, sheet_name=entry["final_sheet"], index=False)
-                                written_sheet_dfs[str(entry["final_sheet"])] = entry["df"]
+                                df_to_write = entry["df"]
+                                df_to_write.to_excel(writer, sheet_name=entry["final_sheet"], index=False)
+                                _remember_sheet_df(str(entry["final_sheet"]), df_to_write)
+
+                                # Memory optimization: with openpyxl and no command export, drop table references
+                                # as soon as each sheet is persisted.
+                                if excel_engine == "openpyxl" and not export_correction_cmd:
+                                    entry["df"] = None
                                 sheet_elapsed = time.perf_counter() - sheet_start
 
                                 if show_phase_timings and sheet_elapsed >= float(slow_sheet_seconds_threshold):
@@ -1161,6 +1174,11 @@ class ConfigurationAudit:
                             try:
                                 me_sheet_name = candidate_to_final_sheet.get("MeContext", "MeContext")
                                 me_df = written_sheet_dfs.get(me_sheet_name)
+                                if me_df is None and me_sheet_name == "MeContext":
+                                    for entry in table_entries:
+                                        if str(entry.get("final_sheet", "")).strip() == me_sheet_name and isinstance(entry.get("df"), pd.DataFrame):
+                                            me_df = entry["df"]
+                                            break
                                 ws_me = writer.sheets.get(me_sheet_name)
 
                                 if me_df is not None and ws_me is not None and not me_df.empty:
