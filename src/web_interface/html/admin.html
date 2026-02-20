@@ -117,7 +117,7 @@
             <td class="cell-middle">{{ u.total_execution_hms }}</td>
             <td class="storage-cell cell-middle">{{ u.storage_size }}</td>
             <td>
-              <div class="action-row">
+              <div class="action-row user-actions-row">
                 <form method="post" action="/admin/users/{{ u.id }}/clear_storage" class="inline confirm-form" data-confirm="This will delete all Uploads and Exports for this user. Continue?">
                   <button type="submit" class="btn btn-success">Clear storage</button>
                 </form>
@@ -1383,9 +1383,10 @@
 
         if (source === "web-access") {
           const normalizedLine = line.toLowerCase();
-          if (normalizedLine.includes("login")) cls = "log-web-login";
-          if (normalizedLine.includes("logout")) cls = "log-web-logout";
           if (normalizedLine.includes("request access")) cls = "log-web-request-access";
+          else if (normalizedLine.includes("login failed")) cls = "log-web-login-failed";
+          else if (normalizedLine.includes("logout")) cls = "log-web-logout";
+          else if (normalizedLine.includes("login")) cls = "log-web-login";
         }
         return `<span class="${cls}">${line.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")}</span>`;
       }).join("\n");
