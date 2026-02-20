@@ -150,6 +150,13 @@ Each module generates a dedicated output folder containing Excel reports, logs, 
 - With those panels you can manage the database of the tool, schedule backups tasks, or edit the database content directly.
 
 
+### Web FastAPI Interface
+
+- The tool also supports a Web FastAPI interface when the Web server is launched.
+- With this interface you can do almost all the tasks using different endpoints.
+- All the endpoints are documented in `/api` endpoint of your Web server url. i.e: 127.0.0.1:7878/api (assuming that you have your Web server running in your localhost and configured in port 7878).
+
+
 ### Command Line Interface - CLI
 
 With the CLI you can run the modules you want to run and provide all different arguments you need.

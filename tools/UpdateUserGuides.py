@@ -250,7 +250,7 @@ def try_update_docx_fields_and_export_pdf(docx_file: Path, pdf_file: Path) -> bo
     if os.name != "nt":
         return False
 
-    print(f"\tConverting DOCX to PDF (and updating Word fields)...")
+    print(f"\        Converting DOCX to PDF (and updating Word fields)...")
     ps_script = f"""
 $ErrorActionPreference = 'Stop'
 $word = $null
@@ -1614,7 +1614,7 @@ def update_user_guides(formats: set[str]) -> dict[str, Path]:
 
     cleanup_old_versioned_guides(paths)
 
-    print(f"    Using markdown: {paths['md']}")
+    print(f"        Using markdown: {paths['md']}")
     if "docx" in formats:
         print(f"        Generated: {paths['docx']}")
     if "pptx" in formats:

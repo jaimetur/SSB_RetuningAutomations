@@ -9,12 +9,13 @@
 
 - #### 🚀 Enhancements:
   - Modified several Tips on SumaryAudit Table.
-  - Improved MEContext table header alligment for better readability.
+  - Improved MEContext table header alignment for better readability.
   - SummaryAudit table now colors in gray all rows whose Value column is 0.
 
 - #### 🐛 Bug fixes:
 
 - #### 📚 Documentation:
+  - Included Web FastAPI interface section in User Guide.
   - Updated Documentation to align with the latest changes.
 
 
