@@ -18,6 +18,7 @@
   - New Database Backup scheduler has been added to Database Backup panel with mode-based automation (Disabled, Daily, Weekly, Monthly), inline path/hour inputs, folder-select button, and max-retention configuration. 
   - Admin settings save endpoint was extended to persist the new backup automation fields (mode, path, hour, max_to_store). 
   - User panel in Admin section is now sortable by any column and it shows last connection for every user.
+  - Made admin processing limits and database backups settings global and not user-dependent.
 
 - #### 🚀 Enhancements:
   - Enhanced the script to generate user guide from Markdown files to support images and links.
