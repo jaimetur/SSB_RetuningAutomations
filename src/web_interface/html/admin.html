@@ -29,7 +29,7 @@
       <div class="runs-header">
         <h2>Processing Limits</h2>
         <div class="runs-actions">
-          <button type="button" id="toggle_limits_panel" class="panel-toggle" aria-label="Collapse processing limits panel" title="Collapse/Expand">▾</button>
+          <button type="button" id="toggle_limits_panel" class="panel-toggle" aria-label="Collapse processing limits panel" title="Collapse/Expand">▸</button>
         </div>
       </div>
       <div id="limits_panel_content">
@@ -47,7 +47,7 @@
       <div class="runs-header">
         <h2>Create user</h2>
         <div class="runs-actions">
-          <button type="button" id="toggle_create_user_panel" class="panel-toggle" aria-label="Collapse create user panel" title="Collapse/Expand">▾</button>
+          <button type="button" id="toggle_create_user_panel" class="panel-toggle" aria-label="Collapse create user panel" title="Collapse/Expand">▸</button>
         </div>
       </div>
       <div id="create_user_panel_content">
@@ -76,7 +76,7 @@
             <option value="active_users">Active Users</option>
             <option value="inactive_users">Innactive Users</option>
           </select>
-          <button type="button" id="toggle_users_panel" class="panel-toggle" aria-label="Collapse users panel" title="Collapse/Expand">▾</button>
+          <button type="button" id="toggle_users_panel" class="panel-toggle" aria-label="Collapse users panel" title="Collapse/Expand">▸</button>
         </div>
       </div>
       <div class="table-scroll latest-global-scroll" id="users_panel_table">
@@ -155,7 +155,7 @@
           <button type="button" id="admin_upload_inputs" class="btn btn-primary">Upload</button>
           <button type="button" id="rename_inputs" class="btn btn-secondary">Rename</button>
           <button type="button" id="delete_selected_inputs" class="btn btn-danger danger-anchor">Delete Selected</button>
-          <button type="button" id="toggle_inputs_panel" class="panel-toggle" aria-label="Collapse inputs panel" title="Collapse/Expand">▾</button>
+          <button type="button" id="toggle_inputs_panel" class="panel-toggle" aria-label="Collapse inputs panel" title="Collapse/Expand">▸</button>
         </div>
       </div>
       <input type="date" id="older_input_date_picker" class="hidden" />
@@ -202,7 +202,7 @@
           <button type="button" id="admin_rerun_selected_runs" class="btn btn-success">Re-Run Selected</button>
           <button type="button" id="admin_stop_selected_runs" class="btn btn-danger">Stop Selected</button>
           <button type="button" id="delete_selected_runs" class="btn btn-danger">Delete Selected</button>
-          <button type="button" id="toggle_runs_panel" class="panel-toggle" aria-label="Collapse runs panel" title="Collapse/Expand">▾</button>
+          <button type="button" id="toggle_runs_panel" class="panel-toggle" aria-label="Collapse runs panel" title="Collapse/Expand">▸</button>
         </div>
       </div>
       <input type="date" id="older_date_picker" class="hidden" />
@@ -250,7 +250,7 @@
       <div class="runs-header">
         <h2>Database Backup</h2>
         <div class="runs-actions">
-          <button type="button" id="toggle_db_backup_panel" class="panel-toggle" aria-label="Collapse database backup panel" title="Collapse/Expand">▾</button>
+          <button type="button" id="toggle_db_backup_panel" class="panel-toggle" aria-label="Collapse database backup panel" title="Collapse/Expand">▸</button>
         </div>
       </div>
       <div id="db_backup_panel_content">
@@ -319,7 +319,7 @@
           <button type="button" id="admin_db_reload_table" class="btn btn-primary">Refresh table</button>
           <button type="button" id="admin_db_cancel_changes" class="btn btn-primary">Cancel</button>
           <button type="button" id="admin_db_update_changes" class="btn btn-danger">Update</button>
-          <button type="button" id="toggle_db_editor_panel" class="panel-toggle" aria-label="Collapse database editor panel" title="Collapse/Expand">▾</button>
+          <button type="button" id="toggle_db_editor_panel" class="panel-toggle" aria-label="Collapse database editor panel" title="Collapse/Expand">▸</button>
         </div>
       </div>
       <div id="db_editor_panel_content">
@@ -347,7 +347,7 @@
           <button type="button" id="admin_refresh_log">Refresh</button>
           <button type="button" id="admin_copy_log">Copy all</button>
           <button type="button" id="admin_copy_selection">Copy selection</button>
-          <button type="button" id="toggle_admin_execution_log_panel" class="panel-toggle" aria-label="Collapse execution log panel" title="Collapse/Expand">▾</button>
+          <button type="button" id="toggle_admin_execution_log_panel" class="panel-toggle" aria-label="Collapse execution log panel" title="Collapse/Expand">▸</button>
         </div>
       </div>
       <pre id="admin_log_output" class="log-output">No logs yet.</pre>
@@ -370,7 +370,7 @@
           <button type="button" id="admin_copy_system_log">Copy all</button>
           <button type="button" id="admin_copy_system_selection">Copy selection</button>
           <button type="button" id="admin_delete_system_log" class="btn btn-danger">Delete</button>
-          <button type="button" id="toggle_admin_system_log_panel" class="panel-toggle" aria-label="Collapse system log panel" title="Collapse/Expand">▾</button>
+          <button type="button" id="toggle_admin_system_log_panel" class="panel-toggle" aria-label="Collapse system log panel" title="Collapse/Expand">▸</button>
         </div>
       </div>
       <pre id="admin_system_log_output" class="log-output">No logs yet.</pre>
@@ -975,11 +975,11 @@
       if (!button || !panel) return;
       const collapsed = Boolean(persistedPanelStates?.[stateKey]);
       panel.classList.toggle("hidden", collapsed);
-      button.textContent = collapsed ? "▸" : "▾";
+      button.textContent = collapsed ? "▾" : "▸";
       button.addEventListener("click", () => {
         panel.classList.toggle("hidden");
         const nowCollapsed = panel.classList.contains("hidden");
-        button.textContent = nowCollapsed ? "▸" : "▾";
+        button.textContent = nowCollapsed ? "▾" : "▸";
         persistedPanelStates[stateKey] = nowCollapsed;
         savePanelStatesOnly();
       });
@@ -1167,7 +1167,7 @@
       formData.append("parent_folder_name", "");
       formData.append("overwrite", overwrite ? "1" : "0");
       formData.append("files", file, file.name || "input.zip");
-      return fetch("/uploads/zip", { method: "POST", body: formData }).then((res) => res.json());
+      return fetch("/inputs/upload", { method: "POST", body: formData }).then((res) => res.json());
     }
 
     function toInputNameFromZip(fileName) {
