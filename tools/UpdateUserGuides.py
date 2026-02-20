@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
+import argparse
 import re
 from datetime import date
 from math import ceil
@@ -88,6 +89,8 @@ def update_readme_links(version: str) -> None:
 
     updated = re.sub(pattern, replacement, readme, count=1)
     README_PATH.write_text(updated, encoding="utf-8")
+
+
 def guide_paths(version: str) -> dict[str, Path]:
     base_name = f"{GUIDE_PREFIX}{version}"
     return {
@@ -152,6 +155,8 @@ def cleanup_old_versioned_guides(paths: dict[str, Path]) -> None:
         for candidate in list_versioned_guides(ext):
             if candidate != keep_path:
                 candidate.unlink(missing_ok=True)
+
+
 def first_existing_path(candidates: list[Path]) -> Path | None:
     for path in candidates:
         if path.exists():
@@ -1487,9 +1492,19 @@ def build_pdf_from_pptx(pptx_file: Path, pdf_file: Path) -> None:
 
     print("	[WARN] Unable to convert PPTX to PDF (LibreOffice not available).")
 
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Update user guide artifacts.")
+    parser.add_argument(
+        "--formats",
+        nargs="+",
+        choices=["docx", "docx.pdf", "pptx", "pptx.pdf"],
+        default=["docx", "docx.pdf", "pptx", "pptx.pdf"],
+        help="Guide formats to generate/update. Default: all.",
+    )
+    return parser.parse_args()
 
 
-if __name__ == "__main__":
+def update_user_guides(formats: set[str]) -> dict[str, Path]:
     tool_version = get_tool_version()
     print(f"🔍 TOOL_VERSION detected: v{tool_version}")
 
@@ -1498,17 +1513,41 @@ if __name__ == "__main__":
 
     print(f"▶️ Updating User Guides to new version: {tool_version}...")
     paths = align_help_guides_to_version(tool_version)
-    build_docx_from_markdown(paths["md"], paths["docx"], tool_version)
-    build_pptx_summary(paths["md"], paths["pptx"], tool_version)
-    if not try_update_docx_fields_and_export_pdf(paths["docx"], paths["docx_pdf"]):
-        build_pdf_from_markdown(paths["md"], paths["docx_pdf"])
-    build_pdf_from_pptx(paths["pptx"], paths["pptx_pdf"])
+
+    if "docx" in formats:
+        build_docx_from_markdown(paths["md"], paths["docx"], tool_version)
+
+    if "pptx" in formats:
+        build_pptx_summary(paths["md"], paths["pptx"], tool_version)
+
+    if "docx.pdf" in formats:
+        if paths["docx"].exists() and try_update_docx_fields_and_export_pdf(paths["docx"], paths["docx_pdf"]):
+            pass
+        else:
+            build_pdf_from_markdown(paths["md"], paths["docx_pdf"])
+
+    if "pptx.pdf" in formats:
+        if not paths["pptx"].exists():
+            # PDF conversion requires a PPTX source; generate it when missing.
+            build_pptx_summary(paths["md"], paths["pptx"], tool_version)
+        build_pdf_from_pptx(paths["pptx"], paths["pptx_pdf"])
+
     cleanup_old_versioned_guides(paths)
 
     print(f"Using markdown: {paths['md']}")
-    print(f"Generated: {paths['docx']}")
-    print(f"Generated: {paths['pptx']}")
-    print(f"Generated: {paths['docx_pdf']}")
-    print(f"Generated: {paths['pptx_pdf']}")
+    if "docx" in formats:
+        print(f"Generated: {paths['docx']}")
+    if "pptx" in formats:
+        print(f"Generated: {paths['pptx']}")
+    if "docx.pdf" in formats:
+        print(f"Generated: {paths['docx_pdf']}")
+    if "pptx.pdf" in formats:
+        print(f"Generated: {paths['pptx_pdf']}")
     print("User Guides updated.")
     print("README Technical Guide Links updated.")
+    return paths
+
+
+if __name__ == "__main__":
+    args = parse_args()
+    update_user_guides(set(args.formats))
