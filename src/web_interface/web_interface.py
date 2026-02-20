@@ -129,6 +129,10 @@ USER_SETTINGS_ALLOWED_KEYS = {
     "inputs_user_filter",
     "wildcard_history_inputs",
     "wildcard_history_executions",
+    "user_execution_log_auto",
+    "user_system_log_auto",
+    "admin_execution_log_auto",
+    "admin_system_log_auto",
     "admin_system_log_source",
     "admin_users_filter",
     "admin_inputs_filter",
@@ -1921,7 +1925,16 @@ def sanitize_user_settings_payload(raw_payload: Any) -> dict[str, Any]:
         if key_name not in USER_SETTINGS_ALLOWED_KEYS:
             continue
 
-        if key_name in {"profiles_audit", "frequency_audit", "export_correction_cmd", "fast_excel_export"}:
+        if key_name in {
+            "profiles_audit",
+            "frequency_audit",
+            "export_correction_cmd",
+            "fast_excel_export",
+            "user_execution_log_auto",
+            "user_system_log_auto",
+            "admin_execution_log_auto",
+            "admin_system_log_auto",
+        }:
             sanitized[key_name] = parse_bool(value)
         elif key_name == "module_inputs_map":
             sanitized[key_name] = normalize_module_inputs_map(value)
