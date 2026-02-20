@@ -89,7 +89,7 @@ th,td{border-bottom:1px solid #e3e8ee;padding:.55rem;text-align:left;font-size:.
 .form-actions button{min-width:160px}
 .module-unavailable{position:absolute;left:50%;top:100%;transform:translate(-50%, 8px);color:#c0302b;font-size:.9rem;font-weight:600}
 .run-status{position:absolute;left:16px;right:auto;bottom:4px;font-weight:700;font-size:.72rem;text-align:left}
-.status-running{color:#1b7f3a}
+.status-running{color:#2563eb}
 .status-done{color:#1b7f3a}
 .status-error{color:#c0302b}
 .input-with-button{display:flex;gap:.6rem;align-items:center}
