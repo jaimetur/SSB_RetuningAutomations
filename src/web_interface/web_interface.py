@@ -2411,7 +2411,7 @@ async def release_notes(request: Request, user=Depends(get_current_user)):
 def download_user_guide(request: Request, file_format: str, mode: str = "download"):
     def get_latest_user_guide_file(extension: str) -> Path | None:
         normalized_ext = extension.strip().lstrip(".").lower()
-        if normalized_ext not in {"md", "docx", "pptx", "pdf"}:
+        if normalized_ext not in {"md", "docx", "pptx", "pdf", "docx.pdf", "pptx.pdf"}:
             return None
         pattern = f"User-Guide-*.{normalized_ext}"
         candidates = sorted((path for path in HELP_DIR.glob(pattern) if path.is_file()), key=lambda path: path.stat().st_mtime, reverse=True)
@@ -2585,7 +2585,7 @@ def download_user_guide(request: Request, file_format: str, mode: str = "downloa
 """
         return HTMLResponse(html_doc)
 
-    if normalized_mode == "view" and normalized_format == "pdf":
+    if normalized_mode == "view" and normalized_format in {"pdf", "docx.pdf", "pptx.pdf"}:
         return FileResponse(
             guide_path,
             media_type="application/pdf",
