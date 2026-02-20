@@ -2230,11 +2230,13 @@ def build_cli_command(payload: dict[str, Any]) -> list[str]:
 
 
 OPENAPI_TAGS = [
+    {"name": "System", "description": "Service health and system-level diagnostics."},
     {"name": "Authentication", "description": "Session and account operations."},
-    {"name": "Execution", "description": "Start runs and update user execution settings."},
+    {"name": "Configuration", "description": "Read, update, and export persisted tool configuration."},
+    {"name": "Documentation", "description": "Access API-adjacent product documentation resources."},
+    {"name": "Execution", "description": "Start and manage execution workflows."},
     {"name": "Inputs", "description": "Upload and manage reusable input datasets."},
     {"name": "Runs & Logs", "description": "Download run outputs and inspect logs."},
-    {"name": "Configuration", "description": "Read and export persisted tool configuration."},
     {"name": "Administration", "description": "Administrative endpoints (grouped at the end)."},
 ]
 
@@ -2586,7 +2588,7 @@ def get_latest_user_guide_file(extension: str) -> Path | None:
     return candidates[0] if candidates else None
 
 
-@app.get("/documentation/user-guide/{file_format}", tags=["Configuration"])
+@app.get("/documentation/user-guide/{file_format}", tags=["Documentation"])
 def download_user_guide(request: Request, file_format: str, mode: str = "download"):
     try:
         require_user(request)
@@ -2874,7 +2876,7 @@ def run_module(
 
 
 
-@app.post("/settings/update", tags=["Execution"])
+@app.post("/settings/update", tags=["Configuration"])
 async def update_settings(request: Request):
     try:
         user = require_user(request)
