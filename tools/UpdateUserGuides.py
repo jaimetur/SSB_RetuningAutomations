@@ -1572,7 +1572,18 @@ def update_user_guides(formats: set[str]) -> dict[str, Path]:
         if not paths["pptx"].exists():
             # PDF conversion requires a PPTX source; generate it when missing.
             build_pptx_summary(paths["md"], paths["pptx"], tool_version)
+        before_exists = paths["pptx_pdf"].exists()
+        before_mtime = paths["pptx_pdf"].stat().st_mtime if before_exists else None
         pptx_pdf_generated = build_pdf_from_pptx(paths["pptx"], paths["pptx_pdf"])
+        after_exists = paths["pptx_pdf"].exists()
+        after_mtime = paths["pptx_pdf"].stat().st_mtime if after_exists else None
+        if (not pptx_pdf_generated) and (not after_exists):
+            raise RuntimeError(
+                f"Failed to generate {paths['pptx_pdf']}. "
+                "Install Microsoft PowerPoint (Windows) or LibreOffice/soffice in PATH."
+            )
+        if after_exists and before_exists and before_mtime == after_mtime and not pptx_pdf_generated:
+            print("	[WARN] PPTX PDF conversion did not refresh the existing file; keeping previous artifact.")
 
     cleanup_old_versioned_guides(paths)
 
@@ -1584,8 +1595,10 @@ def update_user_guides(formats: set[str]) -> dict[str, Path]:
     if "docx.pdf" in formats:
         print(f"Generated: {paths['docx_pdf']}")
     if "pptx.pdf" in formats:
-        if pptx_pdf_generated or paths["pptx_pdf"].exists():
+        if pptx_pdf_generated:
             print(f"Generated: {paths['pptx_pdf']}")
+        elif paths["pptx_pdf"].exists():
+            print(f"Generated (existing): {paths['pptx_pdf']}")
         else:
             print(f"Skipped (not generated): {paths['pptx_pdf']}")
     print("User Guides updated.")
