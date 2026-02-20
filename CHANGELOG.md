@@ -22,6 +22,8 @@
   - Made admin processing limits and database backups settings global and not user-dependent.
   - Added new table `app_settings` to store global admin settings (e.g., processing limits, database backups).
   - Auto Sanitize user_settings to remove obsolete keys.
+  - Updated system config buttons to load/save JSON system settings.
+  - Adjusted session idle policy to activity-based timeout.
 
 - #### 🚀 Enhancements:
   - Enhanced the script to generate user guide from Markdown files to support images and links.
@@ -31,6 +33,13 @@
   - Login username matching is now case-insensitive, so users can authenticate regardless of uppercase/lowercase username input. 
   - Web-Access log now show login lines in green color, logout lines in red color and request access lines in blue color for a better visualization.
   - Highlight connected users rows in admin panel.
+  - Adjusted admin web-access log colors and mobile user actions layout
+  - Stop queued/running tasks before deleting executions.
+  - Changed toggle panels icons and main pannel buttons.
+  - Set Stop Selected execution buttons to light red.
+  - Aligned main panel run status labels to left and center on mobile.
+  - Persist auto-refresh checkbox states in user settings.
+  - Use distinct color for running/queued status badge and center them on the bottom side of the main panel.
 
 - #### 🐛 Bug fixes:
 
@@ -38,6 +47,9 @@
   - Updated Documentation to include `SSB Retuning Automations - Interfaces` section into the User Guide.
   - Adjusted PPT image layouts and placeholders by section.
   - Improved Markdown viewer styling to match GitHub.
+  - Renamed API docs button to Web API
+  - Reorganized FastAPI sections and endpoint tags.
+  - Renamed FastAPI methods to allign with its endpoints.
 
 ---
 
