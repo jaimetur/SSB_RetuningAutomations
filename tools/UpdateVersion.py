@@ -61,10 +61,10 @@ def clear_console() -> None:
         pass
 
 
-def run_script(path: Path) -> None:
+def run_script(path: Path, *args: str) -> None:
     # NOTE: No capturamos stdout/stderr -> se verán en la consola (PyCharm/terminal).
     result = subprocess.run(
-        [sys.executable, str(path)],
+        [sys.executable, str(path), *args],
         cwd=str(ROOT),
         text=True,
         encoding="utf-8",
@@ -79,7 +79,7 @@ def main() -> None:
 
     root = tk.Tk()
     root.title("Update TOOL_VERSION / TOOL_DATE")
-    root.geometry("520x220")
+    root.geometry("700x330")
     root.resizable(False, False)
 
     frame = tk.Frame(root, padx=16, pady=16)
@@ -95,6 +95,22 @@ def main() -> None:
     tk.Label(frame, text="New TOOL_DATE (YYYY-MM-DD):", anchor="w").pack(fill="x")
     date_var = tk.StringVar(value=current_date)
     tk.Entry(frame, textvariable=date_var).pack(fill="x", pady=(0, 12))
+
+    tk.Label(frame, text="User guide formats to update:", anchor="w").pack(fill="x")
+    formats_frame = tk.Frame(frame)
+    formats_frame.pack(fill="x", pady=(4, 12))
+
+    format_vars: dict[str, tk.BooleanVar] = {
+        "pptx": tk.BooleanVar(value=True),
+        "pptx.pdf": tk.BooleanVar(value=True),
+        "docx": tk.BooleanVar(value=True),
+        "docx.pdf": tk.BooleanVar(value=True),
+    }
+
+    tk.Checkbutton(formats_frame, text=".pptx", variable=format_vars["pptx"]).grid(row=0, column=0, sticky="w", padx=(0, 12))
+    tk.Checkbutton(formats_frame, text=".pptx.pdf", variable=format_vars["pptx.pdf"]).grid(row=0, column=1, sticky="w", padx=(0, 12))
+    tk.Checkbutton(formats_frame, text=".docx", variable=format_vars["docx"]).grid(row=0, column=2, sticky="w", padx=(0, 12))
+    tk.Checkbutton(formats_frame, text=".docx.pdf", variable=format_vars["docx.pdf"]).grid(row=0, column=3, sticky="w")
 
     def validate_inputs() -> tuple[str, str] | None:
         new_version = version_var.get().strip()
@@ -119,8 +135,26 @@ def main() -> None:
         write_version_date(fresh, new_version, new_date)
         return new_version, new_date
 
+    def selected_guide_formats() -> list[str] | None:
+        selected = [fmt for fmt, var in format_vars.items() if var.get()]
+        if not selected:
+            messagebox.showerror("No formats selected", "Select at least one user guide format.", parent=root)
+            return None
+        return selected
+
+    def on_update_version_date() -> None:
+        clear_console()
+        applied = apply_version_date_from_inputs()
+        if not applied:
+            return
+        root.destroy()
+
     def on_update_all() -> None:
         clear_console()
+
+        selected_formats = selected_guide_formats()
+        if not selected_formats:
+            return
 
         applied = apply_version_date_from_inputs()
         if not applied:
@@ -129,7 +163,7 @@ def main() -> None:
         try:
             run_script(DOWNLOAD_SCRIPT)
             print("")
-            run_script(GUIDES_SCRIPT)
+            run_script(GUIDES_SCRIPT, "--formats", *selected_formats)
         except Exception as exc:
             messagebox.showerror("Script execution error", str(exc), parent=root)
             return
@@ -139,12 +173,12 @@ def main() -> None:
     def on_generate_guides() -> None:
         clear_console()
 
-        applied = apply_version_date_from_inputs()
-        if not applied:
+        selected_formats = selected_guide_formats()
+        if not selected_formats:
             return
 
         try:
-            run_script(GUIDES_SCRIPT)
+            run_script(GUIDES_SCRIPT, "--formats", *selected_formats)
         except Exception as exc:
             messagebox.showerror("Script execution error", str(exc), parent=root)
             return
@@ -153,10 +187,6 @@ def main() -> None:
 
     def on_update_download_links() -> None:
         clear_console()
-
-        applied = apply_version_date_from_inputs()
-        if not applied:
-            return
 
         try:
             run_script(DOWNLOAD_SCRIPT)
@@ -169,7 +199,8 @@ def main() -> None:
     buttons = tk.Frame(frame)
     buttons.pack(fill="x")
     tk.Button(buttons, text="Cancel", command=root.destroy).pack(side="right", padx=(8, 0))
-    tk.Button(buttons, text="Update Download Links", command=on_update_download_links).pack(side="left")
+    tk.Button(buttons, text="Update Version/Date", command=on_update_version_date).pack(side="left")
+    tk.Button(buttons, text="Update Download Links", command=on_update_download_links).pack(side="left", padx=(8, 0))
     tk.Button(buttons, text="Update User Guides", command=on_generate_guides).pack(side="left", padx=(8, 0))
     tk.Button(buttons, text="Update All", command=on_update_all).pack(side="right")
 
