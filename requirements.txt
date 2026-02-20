@@ -9,6 +9,11 @@ python-pptx
 # Optional (recommended for best performance and CLI experience)
 python-dateutil>=2.8.2
 
+# NOTE: `.pptx.pdf` conversion in UpdateUserGuides requires a SYSTEM dependency:
+# - Windows: Microsoft PowerPoint installed (COM automation)
+# - Linux/macOS: LibreOffice (`soffice` binary in PATH)
+# This cannot be installed via pip in requirements.txt.
+
 # Only necesary to generate User_Guide
 python-docx>=1.1.2
 markdown>=3.6
