@@ -25,13 +25,15 @@
   - Compact GUI dialog by reducing `Allowed SSB & ARFCN` section to adapt the resolution for a small screen.
   - GUI dialog now has a dimension of 940x770 pixels.
   - Login username matching is now case-insensitive, so users can authenticate regardless of uppercase/lowercase username input. 
-  - Web-Access log now show login in green, logout in red and request access in blue color for a better visualization.
+  - Web-Access log now show login lines in green color, logout lines in red color and request access lines in blue color for a better visualization.
+  - Highlight connected users rows in admin panel.
 
 - #### 🐛 Bug fixes:
 
 - #### 📚 Documentation:
   - Updated Documentation to include `SSB Retuning Automations - Interfaces` section into the User Guide.
   - Adjusted PPT image layouts and placeholders by section.
+  - Improved Markdown viewer styling to match GitHub.
 
 ---
 

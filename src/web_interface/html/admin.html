@@ -103,7 +103,13 @@
                   <option value="0" {% if not u.active %}selected{% endif %}>inactive</option>
                 </select>
             </td>
-            <td class="cell-middle">{{ "connected" if u.connected else "not connected" }}</td>
+            <td class="cell-middle">
+              {% if u.connected %}
+                <span class="connected-users-badge">connected</span>
+              {% else %}
+                <span class="disconnected-users-badge">disconnected</span>
+              {% endif %}
+            </td>
             <td class="cell-middle cell-nowrap">{{ u.last_connection }}</td>
             <td class="cell-middle">{{ u.total_login_hms }}</td>
             <td class="cell-middle">{{ u.total_execution_hms }}</td>

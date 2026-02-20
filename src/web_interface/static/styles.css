@@ -43,8 +43,8 @@ button:disabled:hover{background:#9aa4b2}
 .admin-limits-form{align-items:flex-end}
 .table-scroll{overflow-x:auto}
 table{min-width:1100px}
-.password-input{width:110px}
-.user-input{width:125px}
+.password-input{width:100px}
+.user-input{width:100px}
 .storage-cell{min-width:120px}
 .btn{padding:.5rem .9rem;border-radius:8px;border:none;color:#fff;cursor:pointer}
 .btn:disabled{background:#9aa4b2;cursor:not-allowed}
@@ -185,13 +185,24 @@ th,td{border-bottom:1px solid #e3e8ee;padding:.55rem;text-align:left;font-size:.
 
 .connected-users-badge {
   display: inline-block;
-  margin-left: 0.5rem;
+  margin-left: 0.05rem;
   padding: 0.15rem 0.5rem;
   border-radius: 999px;
   background: #e8f5e9;
   color: #1b5e20;
   font-size: 0.85rem;
   font-weight: 600;
+}
+
+.disconnected-users-badge {
+  display: inline-block;
+  margin-left: 0.05rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  background: #e5e7eb;
+  color: #374151;
+  font-size: 0.85rem;
+  font-weight: 400;
 }
 
 .cell-nowrap{white-space:nowrap}
