@@ -194,4 +194,8 @@ th,td{border-bottom:1px solid #e3e8ee;padding:.55rem;text-align:left;font-size:.
   font-weight: 600;
 }
 
+#users_panel_table tbody tr[data-user-connected="1"] {
+  background: #e8f5e9;
+}
+
 .cell-nowrap{white-space:nowrap}
