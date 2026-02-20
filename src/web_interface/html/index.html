@@ -46,8 +46,8 @@
         </div>
         <div class="module-actions">
 <!--          <div class="btn-row">-->
-            <button type="button" class="browse-button" id="load_config_button">Load config.cfg</button>
-            <button type="button" class="browse-button" id="export_config_button">Export config.cfg</button>
+            <button type="button" class="browse-button" id="load_config_button">Load System Config</button>
+            <button type="button" class="browse-button" id="export_config_button">Save System Config</button>
 <!--          </div>-->
           <button type="button" class="btn btn-danger" id="change_password_button">Change Password</button>
           <button type="button" id="toggle_module_panel" class="panel-toggle" aria-label="Collapse module panel" title="Collapse/Expand">▲</button>
@@ -95,7 +95,7 @@
           <input type="file" id="input_zip" class="hidden" accept=".zip,.log,.txt" multiple />
           <input type="file" id="input_pre_zip" class="hidden" accept=".zip,.log,.txt" multiple />
           <input type="file" id="input_post_zip" class="hidden" accept=".zip,.log,.txt" multiple />
-          <input type="file" id="config_picker" class="hidden" accept=".cfg" />
+          <input type="file" id="config_picker" class="hidden" accept=".json,application/json" />
         </div>
 
         <div class="form-section">
@@ -1299,24 +1299,6 @@
       }[char]));
     }
 
-    function parseIni(content) {
-      const result = {};
-      let currentSection = "";
-      content.split(/\r?\n/).forEach((line) => {
-        const trimmed = line.trim();
-        if (!trimmed || trimmed.startsWith(";") || trimmed.startsWith("#")) return;
-        const sectionMatch = trimmed.match(/^\[(.+)\]$/);
-        if (sectionMatch) { currentSection = sectionMatch[1].trim(); return; }
-        const equalsIndex = trimmed.indexOf("=");
-        if (equalsIndex === -1) return;
-        const key = trimmed.slice(0, equalsIndex).trim();
-        const value = trimmed.slice(equalsIndex + 1).trim();
-        if (!result[currentSection]) result[currentSection] = {};
-        result[currentSection][key] = value;
-      });
-      return result;
-    }
-
     function parseCsv(value) {
       return String(value || "").split(",").map((item) => item.trim()).filter((item) => item);
     }
@@ -1735,15 +1717,31 @@
       const file = configPicker.files[0];
       if (!file) return;
       const reader = new FileReader();
-      reader.onload = () => {
-        const parsed = parseIni(reader.result || "");
-        applyConfigValues(parsed);
-        scheduleAutoSave();
+      reader.onload = async () => {
+        try {
+          const parsed = JSON.parse(reader.result || "{}");
+          const response = await fetch("/system-config/apply", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(parsed)
+          });
+          if (!response.ok) throw new Error("invalid_response");
+          const data = await response.json();
+          applyConfigValues(data);
+        } catch (_error) {
+          showModal({
+            title: "Invalid file",
+            message: "Unable to load system configuration. Please choose a valid JSON file.",
+            confirmText: "Accept"
+          });
+        } finally {
+          configPicker.value = "";
+        }
       };
       reader.readAsText(file);
     });
 
-    exportConfigButton.addEventListener("click", () => { window.location.href = "/config/export"; });
+    exportConfigButton.addEventListener("click", () => { window.location.href = "/system-config/export"; });
 
     changePasswordButton.addEventListener("click", async () => {
       const response = await showModal({
