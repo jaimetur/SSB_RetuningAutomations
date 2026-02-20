@@ -7,7 +7,8 @@
   
 - #### 🚨 Breaking Changes:
   - The web interface storage layout was refactored so the SQLite database is now under data/db and system logs under data/system_logs, with automatic migration from legacy data/* locations when files already exist. 
-  - All existing Username have been migrated from Ericsson Mail format to Ericsson Signum format
+  - All existing Username have been migrated from Ericsson Mail format to Ericsson Signum format.
+  - Moved the settings for fields (n77_, allowed_n77_, ca_freq_filters, cc_freq_filters, network_frequencies) out of user_settings: they are now treated as global in admin_settings, and get_admin_settings()/save_admin_settings() now read and persist them there.
 
 - #### 🌟 New Features:
   - Automatic User renaming in Admin panel → When a change in Username is detecte, the tool now migrates automatically user-owned filesystem/database references (inputs, run paths, payload JSON paths) and renames upload/output folders atomically with rollback protection on errors. 
