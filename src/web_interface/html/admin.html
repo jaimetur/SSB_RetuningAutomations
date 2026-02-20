@@ -504,10 +504,8 @@
     const dbBackupAutoPathInput = document.getElementById("db_backup_auto_path");
     const inputsTotalSizeLabel = document.getElementById("inputs_total_size");
     const runsTotalSizeLabel = document.getElementById("runs_total_size");
-    const ADMIN_EXECUTION_AUTO_CHECKED_KEY = "admin_execution_log_auto_checked";
-    const ADMIN_SYSTEM_LOG_AUTO_CHECKED_KEY = "admin_system_log_auto_checked";
-    let adminPersistedExecutionAutoChecked = false;
-    let adminPersistedSystemLogAutoChecked = false;
+    let adminPersistedExecutionAutoChecked = {{ (user_settings.get("admin_execution_log_auto", False) if user_settings else False) | tojson }};
+    let adminPersistedSystemLogAutoChecked = {{ (user_settings.get("admin_system_log_auto", False) if user_settings else False) | tojson }};
     const persistedPanelStates = {{ (user_settings.get("ui_panels", {}) if user_settings else {}) | tojson }};
     const persistedAdminSystemLogSource = {{ (user_settings.get("admin_system_log_source") if user_settings else "app") | tojson }};
     const persistedAdminUsersFilter = {{ (user_settings.get("admin_users_filter") if user_settings else "all") | tojson }};
@@ -517,13 +515,6 @@
     let persistedInputsWildcardHistory = {{ (user_settings.get("wildcard_history_inputs", []) if user_settings else []) | tojson }};
     let persistedExecutionsWildcardHistory = {{ (user_settings.get("wildcard_history_executions", []) if user_settings else []) | tojson }};
     let panelStateSaveTimeout = null;
-    try {
-      adminPersistedExecutionAutoChecked = window.sessionStorage?.getItem(ADMIN_EXECUTION_AUTO_CHECKED_KEY) === "1";
-      adminPersistedSystemLogAutoChecked = window.sessionStorage?.getItem(ADMIN_SYSTEM_LOG_AUTO_CHECKED_KEY) === "1";
-    } catch (_error) {
-      adminPersistedExecutionAutoChecked = false;
-      adminPersistedSystemLogAutoChecked = false;
-    }
 
     function savePanelStatesOnly() {
       if (panelStateSaveTimeout) clearTimeout(panelStateSaveTimeout);
@@ -597,11 +588,11 @@
 
     function persistAdminExecutionAutoCheckedState(isChecked) {
       adminPersistedExecutionAutoChecked = Boolean(isChecked);
-      try {
-        window.sessionStorage?.setItem(ADMIN_EXECUTION_AUTO_CHECKED_KEY, adminPersistedExecutionAutoChecked ? "1" : "0");
-      } catch (_error) {
-        // ignore storage errors
-      }
+      fetch("/settings/update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ admin_execution_log_auto: adminPersistedExecutionAutoChecked })
+      }).catch(() => {});
     }
 
     function setAdminExecutionAutoChecked(isChecked) {
@@ -612,11 +603,11 @@
 
     function persistAdminSystemLogAutoCheckedState(isChecked) {
       adminPersistedSystemLogAutoChecked = Boolean(isChecked);
-      try {
-        window.sessionStorage?.setItem(ADMIN_SYSTEM_LOG_AUTO_CHECKED_KEY, adminPersistedSystemLogAutoChecked ? "1" : "0");
-      } catch (_error) {
-        // ignore storage errors
-      }
+      fetch("/settings/update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ admin_system_log_auto: adminPersistedSystemLogAutoChecked })
+      }).catch(() => {});
     }
 
     if (adminExecutionLogAuto) adminExecutionLogAuto.checked = adminPersistedExecutionAutoChecked;

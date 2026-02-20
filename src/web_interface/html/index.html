@@ -465,21 +465,9 @@
     const updateNetworkFrequenciesModule = "update-network-frequencies";
     let lastAppliedNetworkFrequenciesRunMarker = "";
     let networkFrequenciesRefreshInFlight = null;
-    const EXECUTION_AUTO_ENABLE_PENDING_KEY = "execution_log_auto_enable_pending";
-    const EXECUTION_AUTO_CHECKED_KEY = "execution_log_auto_checked";
-    const SYSTEM_LOG_AUTO_CHECKED_KEY = "system_log_auto_checked";
     let pendingExecutionAutoEnable = false;
-    let persistedExecutionAutoChecked = false;
-    let persistedSystemLogAutoChecked = false;
-    try {
-      pendingExecutionAutoEnable = window.sessionStorage?.getItem(EXECUTION_AUTO_ENABLE_PENDING_KEY) === "1";
-      persistedExecutionAutoChecked = window.sessionStorage?.getItem(EXECUTION_AUTO_CHECKED_KEY) === "1";
-      persistedSystemLogAutoChecked = window.sessionStorage?.getItem(SYSTEM_LOG_AUTO_CHECKED_KEY) === "1";
-    } catch (_error) {
-      pendingExecutionAutoEnable = false;
-      persistedExecutionAutoChecked = false;
-      persistedSystemLogAutoChecked = false;
-    }
+    let persistedExecutionAutoChecked = {{ (settings.get("user_execution_log_auto", False) if settings else False) | tojson }};
+    let persistedSystemLogAutoChecked = {{ (settings.get("user_system_log_auto", False) if settings else False) | tojson }};
     const inputsTotalSizeLabel = document.getElementById("inputs_total_size");
     const runsTotalSizeLabel = document.getElementById("runs_total_size");
     const currentUsername = "{{ user.username }}";
@@ -528,29 +516,19 @@
 
     function markExecutionAutoEnablePending() {
       pendingExecutionAutoEnable = true;
-      try {
-        window.sessionStorage?.setItem(EXECUTION_AUTO_ENABLE_PENDING_KEY, "1");
-      } catch (_error) {
-        // ignore storage errors
-      }
     }
 
     function clearExecutionAutoEnablePending() {
       pendingExecutionAutoEnable = false;
-      try {
-        window.sessionStorage?.removeItem(EXECUTION_AUTO_ENABLE_PENDING_KEY);
-      } catch (_error) {
-        // ignore storage errors
-      }
     }
 
     function persistExecutionAutoCheckedState(isChecked) {
       persistedExecutionAutoChecked = Boolean(isChecked);
-      try {
-        window.sessionStorage?.setItem(EXECUTION_AUTO_CHECKED_KEY, persistedExecutionAutoChecked ? "1" : "0");
-      } catch (_error) {
-        // ignore storage errors
-      }
+      fetch("/settings/update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_execution_log_auto: persistedExecutionAutoChecked })
+      }).catch(() => {});
     }
 
     function setExecutionAutoChecked(isChecked) {
@@ -565,11 +543,11 @@
 
     function persistSystemLogAutoCheckedState(isChecked) {
       persistedSystemLogAutoChecked = Boolean(isChecked);
-      try {
-        window.sessionStorage?.setItem(SYSTEM_LOG_AUTO_CHECKED_KEY, persistedSystemLogAutoChecked ? "1" : "0");
-      } catch (_error) {
-        // ignore storage errors
-      }
+      fetch("/settings/update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_system_log_auto: persistedSystemLogAutoChecked })
+      }).catch(() => {});
     }
 
     if (systemLogAuto) {
