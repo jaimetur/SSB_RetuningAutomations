@@ -1725,6 +1725,36 @@ def load_persistent_config() -> dict[str, str]:
     return load_cfg_values(CONFIG_PATH, CONFIG_SECTION, CFG_FIELD_MAP, *CFG_FIELDS)
 
 
+def build_system_config_payload() -> dict[str, dict[str, str]]:
+    return {CONFIG_SECTION: load_persistent_config()}
+
+
+def apply_system_config_payload(payload: Any) -> dict[str, str]:
+    if not isinstance(payload, dict):
+        raise ValueError("invalid_payload")
+
+    source = payload.get(CONFIG_SECTION) if isinstance(payload.get(CONFIG_SECTION), dict) else payload
+    if not isinstance(source, dict):
+        raise ValueError("invalid_payload")
+
+    current_cfg = load_persistent_config()
+    persist_kwargs: dict[str, str] = {}
+    for field in CFG_FIELDS:
+        if field in source:
+            persist_kwargs[field] = str(source.get(field, "") or "")
+        else:
+            persist_kwargs[field] = str(current_cfg.get(field, "") or "")
+
+    save_cfg_values(
+        config_dir=CONFIG_DIR,
+        config_path=CONFIG_PATH,
+        config_section=CONFIG_SECTION,
+        cfg_field_map=CFG_FIELD_MAP,
+        **persist_kwargs,
+    )
+    return load_persistent_config()
+
+
 GLOBAL_RUNTIME_FORM_KEYS = (
     "n77_ssb_pre",
     "n77_ssb_post",
@@ -2756,6 +2786,32 @@ def export_config():
     if CONFIG_PATH.exists():
         return FileResponse(CONFIG_PATH, filename="config.cfg")
     return PlainTextResponse("", media_type="text/plain")
+
+
+@app.get("/system-config/export", tags=["Configuration"])
+def export_system_config():
+    payload = build_system_config_payload()
+    return JSONResponse(content=payload, headers=NO_CACHE_HEADERS)
+
+
+@app.post("/system-config/apply", tags=["Configuration"])
+async def apply_system_config(request: Request):
+    try:
+        require_user(request)
+    except PermissionError:
+        return JSONResponse({"ok": False}, status_code=401)
+
+    try:
+        payload = await request.json()
+    except Exception:
+        return JSONResponse({"ok": False, "error": "invalid_json"}, status_code=400)
+
+    try:
+        updated_config = apply_system_config_payload(payload)
+    except ValueError:
+        return JSONResponse({"ok": False, "error": "invalid_payload"}, status_code=400)
+
+    return JSONResponse({CONFIG_SECTION: updated_config}, headers=NO_CACHE_HEADERS)
 
 
 
