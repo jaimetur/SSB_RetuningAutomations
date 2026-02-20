@@ -1463,14 +1463,53 @@ def build_pptx_summary(md_file: Path, pptx_file: Path, version: str) -> None:
 
 
 
-def build_pdf_from_pptx(pptx_file: Path, pdf_file: Path) -> None:
-    """Best-effort PPTX -> PDF conversion using LibreOffice when available."""
+def try_export_pptx_pdf_windows(pptx_file: Path, pdf_file: Path) -> bool:
+    """Best effort on Windows: export PPTX to PDF through PowerPoint automation."""
+    if os.name != "nt":
+        return False
+
+    ps_script = f"""
+$ErrorActionPreference = 'Stop'
+$ppt = $null
+try {{
+    $pptPath = '{str(pptx_file)}'
+    $pdfPath = '{str(pdf_file)}'
+
+    $ppt = New-Object -ComObject PowerPoint.Application
+    $presentation = $ppt.Presentations.Open($pptPath, $false, $false, $false)
+    # 32 = ppSaveAsPDF
+    $presentation.SaveAs($pdfPath, 32)
+    $presentation.Close()
+}} catch {{
+    Write-Error $_.Exception.Message
+    exit 1
+}} finally {{
+    if ($ppt -ne $null) {{ $ppt.Quit() }}
+}}
+"""
+
+    result = subprocess.run(
+        ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps_script],
+        cwd=str(ROOT),
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        capture_output=True,
+    )
+    return result.returncode == 0 and pdf_file.exists()
+
+
+def build_pdf_from_pptx(pptx_file: Path, pdf_file: Path) -> bool:
+    """Best-effort PPTX -> PDF conversion using PowerPoint (Windows) or LibreOffice."""
     print("	Converting PPTX to PDF...")
     if not pptx_file.exists():
         raise FileNotFoundError(f"PPTX file not found: {pptx_file}")
 
     output_dir = pdf_file.parent
     output_dir.mkdir(parents=True, exist_ok=True)
+
+    if try_export_pptx_pdf_windows(pptx_file, pdf_file):
+        return True
 
     commands: list[list[str]] = []
     soffice = shutil.which("soffice")
@@ -1486,11 +1525,13 @@ def build_pdf_from_pptx(pptx_file: Path, pdf_file: Path) -> None:
             result = subprocess.run(cmd, capture_output=True, text=True, check=False)
             if result.returncode == 0 and generated_tmp_pdf.exists():
                 generated_tmp_pdf.replace(pdf_file)
-                return
+                return True
         except OSError:
             continue
 
-    print("	[WARN] Unable to convert PPTX to PDF (LibreOffice not available).")
+    print("	[WARN] Unable to convert PPTX to PDF (PowerPoint/LibreOffice not available).")
+    return False
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Update user guide artifacts.")
@@ -1526,11 +1567,12 @@ def update_user_guides(formats: set[str]) -> dict[str, Path]:
         else:
             build_pdf_from_markdown(paths["md"], paths["docx_pdf"])
 
+    pptx_pdf_generated = False
     if "pptx.pdf" in formats:
         if not paths["pptx"].exists():
             # PDF conversion requires a PPTX source; generate it when missing.
             build_pptx_summary(paths["md"], paths["pptx"], tool_version)
-        build_pdf_from_pptx(paths["pptx"], paths["pptx_pdf"])
+        pptx_pdf_generated = build_pdf_from_pptx(paths["pptx"], paths["pptx_pdf"])
 
     cleanup_old_versioned_guides(paths)
 
@@ -1542,7 +1584,10 @@ def update_user_guides(formats: set[str]) -> dict[str, Path]:
     if "docx.pdf" in formats:
         print(f"Generated: {paths['docx_pdf']}")
     if "pptx.pdf" in formats:
-        print(f"Generated: {paths['pptx_pdf']}")
+        if pptx_pdf_generated or paths["pptx_pdf"].exists():
+            print(f"Generated: {paths['pptx_pdf']}")
+        else:
+            print(f"Skipped (not generated): {paths['pptx_pdf']}")
     print("User Guides updated.")
     print("README Technical Guide Links updated.")
     return paths
