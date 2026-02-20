@@ -526,6 +526,25 @@
     const selectedInputsPreField = document.getElementById("selected_inputs_pre");
     const selectedInputsPostField = document.getElementById("selected_inputs_post");
 
+    let sessionActivityPingInFlight = false;
+    function notifySessionActivity() {
+      if (sessionActivityPingInFlight) return;
+      sessionActivityPingInFlight = true;
+      fetch("/session/activity", { method: "POST" })
+        .catch(() => {})
+        .finally(() => {
+          sessionActivityPingInFlight = false;
+        });
+    }
+
+    document.addEventListener("click", (event) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      if (target.closest("button") || target.closest("a") || target.closest("input[type='submit']")) {
+        notifySessionActivity();
+      }
+    }, true);
+
     function markExecutionAutoEnablePending() {
       pendingExecutionAutoEnable = true;
       try {
