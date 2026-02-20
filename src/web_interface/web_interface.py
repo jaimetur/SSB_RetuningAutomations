@@ -2007,1295 +2007,6 @@ def build_cli_command(payload: dict[str, Any]) -> list[str]:
     return cmd
 
 
-OPENAPI_TAGS = [
-    {"name": "System", "description": "Service health and system-level diagnostics."},
-    {"name": "Authentication", "description": "Session and account operations."},
-    {"name": "Configuration", "description": "Read, update, and export persisted tool configuration."},
-    {"name": "Documentation", "description": "Access API-adjacent product documentation resources."},
-    {"name": "Execution", "description": "Start and manage execution workflows."},
-    {"name": "Inputs", "description": "Upload and manage reusable input datasets."},
-    {"name": "Runs & Logs", "description": "Download run outputs and inspect logs."},
-    {"name": "Administration", "description": "Administrative endpoints (grouped at the end)."},
-]
-
-
-app = FastAPI(
-    title="SSB Retuning Automations Web Interface",
-    openapi_tags=OPENAPI_TAGS,
-    docs_url="/api",
-)
-
-
-def custom_openapi():
-    if app.openapi_schema:
-        return app.openapi_schema
-
-    schema = get_openapi(title=app.title, version="1.0.0", routes=app.routes, tags=OPENAPI_TAGS)
-    if "paths" in schema:
-        sorted_paths = sorted(schema["paths"].items(), key=lambda item: (item[0].startswith("/admin"), item[0]))
-        schema["paths"] = dict(sorted_paths)
-    app.openapi_schema = schema
-    return app.openapi_schema
-
-
-app.openapi = custom_openapi
-app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
-app.mount("/assets", StaticFiles(directory=str(PROJECT_ROOT / "assets")), name="assets")
-templates = Jinja2Templates(directory=str(BASE_DIR / "html"))
-
-
-@app.middleware("http")
-async def access_log_middleware(request: Request, call_next):
-    start = time.perf_counter()
-    response = await call_next(request)
-    elapsed_ms = (time.perf_counter() - start) * 1000
-    client = get_client_ip(request)
-    api_logger.info(
-        '[%s] - "%s %s" status=%s duration_ms=%.2f',
-        client,
-        request.method,
-        request.url.path,
-        response.status_code,
-        elapsed_ms,
-    )
-    return response
-
-
-@app.on_event("startup")
-def startup() -> None:
-    init_db()
-    sanitize_all_user_settings_rows()
-    recover_incomplete_tasks()
-    ensure_worker_started()
-    ensure_backup_worker_started()
-    queue_event.set()
-
-
-@app.get("/healthz", tags=["System"])
-def healthz():
-    try:
-        conn = get_conn()
-        conn.execute("SELECT 1").fetchone()
-        conn.close()
-        return {"status": "ok"}
-    except sqlite3.Error as exc:
-        logger.exception("Health check failed: %s", exc)
-        return JSONResponse(status_code=503, content={"status": "error", "detail": str(exc)})
-
-
-def serialize_run_row(row: dict[str, Any], run_sizes: dict[int, int]) -> dict[str, Any]:
-    data = dict(row)
-    started_at_raw = data.get("started_at")
-    data["started_at_raw"] = started_at_raw
-    started_at_epoch = 0
-    if started_at_raw:
-        try:
-            started_at_epoch = int(datetime.fromisoformat(started_at_raw).timestamp())
-        except ValueError:
-            started_at_epoch = 0
-    data["started_at_epoch"] = started_at_epoch
-    data["started_at"] = format_timestamp(data.get("started_at"))
-    data["finished_at"] = format_timestamp(data.get("finished_at"))
-    data["duration_hms"] = format_seconds_hms(data.get("duration_seconds"))
-    raw_status = (data.get("status") or "").strip().lower()
-    data["status_lower"] = "success" if raw_status == "ok" else raw_status
-    data["status_display"] = format_task_status(data.get("status") or "")
-    data["run_label"] = f"#{data.get('id')} - {data.get('module') or '—'} - {data.get('started_at') or '—'}"
-    data["size_mb"] = format_mb(run_sizes.get(int(data.get("id") or 0), 0))
-    return data
-
-
-@app.get("/", response_class=HTMLResponse, tags=["Execution"])
-def index(request: Request):
-    user = get_current_user(request)
-    if user is None:
-        return RedirectResponse("/login", status_code=302)
-
-    config_values = load_persistent_config()
-    user_settings = load_user_settings(user["id"])
-    module_value = user_settings.get("module") or "configuration-audit"
-    settings = build_settings_defaults(module_value, config_values)
-    admin_settings = get_admin_settings()
-    for key in GLOBAL_RUNTIME_FORM_KEYS:
-        settings[key] = str(admin_settings.get(key, settings.get(key, "")) or "")
-    tool_meta = load_tool_metadata()
-    network_frequencies = load_network_frequencies()
-    settings.update(user_settings)
-    settings["module"] = module_value
-    for key in GLOBAL_RUNTIME_FORM_KEYS:
-        settings[key] = str(admin_settings.get(key, settings.get(key, "")) or "")
-    module_inputs_map = normalize_module_inputs_map(settings.get("module_inputs_map"))
-    current_module_inputs = module_inputs_map.get(module_value, {})
-    settings["input"] = str(current_module_inputs.get("input", settings.get("input", "")) or "")
-    settings["input_pre"] = str(current_module_inputs.get("input_pre", settings.get("input_pre", "")) or "")
-    settings["input_post"] = str(current_module_inputs.get("input_post", settings.get("input_post", "")) or "")
-    settings["module_inputs_map"] = module_inputs_map
-    cleanup_stale_runs_for_user(user["id"])
-
-    conn = get_conn()
-    latest_runs = conn.execute(
-        """
-        SELECT tr.id, tr.user_id, u.username, tr.module, tr.tool_version, tr.input_name, tr.status, tr.started_at, tr.finished_at, tr.duration_seconds, tr.output_zip, tr.output_log_file
-        FROM task_runs tr
-        JOIN users u ON u.id = tr.user_id
-        ORDER BY tr.id DESC
-        """
-    ).fetchall()
-    latest_runs = [dict(row) for row in latest_runs]
-
-    all_runs = conn.execute("SELECT id, status, input_dir, output_dir, output_zip FROM task_runs").fetchall()
-    conn.close()
-
-    run_sizes, total_bytes = compute_runs_size(all_runs)
-
-    latest_runs = [serialize_run_row(row, run_sizes) for row in latest_runs]
-
-    total_size_mb = format_mb(total_bytes)
-    input_items = list_inputs_repository()
-    input_uploaders = list_inputs_uploaders()
-    inputs_total_size = get_inputs_repository_total_size()
-
-    return templates.TemplateResponse(
-        "index.html",
-        {
-            "request": request,
-            "user": user,
-            "module_options": MODULE_OPTIONS,
-            "settings": settings,
-            "module_inputs_map": module_inputs_map,
-            "latest_runs": latest_runs,
-            "tool_meta": tool_meta,
-            "network_frequencies": network_frequencies,
-            "total_runs_size": total_size_mb,
-            "input_items": input_items,
-            "input_uploaders": input_uploaders,
-            "inputs_total_size": inputs_total_size,
-            "runs_users": sorted({user["username"], *{str(row.get("username") or "") for row in latest_runs if row.get("username")}}),
-        },
-    )
-
-
-def list_request_access_admin_contacts() -> list[str]:
-    conn = get_conn()
-    rows = conn.execute(
-        """
-        SELECT username
-        FROM users
-        WHERE role = 'admin' AND LOWER(username) != 'admin'
-        ORDER BY username COLLATE NOCASE ASC
-        """
-    ).fetchall()
-    conn.close()
-    return [str(row["username"]) for row in rows if row["username"]]
-
-
-@app.get("/login", response_class=HTMLResponse, tags=["Authentication"])
-def login_get(request: Request):
-    return templates.TemplateResponse(
-        "login.html",
-        {
-            "request": request,
-            "error": "",
-            "request_access_success": False,
-            "request_access_message": "",
-            "request_access_admin_contacts": list_request_access_admin_contacts(),
-            "request_access_reason": "",
-            "request_access_username": "",
-        },
-    )
-
-
-@app.post("/login", response_class=HTMLResponse, tags=["Authentication"])
-def login_post(request: Request, username: str = Form(...), password: str = Form(...)):
-    conn = get_conn()
-    user = conn.execute(
-        "SELECT * FROM users WHERE LOWER(username) = LOWER(?) AND active = 1", (username.strip(),)
-    ).fetchone()
-    try:
-        verified = user and pwd_context.verify(password, user["password_hash"])
-    except (ValueError, TypeError):
-        verified = False
-    if not verified:
-        web_access_logger.warning(
-            "login failed user=%s ip=%s",
-            username.strip() or "unknown",
-            get_client_ip(request),
-        )
-        conn.close()
-        return templates.TemplateResponse(
-            "login.html",
-            {
-                "request": request,
-                "error": "Invalid credentials or disabled user.",
-                "request_access_success": False,
-                "request_access_message": "",
-                "request_access_admin_contacts": list_request_access_admin_contacts(),
-                "request_access_reason": "",
-                "request_access_username": "",
-            },
-            status_code=401,
-        )
-
-    token = secrets.token_urlsafe(32)
-    conn.execute(
-        "INSERT INTO sessions(token, user_id, created_at, last_seen_at, active) VALUES (?, ?, ?, ?, 1)",
-        (token, user["id"], now_iso(), now_iso()),
-    )
-    conn.commit()
-    conn.close()
-
-    web_access_logger.info(
-        "login success user=%s ip=%s",
-        user["username"],
-        get_client_ip(request),
-    )
-    response = RedirectResponse(url="/", status_code=302)
-    response.set_cookie("session_token", token, httponly=True, samesite="lax")
-    return response
-
-
-@app.post("/request-access", response_class=HTMLResponse, tags=["Authentication"])
-def request_access_post(request: Request, username: str = Form(...), password: str = Form(...), reason: str = Form(...)):
-    requested_username = username.strip()
-    requested_password = password.strip()
-    request_reason = reason.strip()
-
-    if not requested_username or not requested_password or not request_reason:
-        return templates.TemplateResponse(
-            "login.html",
-            {
-                "request": request,
-                "error": "All request access fields are required.",
-                "request_access_success": False,
-                "request_access_message": "",
-                "request_access_admin_contacts": list_request_access_admin_contacts(),
-                "request_access_reason": request_reason,
-                "request_access_username": requested_username,
-            },
-            status_code=400,
-        )
-
-    signum_username = requested_username.upper()
-
-    conn = get_conn()
-    existing_user = conn.execute(
-        "SELECT id FROM users WHERE LOWER(username) = LOWER(?)",
-        (signum_username,),
-    ).fetchone()
-    if existing_user:
-        conn.close()
-        return templates.TemplateResponse(
-            "login.html",
-            {
-                "request": request,
-                "error": "This username already exists. Please contact an administrator.",
-                "request_access_success": False,
-                "request_access_message": "",
-                "request_access_admin_contacts": list_request_access_admin_contacts(),
-                "request_access_reason": request_reason,
-                "request_access_username": signum_username,
-            },
-            status_code=409,
-        )
-
-    conn.execute(
-        "INSERT INTO users(username, password_hash, role, active, created_at, access_request_reason) VALUES (?, ?, 'user', 0, ?, ?)",
-        (signum_username, pwd_context.hash(requested_password), now_iso(), request_reason),
-    )
-    conn.commit()
-    conn.close()
-
-    web_access_logger.info(
-        "request access user=%s ip=%s reason=%s",
-        signum_username,
-        get_client_ip(request),
-        request_reason,
-    )
-
-    return templates.TemplateResponse(
-        "login.html",
-        {
-            "request": request,
-            "error": "",
-            "request_access_success": True,
-            "request_access_message": (
-                "Your user has been created and is currently inactive. "
-                "Please email any administrator below and include your reason to request access."
-            ),
-            "request_access_admin_contacts": list_request_access_admin_contacts(),
-            "request_access_reason": request_reason,
-            "request_access_username": signum_username,
-        },
-        status_code=201,
-    )
-
-
-@app.get("/logout", tags=["Authentication"])
-def logout(request: Request):
-    token = request.cookies.get("session_token")
-    if token:
-        conn = get_conn()
-        session = conn.execute(
-            """
-            SELECT u.username
-            FROM sessions s
-            LEFT JOIN users u ON u.id = s.user_id
-            WHERE s.token = ?
-            """,
-            (token,),
-        ).fetchone()
-        conn.execute("UPDATE sessions SET active = 0 WHERE token = ?", (token,))
-        conn.commit()
-        conn.close()
-        web_access_logger.info(
-            "logout user=%s ip=%s reason=manual",
-            session["username"] if session and session["username"] else "unknown",
-            get_client_ip(request),
-        )
-    response = RedirectResponse("/login", status_code=302)
-    response.delete_cookie("session_token")
-    return response
-
-
-def get_latest_user_guide_file(extension: str) -> Path | None:
-    normalized_ext = extension.strip().lstrip(".").lower()
-    if normalized_ext not in {"md", "docx", "pptx", "pdf"}:
-        return None
-    pattern = f"User-Guide-*.{normalized_ext}"
-    candidates = sorted((path for path in HELP_DIR.glob(pattern) if path.is_file()), key=lambda path: path.stat().st_mtime, reverse=True)
-    return candidates[0] if candidates else None
-
-
-@app.get("/documentation/user-guide/{file_format}", tags=["Documentation"])
-def download_user_guide(request: Request, file_format: str, mode: str = "download"):
-    try:
-        require_user(request)
-    except PermissionError:
-        return RedirectResponse("/login", status_code=302)
-
-    guide_path = get_latest_user_guide_file(file_format)
-    if not guide_path or not guide_path.exists():
-        return PlainTextResponse("User guide not found.", status_code=404)
-    normalized_format = file_format.strip().lower()
-    normalized_mode = (mode or "download").strip().lower()
-
-    if normalized_mode == "view" and normalized_format == "md":
-        md_text = guide_path.read_text(encoding="utf-8", errors="ignore")
-        if importlib.util.find_spec("markdown") is None:
-            return FileResponse(guide_path, filename=guide_path.name)
-        markdown_module = importlib.import_module("markdown")
-        def _normalize_markdown_lists(text: str) -> str:
-            lines = text.splitlines()
-            out = []
-            in_fence = False
-            fence_marker = None
-
-            def is_list_line(s: str) -> bool:
-                return bool(re.match(r"^\s*(?:[-*+]|(?:\d+\.))\s+", s))
-
-            def is_block_boundary(s: str) -> bool:
-                t = s.strip()
-                if not t:
-                    return True
-                if t.startswith(("#", ">", "|")):
-                    return True
-                return False
-
-            def last_nonempty(lst: list[str]) -> str:
-                for prev in reversed(lst):
-                    if prev.strip():
-                        return prev
-                return ""
-
-            for i, line in enumerate(lines):
-                stripped = line.strip()
-
-                if stripped.startswith("```") or stripped.startswith("~~~"):
-                    if in_fence:
-                        in_fence = False
-                        fence_marker = None
-                    else:
-                        in_fence = True
-                        fence_marker = stripped[:3]
-                    out.append(line)
-                    continue
-
-                if in_fence:
-                    out.append(line)
-                    continue
-
-                if is_list_line(stripped):
-                    prev = out[-1] if out else ""
-                    if prev.strip() and (not is_list_line(prev.strip())) and (not is_block_boundary(prev)):
-                        out.append("")
-                    # Normalize sublist indentation: markdown expects 4 spaces or a tab.
-                    if re.match(r"^\s{2}(?:[-*+]|(?:\d+\.))\s+", line):
-                        parent = last_nonempty(out[:-1])
-                        if is_list_line(parent.strip()):
-                            line = " " * 4 + line.lstrip()
-                    out.append(line)
-                    continue
-
-                out.append(line)
-
-            return "\n".join(out)
-
-        md_text = _normalize_markdown_lists(md_text)
-        md_text = re.sub(r"^\s*<!--.*?-->\s*$", "", md_text, flags=re.MULTILINE)
-        md_text = re.sub(r"\]\(\.{2}/assets/", "](/assets/", md_text)
-        md_text = re.sub(r"\]\(assets/", "](/assets/", md_text)
-        tool_meta = load_tool_metadata()
-        guide_version = tool_meta.get("version", "unknown")
-        if guide_version == "unknown":
-            filename_match = re.search(r"-v([\d.]+)\.md$", guide_path.name)
-            if filename_match:
-                guide_version = filename_match.group(1)
-
-        base_guide_title = "Technical User Guide — SSB Retuning Automations"
-        if guide_version and guide_version != "unknown":
-            rendered_guide_title = f"{base_guide_title} v{guide_version}"
-            md_text = re.sub(
-                rf"^(\s*#\s*){re.escape(base_guide_title)}\s*$",
-                rf"\1{rendered_guide_title}",
-                md_text,
-                count=1,
-                flags=re.MULTILINE,
-            )
-        else:
-            rendered_guide_title = base_guide_title
-
-        html_body = markdown_module.markdown(md_text, extensions=["tables", "fenced_code", "sane_lists"])
-        guide_title = rendered_guide_title
-        html_doc = f"""
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>{guide_title}</title>
-  <link rel="icon" type="image/png" href="/assets/logos/logo_02.png" />
-  <link rel="shortcut icon" type="image/png" href="/assets/logos/logo_02.png" />
-  <style>
-    :root {{ color-scheme: light; }}
-    body {{
-      margin: 0;
-      background: #f6f8fa;
-      color: #1f2328;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif;
-      line-height: 1.5;
-      font-size: 16px;
-    }}
-    .markdown-body {{
-      box-sizing: border-box;
-      max-width: 980px;
-      margin: 2rem auto;
-      padding: 2rem 2.5rem;
-      background: #ffffff;
-      border: 1px solid #d0d7de;
-      border-radius: 8px;
-      box-shadow: 0 1px 2px rgba(31, 35, 40, 0.04);
-    }}
-    .markdown-body h1,
-    .markdown-body h2 {{ border-bottom: 1px solid #d8dee4; padding-bottom: .3em; }}
-    .markdown-body code {{
-      background: rgba(175, 184, 193, 0.2);
-      padding: .2em .4em;
-      border-radius: 6px;
-      font-size: 85%;
-      font-family: ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas, "Liberation Mono", monospace;
-    }}
-    .markdown-body pre {{
-      background: #f6f8fa;
-      color: #1f2328;
-      padding: 1rem;
-      border: 1px solid #d0d7de;
-      border-radius: 6px;
-      overflow-x: auto;
-    }}
-    .markdown-body pre code {{ background: transparent; padding: 0; font-size: 100%; }}
-    .markdown-body table {{ border-collapse: collapse; width: 100%; margin: .75rem 0; display: block; overflow-x: auto; }}
-    .markdown-body th,
-    .markdown-body td {{ border: 1px solid #d0d7de; padding: .45rem .8rem; text-align: left; vertical-align: top; }}
-    .markdown-body th {{ background: #f6f8fa; font-weight: 600; }}
-    .markdown-body a {{ color: #0969da; text-decoration: none; }}
-    .markdown-body a:hover {{ text-decoration: underline; }}
-    .markdown-body img {{ max-width: 100%; height: auto; }}
-    .markdown-body blockquote {{ margin: 0; padding: 0 1em; color: #59636e; border-left: .25em solid #d0d7de; }}
-    .markdown-body hr {{ border: 0; border-top: 1px solid #d8dee4; margin: 1.5rem 0; }}
-    @media (max-width: 768px) {{
-      .markdown-body {{ margin: 1rem; padding: 1rem; }}
-    }}
-  </style>
-</head>
-<body>
-<article class="markdown-body">
-{html_body}
-</article>
-</body>
-</html>
-"""
-        return HTMLResponse(html_doc)
-
-    if normalized_mode == "view" and normalized_format == "pdf":
-        return FileResponse(
-            guide_path,
-            media_type="application/pdf",
-            headers={"Content-Disposition": f'inline; filename="{guide_path.name}"'},
-        )
-
-    return FileResponse(guide_path, filename=guide_path.name)
-
-
-@app.post("/run", tags=["Execution"])
-def run_module(
-    request: Request,
-    module: str = Form(...),
-    input: str = Form(""),
-    input_pre: str = Form(""),
-    input_post: str = Form(""),
-    n77_ssb_pre: str = Form(""),
-    n77_ssb_post: str = Form(""),
-    n77b_ssb: str = Form(""),
-    allowed_n77_ssb_pre: str = Form(""),
-    allowed_n77_arfcn_pre: str = Form(""),
-    allowed_n77_ssb_post: str = Form(""),
-    allowed_n77_arfcn_post: str = Form(""),
-    ca_freq_filters: str = Form(""),
-    cc_freq_filters: str = Form(""),
-    output: str = Form(""),
-    network_frequencies: str = Form(""),
-    profiles_audit: str | None = Form(None),
-    frequency_audit: str | None = Form(None),
-    export_correction_cmd: str | None = Form(None),
-    fast_excel_export: str | None = Form(None),
-    selected_inputs_single: str = Form(""),
-    selected_inputs_pre: str = Form(""),
-    selected_inputs_post: str = Form(""),
-):
-    try:
-        user = require_user(request)
-    except PermissionError:
-        return RedirectResponse("/login", status_code=302)
-
-    raw_payload = {
-        "module": module,
-        "input": input.strip(),
-        "input_pre": input_pre.strip(),
-        "input_post": input_post.strip(),
-        "n77_ssb_pre": n77_ssb_pre.strip(),
-        "n77_ssb_post": n77_ssb_post.strip(),
-        "n77b_ssb": n77b_ssb.strip(),
-        "allowed_n77_ssb_pre": allowed_n77_ssb_pre.strip(),
-        "allowed_n77_arfcn_pre": allowed_n77_arfcn_pre.strip(),
-        "allowed_n77_ssb_post": allowed_n77_ssb_post.strip(),
-        "allowed_n77_arfcn_post": allowed_n77_arfcn_post.strip(),
-        "ca_freq_filters": ca_freq_filters.strip(),
-        "cc_freq_filters": cc_freq_filters.strip(),
-        "network_frequencies": network_frequencies.strip(),
-        "profiles_audit": profiles_audit,
-        "frequency_audit": frequency_audit,
-        "export_correction_cmd": export_correction_cmd,
-        "fast_excel_export": fast_excel_export,
-        "output": (output or str((OUTPUTS_DIR / sanitize_component(user["username"])).resolve())).strip(),
-    }
-    existing_settings = load_user_settings(user["id"])
-    payload = build_settings_with_module_inputs(existing_settings, raw_payload)
-    save_user_settings(user["id"], payload)
-    save_global_runtime_form_settings(raw_payload)
-    persist_settings_to_config(module, payload)
-    if module in WEB_INTERFACE_BLOCKED_MODULES:
-        logger.info("Blocked module run from web interface: %s", module)
-        return RedirectResponse("/", status_code=302)
-
-    tool_meta = load_tool_metadata()
-    tool_version = tool_meta.get("version", "unknown")
-
-    def parse_selected(raw: str) -> list[str]:
-        return [item.strip() for item in (raw or "").split("|") if item.strip()]
-
-    queue_payloads = [dict(raw_payload)]
-    selected_single = parse_selected(selected_inputs_single)
-    selected_pre = parse_selected(selected_inputs_pre)
-    selected_post = parse_selected(selected_inputs_post)
-
-    if module != "consistency-check" and len(selected_single) > 1:
-        queue_payloads = []
-        for selected_input in selected_single:
-            payload_copy = dict(raw_payload)
-            payload_copy["input"] = selected_input
-            queue_payloads.append(payload_copy)
-    elif module == "consistency-check" and (len(selected_pre) > 1 or len(selected_post) > 1):
-        pairable = len(selected_pre) == len(selected_post) or len(selected_pre) == 1 or len(selected_post) == 1
-        if pairable:
-            queue_payloads = []
-            queued_len = max(len(selected_pre), len(selected_post))
-            for idx in range(queued_len):
-                pre_value = selected_pre[idx] if len(selected_pre) > 1 else (selected_pre[0] if selected_pre else raw_payload.get("input_pre", ""))
-                post_value = selected_post[idx] if len(selected_post) > 1 else (selected_post[0] if selected_post else raw_payload.get("input_post", ""))
-                payload_copy = dict(raw_payload)
-                payload_copy["input_pre"] = pre_value
-                payload_copy["input_post"] = post_value
-                queue_payloads.append(payload_copy)
-
-    conn = get_conn()
-    enqueue_payloads_for_user(conn, user["id"], user["username"], queue_payloads, tool_version)
-    conn.commit()
-    conn.close()
-
-    if queue_payloads:
-        latest_payload = queue_payloads[-1]
-        latest_settings_payload = build_settings_with_module_inputs(payload, latest_payload)
-        save_user_settings(user["id"], latest_settings_payload)
-        persist_settings_to_config(module, latest_settings_payload)
-
-    queue_event.set()
-    ensure_worker_started()
-    return RedirectResponse("/", status_code=302)
-
-
-
-@app.post("/settings/update", tags=["Configuration"])
-async def update_settings(request: Request):
-    try:
-        user = require_user(request)
-    except PermissionError:
-        return {"ok": False}
-
-    incoming_payload = await request.json()
-    existing_settings = load_user_settings(user["id"])
-    payload = build_settings_with_module_inputs(existing_settings, incoming_payload)
-    save_user_settings(user["id"], payload)
-    save_global_runtime_form_settings(incoming_payload)
-    module_value = payload.get("module") or "configuration-audit"
-    persist_settings_to_config(module_value, payload)
-    return {"ok": True}
-
-
-@app.post("/runs/stop", tags=["Runs & Logs"])
-async def stop_runs(request: Request):
-    try:
-        user = require_user(request)
-    except PermissionError:
-        return {"ok": False}
-
-    payload = await request.json()
-    raw_run_ids = payload.get("ids", [])
-    run_ids = [int(run_id) for run_id in raw_run_ids if str(run_id).isdigit()]
-    if not run_ids:
-        return {"ok": False}
-
-    conn = get_conn()
-    rows = conn.execute(
-        "SELECT id, status FROM task_runs WHERE user_id = ? AND id IN (%s)" % ",".join("?" for _ in run_ids),
-        (user["id"], *run_ids),
-    ).fetchall()
-
-    now_value = now_iso()
-    queued_ids: list[int] = []
-    running_ids: list[int] = []
-    running_without_process_ids: list[int] = []
-    for row in rows:
-        status = (row["status"] or "").lower()
-        if status == "queued":
-            queued_ids.append(row["id"])
-        elif status == "running":
-            running_ids.append(row["id"])
-
-    if queued_ids:
-        conn.execute(
-            "UPDATE task_runs SET status = 'canceled', finished_at = ?, output_log = TRIM(output_log || '\\nCanceled by user before execution.') WHERE user_id = ? AND id IN (%s)"
-            % ",".join("?" for _ in queued_ids),
-            (now_value, user["id"], *queued_ids),
-        )
-    running_with_process_ids: list[int] = []
-    with running_processes_lock:
-        for task_id in running_ids:
-            proc = running_processes.get(task_id)
-            if proc and proc.poll() is None:
-                running_with_process_ids.append(task_id)
-            else:
-                running_without_process_ids.append(task_id)
-
-    if running_with_process_ids:
-        conn.execute(
-            "UPDATE task_runs SET status = 'canceling', output_log = TRIM(output_log || '\\nCancellation requested by user.') WHERE user_id = ? AND id IN (%s)"
-            % ",".join("?" for _ in running_with_process_ids),
-            (user["id"], *running_with_process_ids),
-        )
-    if running_without_process_ids:
-        conn.execute(
-            "UPDATE task_runs SET status = 'canceled', finished_at = ?, output_log = TRIM(output_log || '\\nCanceled by user (no active process found).') WHERE user_id = ? AND id IN (%s)"
-            % ",".join("?" for _ in running_without_process_ids),
-            (now_value, user["id"], *running_without_process_ids),
-        )
-    conn.commit()
-    conn.close()
-
-    with canceled_task_ids_lock:
-        canceled_task_ids.update(running_with_process_ids)
-    with running_processes_lock:
-        for task_id in running_with_process_ids:
-            proc = running_processes.get(task_id)
-            if proc and proc.poll() is None:
-                try:
-                    proc.terminate()
-                except OSError:
-                    pass
-
-    queue_event.set()
-    return {
-        "ok": True,
-        "stopped": len(queued_ids) + len(running_ids),
-        "canceled_immediately": len(queued_ids) + len(running_without_process_ids),
-    }
-
-
-@app.post("/runs/rerun", tags=["Runs & Logs"])
-async def rerun_runs(request: Request):
-    try:
-        user = require_user(request)
-    except PermissionError:
-        return {"ok": False}
-
-    payload = await request.json()
-    raw_run_ids = payload.get("ids", [])
-    run_ids = [int(run_id) for run_id in raw_run_ids if str(run_id).isdigit()]
-    if not run_ids:
-        return {"ok": False}
-
-    conn = get_conn()
-    rows = conn.execute(
-        "SELECT id, payload_json FROM task_runs WHERE id IN (%s)" % ",".join("?" for _ in run_ids),
-        (*run_ids,),
-    ).fetchall()
-
-    run_payload_by_id: dict[int, dict[str, Any]] = {}
-    for row in rows:
-        try:
-            payload_json = json.loads(row["payload_json"] or "{}")
-        except json.JSONDecodeError:
-            payload_json = {}
-        run_payload_by_id[int(row["id"])] = dict(payload_json)
-
-    queue_payloads: list[dict[str, Any]] = []
-    for run_id in run_ids:
-        payload_json = run_payload_by_id.get(run_id)
-        if payload_json:
-            queue_payloads.append(payload_json)
-
-    if not queue_payloads:
-        conn.close()
-        return {"ok": False, "queued": 0}
-
-    tool_meta = load_tool_metadata()
-    tool_version = tool_meta.get("version", "unknown")
-    queued = enqueue_payloads_for_user(conn, user["id"], user["username"], queue_payloads, tool_version, force_user_output_root=True)
-
-    conn.commit()
-    conn.close()
-
-    if queued:
-        queue_event.set()
-        ensure_worker_started()
-
-    return {"ok": True, "queued": queued}
-
-
-@app.post("/account/change_password", tags=["Authentication"])
-async def change_password(request: Request):
-    try:
-        user = require_user(request)
-    except PermissionError:
-        return {"ok": False}
-
-    payload = await request.json()
-    new_password = (payload.get("new_password") or "").strip()
-    if not new_password:
-        return {"ok": False}
-
-    conn = get_conn()
-    conn.execute("UPDATE users SET password_hash = ? WHERE id = ?", (pwd_context.hash(new_password), user["id"]))
-    conn.execute("UPDATE sessions SET active = 0 WHERE user_id = ?", (user["id"],))
-    conn.commit()
-    conn.close()
-    return {"ok": True}
-
-
-@app.get("/config/load", tags=["Configuration"])
-def load_config():
-    return load_persistent_config()
-
-
-@app.get("/config/export", tags=["Configuration"])
-def export_config():
-    if CONFIG_PATH.exists():
-        return FileResponse(CONFIG_PATH, filename="config.cfg")
-    return PlainTextResponse("", media_type="text/plain")
-
-
-@app.post("/uploads/zip", tags=["Inputs"])
-async def upload_zip(
-    request: Request,
-    module: str = Form(...),
-    kind: str = Form(...),
-    session_id: str = Form(""),
-    input_name: str = Form(""),
-    parent_folder_name: str = Form(""),
-    overwrite: str = Form("0"),
-    files: list[UploadFile] = File(...),
-):
-    try:
-        user = require_user(request)
-    except PermissionError:
-        return {"ok": False, "error": "auth"}
-
-    if not files:
-        return {"ok": False, "error": "invalid_file"}
-
-    inferred_parent = sanitize_component(parent_folder_name) if parent_folder_name.strip() else infer_parent_folder_name(files)
-    requested_name = sanitize_component(input_name) if input_name.strip() else inferred_parent
-    if not requested_name:
-        requested_name = inferred_parent or "uploaded_input"
-
-    target_dir = INPUTS_REPOSITORY_DIR / requested_name
-    zip_target = target_dir / f"{requested_name}.zip"
-    should_overwrite = parse_bool(overwrite)
-    if target_dir.exists() and not should_overwrite:
-        return {"ok": False, "error": "already_exists", "existing_name": requested_name}
-
-    if target_dir.exists() and should_overwrite:
-        shutil.rmtree(target_dir, ignore_errors=True)
-
-    accepted_files: list[UploadFile] = []
-    for upload in files:
-        filename = upload.filename or ""
-        lower_name = filename.lower()
-        if lower_name.endswith((".zip", ".log", ".logs", ".txt")):
-            accepted_files.append(upload)
-
-    if not accepted_files:
-        return {"ok": False, "error": "invalid_file"}
-
-    target_dir.mkdir(parents=True, exist_ok=True)
-
-    # Keep already compressed uploads as-is to avoid unnecessary recompression,
-    # but normalize the zip filename to <input_name>.zip.
-    if len(accepted_files) == 1 and (accepted_files[0].filename or "").lower().endswith(".zip"):
-        source_upload = accepted_files[0]
-        with zip_target.open("wb") as buffer:
-            while True:
-                chunk = await source_upload.read(1024 * 1024)
-                if not chunk:
-                    break
-                buffer.write(chunk)
-    else:
-        with zipfile.ZipFile(zip_target, "w", compression=zipfile.ZIP_DEFLATED) as zf:
-            for upload in accepted_files:
-                raw_name = (upload.filename or "uploaded_input").replace("\\", "/").strip("/")
-                path_parts = [sanitize_component(part) for part in raw_name.split("/") if part and part not in {".", ".."}]
-                if len(path_parts) > 1 and path_parts[0] == requested_name:
-                    zip_member = "/".join(path_parts[1:])
-                elif len(path_parts) > 1:
-                    zip_member = "/".join(path_parts)
-                else:
-                    zip_member = path_parts[0] if path_parts else "uploaded_input.log"
-                raw_bytes = bytearray()
-                while True:
-                    chunk = await upload.read(1024 * 1024)
-                    if not chunk:
-                        break
-                    raw_bytes.extend(chunk)
-                zf.writestr(zip_member, bytes(raw_bytes))
-
-    size_bytes = compute_path_size(target_dir)
-    conn = get_conn()
-    conn.execute(
-        """
-        INSERT INTO inputs_repository(user_id, input_name, input_path, uploaded_at, size_bytes)
-        VALUES (?, ?, ?, ?, ?)
-        ON CONFLICT(input_name) DO UPDATE SET
-            user_id = excluded.user_id,
-            input_path = excluded.input_path,
-            uploaded_at = excluded.uploaded_at,
-            size_bytes = excluded.size_bytes
-        """,
-        (user["id"], requested_name, str(target_dir), now_iso(), size_bytes),
-    )
-    conn.commit()
-    conn.close()
-
-    return {"ok": True, "path": str(target_dir), "input_name": requested_name}
-
-
-@app.get("/inputs/list", tags=["Inputs"])
-def inputs_list(request: Request):
-    try:
-        require_user(request)
-    except PermissionError:
-        return {"ok": False, "items": [], "total_size": format_mb(0)}
-    return {"ok": True, "items": list_inputs_repository(), "total_size": get_inputs_repository_total_size(), "uploaders": list_inputs_uploaders()}
-
-
-@app.post("/inputs/delete", tags=["Inputs"])
-async def delete_inputs(request: Request):
-    try:
-        user = require_user(request)
-    except PermissionError:
-        return {"ok": False}
-
-    payload = await request.json()
-    input_ids = payload.get("ids", [])
-    if not input_ids:
-        return {"ok": False}
-
-    conn = get_conn()
-    rows = conn.execute(
-        "SELECT id, user_id, input_path FROM inputs_repository WHERE id IN (%s)" % ",".join("?" for _ in input_ids),
-        tuple(input_ids),
-    ).fetchall()
-    denied_count = 0
-    for row in rows:
-        if row["user_id"] != user["id"]:
-            denied_count += 1
-            continue
-        input_path = Path(row["input_path"])
-        if is_safe_path(INPUTS_REPOSITORY_DIR, input_path):
-            if input_path.is_dir():
-                shutil.rmtree(input_path, ignore_errors=True)
-            elif input_path.exists():
-                input_path.unlink(missing_ok=True)
-        conn.execute("DELETE FROM inputs_repository WHERE id = ?", (row["id"],))
-    conn.commit()
-    conn.close()
-    if denied_count:
-        return {
-            "ok": False,
-            "error": "forbidden_inputs",
-            "message": "Only inputs uploaded by your own user can be deleted from this panel.",
-        }
-    return {"ok": True}
-
-
-@app.post("/admin/inputs/delete", tags=["Administration"])
-async def admin_delete_inputs(request: Request):
-    try:
-        require_admin(request)
-    except PermissionError:
-        return {"ok": False}
-
-    payload = await request.json()
-    input_ids = payload.get("ids", [])
-    if not input_ids:
-        return {"ok": False}
-
-    conn = get_conn()
-    rows = conn.execute(
-        "SELECT id, input_path FROM inputs_repository WHERE id IN (%s)" % ",".join("?" for _ in input_ids),
-        tuple(input_ids),
-    ).fetchall()
-    for row in rows:
-        input_path = Path(row["input_path"])
-        if is_safe_path(INPUTS_REPOSITORY_DIR, input_path):
-            if input_path.is_dir():
-                shutil.rmtree(input_path, ignore_errors=True)
-            elif input_path.exists():
-                input_path.unlink(missing_ok=True)
-    conn.execute("DELETE FROM inputs_repository WHERE id IN (%s)" % ",".join("?" for _ in input_ids), tuple(input_ids))
-    conn.commit()
-    conn.close()
-    return {"ok": True}
-
-
-
-
-def rename_inputs_common(user_id: int | None, rename_items: list[dict[str, Any]]) -> dict[str, Any]:
-    valid_items: list[tuple[int, str]] = []
-    for item in rename_items:
-        raw_id = item.get("id") if isinstance(item, dict) else None
-        raw_name = item.get("new_name") if isinstance(item, dict) else None
-        if raw_id is None or raw_name is None:
-            continue
-        if not str(raw_id).isdigit():
-            continue
-        sanitized_name = sanitize_component(str(raw_name))
-        if not sanitized_name:
-            continue
-        valid_items.append((int(raw_id), sanitized_name))
-
-    if not valid_items:
-        return {"ok": False, "error": "no_valid_items"}
-
-    requested_by_id: dict[int, str] = {item_id: new_name for item_id, new_name in valid_items}
-    ids = list(requested_by_id.keys())
-
-    conn = get_conn()
-    rows = conn.execute(
-        "SELECT id, user_id, input_name, input_path FROM inputs_repository WHERE id IN (%s)" % ",".join("?" for _ in ids),
-        tuple(ids),
-    ).fetchall()
-
-    denied_count = 0
-    renamed_count = 0
-    conflict_names: list[str] = []
-
-    for row in rows:
-        if user_id is not None and int(row["user_id"]) != int(user_id):
-            denied_count += 1
-            continue
-
-        input_id = int(row["id"])
-        old_name = str(row["input_name"] or "")
-        new_name = requested_by_id.get(input_id, old_name)
-        if not new_name or new_name == old_name:
-            continue
-
-        source_path = Path(row["input_path"] or "")
-        target_path = INPUTS_REPOSITORY_DIR / new_name
-
-        if target_path.exists():
-            same_target = False
-            try:
-                same_target = source_path.exists() and source_path.resolve() == target_path.resolve()
-            except OSError:
-                same_target = str(source_path) == str(target_path)
-            if not same_target:
-                conflict_names.append(new_name)
-                continue
-
-        if source_path.exists() and is_safe_path(INPUTS_REPOSITORY_DIR, source_path):
-            try:
-                source_path.rename(target_path)
-            except OSError:
-                try:
-                    shutil.move(str(source_path), str(target_path))
-                except OSError:
-                    conflict_names.append(new_name)
-                    continue
-
-        conn.execute(
-            "UPDATE inputs_repository SET input_name = ?, input_path = ? WHERE id = ?",
-            (new_name, str(target_path), input_id),
-        )
-        renamed_count += 1
-
-    conn.commit()
-    conn.close()
-
-    if denied_count:
-        return {
-            "ok": False,
-            "error": "forbidden_inputs",
-            "message": "Only inputs uploaded by your own user can be renamed from this panel.",
-            "renamed": renamed_count,
-            "conflicts": conflict_names,
-        }
-    if conflict_names:
-        return {
-            "ok": False,
-            "error": "name_conflict",
-            "message": "Some input names already exist and could not be renamed.",
-            "renamed": renamed_count,
-            "conflicts": conflict_names,
-        }
-    return {"ok": True, "renamed": renamed_count}
-
-
-@app.post("/inputs/rename", tags=["Inputs"])
-async def rename_inputs(request: Request):
-    try:
-        user = require_user(request)
-    except PermissionError:
-        return {"ok": False}
-
-    payload = await request.json()
-    items = payload.get("items", []) if isinstance(payload, dict) else []
-    return rename_inputs_common(int(user["id"]), items)
-
-
-@app.post("/admin/inputs/rename", tags=["Administration"])
-async def admin_rename_inputs(request: Request):
-    try:
-        require_admin(request)
-    except PermissionError:
-        return {"ok": False}
-
-    payload = await request.json()
-    items = payload.get("items", []) if isinstance(payload, dict) else []
-    return rename_inputs_common(None, items)
-
-
-@app.get("/logs/latest", tags=["Runs & Logs"])
-def latest_logs(request: Request):
-    try:
-        user = require_user(request)
-    except PermissionError:
-        return JSONResponse({"log": ""}, headers=NO_CACHE_HEADERS)
-
-    conn = get_conn()
-    row = conn.execute(
-        "SELECT output_log FROM task_runs WHERE user_id = ? ORDER BY id DESC LIMIT 1",
-        (user["id"],),
-    ).fetchone()
-    conn.close()
-    return JSONResponse({"log": row["output_log"] if row else ""}, headers=NO_CACHE_HEADERS)
-
-
-@app.get("/logs/by_run/{run_id}", tags=["Runs & Logs"])
-def logs_by_run(request: Request, run_id: int):
-    try:
-        user = require_user(request)
-    except PermissionError:
-        return JSONResponse({"log": ""}, headers=NO_CACHE_HEADERS)
-
-    conn = get_conn()
-    row = conn.execute(
-        "SELECT output_log FROM task_runs WHERE id = ? AND user_id = ?",
-        (run_id, user["id"]),
-    ).fetchone()
-    conn.close()
-    return JSONResponse({"log": row["output_log"] if row else ""}, headers=NO_CACHE_HEADERS)
-
-
-@app.get("/logs/system", tags=["Runs & Logs"])
-def logs_system(request: Request, source: str = "app"):
-    try:
-        user = require_user(request)
-    except PermissionError:
-        return JSONResponse({"log": ""}, headers=NO_CACHE_HEADERS)
-
-    source_key = (source or "app").lower().strip()
-    if source_key in {"api", "access"}:
-        path = API_LOG_PATH
-    elif source_key in {"web-access", "web_access"}:
-        if user["role"] != "admin":
-            return JSONResponse({"log": ""}, headers=NO_CACHE_HEADERS)
-        path = WEB_ACCESS_LOG_PATH
-    else:
-        path = APP_LOG_PATH
-
-    return JSONResponse({"log": read_tail(path)}, headers=NO_CACHE_HEADERS)
-
-
-
-
-@app.post("/logs/system/delete", tags=["Runs & Logs"])
-def delete_system_logs(request: Request, source: str = "app"):
-    try:
-        user = require_admin(request)
-    except PermissionError:
-        return {"ok": False}
-
-    source_key = (source or "app").lower().strip()
-    if source_key in {"api", "access"}:
-        path = API_LOG_PATH
-    elif source_key in {"web-access", "web_access"}:
-        if user["role"] != "admin":
-            return {"ok": False}
-        path = WEB_ACCESS_LOG_PATH
-    else:
-        path = APP_LOG_PATH
-
-    try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text("", encoding="utf-8")
-    except OSError:
-        return {"ok": False}
-    return {"ok": True}
-
-
-@app.get("/admin/logs/by_run/{run_id}", tags=["Administration"])
-def admin_logs_by_run(request: Request, run_id: int):
-    try:
-        require_admin(request)
-    except PermissionError:
-        return JSONResponse({"log": ""}, headers=NO_CACHE_HEADERS)
-
-    conn = get_conn()
-    row = conn.execute("SELECT output_log FROM task_runs WHERE id = ?", (run_id,)).fetchone()
-    conn.close()
-    return JSONResponse({"log": row["output_log"] if row else ""}, headers=NO_CACHE_HEADERS)
-
-
-@app.get("/admin/runs/list", tags=["Administration"])
-def admin_runs_list(request: Request):
-    try:
-        require_admin(request)
-    except PermissionError:
-        return JSONResponse({"ok": False, "items": []}, headers=NO_CACHE_HEADERS)
-
-    conn = get_conn()
-    latest_runs = conn.execute(
-        """
-        SELECT tr.id, u.username, tr.module, tr.tool_version, tr.input_name, tr.status, tr.started_at, tr.finished_at, tr.duration_seconds, tr.output_zip, tr.output_log_file, tr.input_dir, tr.output_dir
-        FROM task_runs tr
-        JOIN users u ON u.id = tr.user_id
-        ORDER BY tr.id DESC
-        """
-    ).fetchall()
-    latest_runs = [dict(row) for row in latest_runs]
-    run_sizes, _ = compute_runs_size(latest_runs)
-    conn.close()
-
-    items = [serialize_run_row(row, run_sizes) for row in latest_runs]
-    return JSONResponse({"ok": True, "items": items}, headers=NO_CACHE_HEADERS)
-
-
-@app.get("/admin/runs/active_status", tags=["Administration"])
-def admin_runs_active_status(request: Request):
-    try:
-        require_admin(request)
-    except PermissionError:
-        return JSONResponse({"ok": False, "has_active_tasks": False}, headers=NO_CACHE_HEADERS)
-
-    conn = get_conn()
-    row = conn.execute(
-        """
-        SELECT COUNT(1) AS active_count
-        FROM task_runs
-        WHERE LOWER(COALESCE(status, '')) IN ('running', 'queued', 'canceling')
-        """
-    ).fetchone()
-    conn.close()
-    active_count = int(row["active_count"] or 0) if row else 0
-    return JSONResponse({"ok": True, "has_active_tasks": active_count > 0}, headers=NO_CACHE_HEADERS)
-
-
-@app.get("/admin/users/connected_status", tags=["Administration"])
-def admin_users_connected_status(request: Request):
-    try:
-        require_admin(request)
-    except PermissionError:
-        return JSONResponse({"ok": False, "connected_users": 0}, headers=NO_CACHE_HEADERS)
-
-    conn = get_conn()
-    _, connected_users_count = build_connected_users_snapshot(conn)
-    conn.close()
-    return JSONResponse({"ok": True, "connected_users": connected_users_count}, headers=NO_CACHE_HEADERS)
-
-
-@app.get("/runs/list", tags=["Runs & Logs"])
-def runs_list(request: Request):
-    try:
-        user = require_user(request)
-    except PermissionError:
-        return JSONResponse({"ok": False, "items": []}, headers=NO_CACHE_HEADERS)
-
-    conn = get_conn()
-    latest_runs = conn.execute(
-        """
-        SELECT tr.id, tr.user_id, u.username, tr.module, tr.tool_version, tr.input_name, tr.status, tr.started_at, tr.finished_at, tr.duration_seconds, tr.output_zip, tr.output_log_file
-        FROM task_runs tr
-        JOIN users u ON u.id = tr.user_id
-        ORDER BY tr.id DESC
-        """
-    ).fetchall()
-    latest_runs = [dict(row) for row in latest_runs]
-    all_runs = conn.execute("SELECT id, status, input_dir, output_dir, output_zip FROM task_runs").fetchall()
-    conn.close()
-
-    run_sizes, _ = compute_runs_size(all_runs)
-    items = [serialize_run_row(row, run_sizes) for row in latest_runs]
-    return JSONResponse({"ok": True, "items": items}, headers=NO_CACHE_HEADERS)
 
 
 def resolve_run_zip_path(conn: sqlite3.Connection, user_id: int, username: str, run_id: int, stored_output_zip: str | None, stored_output_dir: str | None, module: str | None, tool_version: str | None, finished_at_raw: str | None) -> Path | None:
@@ -3534,9 +2245,1133 @@ def resolve_run_output_dir_path(conn: sqlite3.Connection, user_id: int, username
 
     return None
 
+###############
+### OPENAPI ###
+###############
+OPENAPI_TAGS = [
+    {"name": "System", "description": "Service health and system-level diagnostics."},
+    {"name": "Documentation", "description": "Access API-adjacent product documentation resources."},
+    {"name": "Authentication", "description": "Session and account operations."},
+    {"name": "Configuration", "description": "Read, update, and export persisted tool configuration."},
+    {"name": "Inputs", "description": "Upload and manage reusable input datasets."},
+    {"name": "Execution", "description": "Start and manage execution workflows."},
+    {"name": "Logs", "description": "Manage system and execution Logs."},
+    {"name": "Administration", "description": "Administrative endpoints."},
+]
 
-@app.get("/runs/{run_id}/download", tags=["Runs & Logs"])
-def download_run_output(request: Request, run_id: int):
+
+app = FastAPI(
+    title="SSB Retuning Automations Web Interface",
+    openapi_tags=OPENAPI_TAGS,
+    docs_url="/api",
+)
+
+
+def custom_openapi():
+    if app.openapi_schema:
+        return app.openapi_schema
+
+    schema = get_openapi(title=app.title, version="1.1.0", routes=app.routes, tags=OPENAPI_TAGS)
+    if "paths" in schema:
+        sorted_paths = sorted(schema["paths"].items(), key=lambda item: (item[0].startswith("/admin"), item[0]))
+        schema["paths"] = dict(sorted_paths)
+    app.openapi_schema = schema
+    return app.openapi_schema
+
+
+app.openapi = custom_openapi
+app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
+app.mount("/assets", StaticFiles(directory=str(PROJECT_ROOT / "assets")), name="assets")
+templates = Jinja2Templates(directory=str(BASE_DIR / "html"))
+
+
+@app.middleware("http")
+async def access_log_middleware(request: Request, call_next):
+    start = time.perf_counter()
+    response = await call_next(request)
+    elapsed_ms = (time.perf_counter() - start) * 1000
+    client = get_client_ip(request)
+    api_logger.info(
+        '[%s] - "%s %s" status=%s duration_ms=%.2f',
+        client,
+        request.method,
+        request.url.path,
+        response.status_code,
+        elapsed_ms,
+    )
+    return response
+
+
+@app.on_event("startup")
+def startup() -> None:
+    init_db()
+    sanitize_all_user_settings_rows()
+    recover_incomplete_tasks()
+    ensure_worker_started()
+    ensure_backup_worker_started()
+    queue_event.set()
+
+
+# ========= System Section ===========
+
+@app.get("/healthz", tags=["System"])
+def healthz():
+    try:
+        conn = get_conn()
+        conn.execute("SELECT 1").fetchone()
+        conn.close()
+        return {"status": "ok"}
+    except sqlite3.Error as exc:
+        logger.exception("Health check failed: %s", exc)
+        return JSONResponse(status_code=503, content={"status": "error", "detail": str(exc)})
+
+
+# ========= Documentation Section ===========
+@app.get("/release-notes", response_class=HTMLResponse, tags=["Documentation"])
+async def release_notes(request: Request, user=Depends(get_current_user)):
+    # Serve CHANGELOG.md from the repo mounted at /app and render it client-side
+    changelog_path = Path("/app/CHANGELOG.md")
+    changelog_md = changelog_path.read_text(encoding="utf-8", errors="replace") if changelog_path.exists() else "CHANGELOG.md not found at /app/CHANGELOG.md"
+    tool_meta = load_tool_metadata()
+    return templates.TemplateResponse("release_notes.html", {"request": request, "tool_meta": tool_meta, "user": user, "changelog_md": changelog_md})
+
+
+@app.get("/documentation/user-guide/{file_format}", tags=["Documentation"])
+def download_user_guide(request: Request, file_format: str, mode: str = "download"):
+    def get_latest_user_guide_file(extension: str) -> Path | None:
+        normalized_ext = extension.strip().lstrip(".").lower()
+        if normalized_ext not in {"md", "docx", "pptx", "pdf"}:
+            return None
+        pattern = f"User-Guide-*.{normalized_ext}"
+        candidates = sorted((path for path in HELP_DIR.glob(pattern) if path.is_file()), key=lambda path: path.stat().st_mtime, reverse=True)
+        return candidates[0] if candidates else None
+
+    try:
+        require_user(request)
+    except PermissionError:
+        return RedirectResponse("/login", status_code=302)
+
+    guide_path = get_latest_user_guide_file(file_format)
+    if not guide_path or not guide_path.exists():
+        return PlainTextResponse("User guide not found.", status_code=404)
+    normalized_format = file_format.strip().lower()
+    normalized_mode = (mode or "download").strip().lower()
+
+    if normalized_mode == "view" and normalized_format == "md":
+        md_text = guide_path.read_text(encoding="utf-8", errors="ignore")
+        if importlib.util.find_spec("markdown") is None:
+            return FileResponse(guide_path, filename=guide_path.name)
+        markdown_module = importlib.import_module("markdown")
+        def _normalize_markdown_lists(text: str) -> str:
+            lines = text.splitlines()
+            out = []
+            in_fence = False
+            fence_marker = None
+
+            def is_list_line(s: str) -> bool:
+                return bool(re.match(r"^\s*(?:[-*+]|(?:\d+\.))\s+", s))
+
+            def is_block_boundary(s: str) -> bool:
+                t = s.strip()
+                if not t:
+                    return True
+                if t.startswith(("#", ">", "|")):
+                    return True
+                return False
+
+            def last_nonempty(lst: list[str]) -> str:
+                for prev in reversed(lst):
+                    if prev.strip():
+                        return prev
+                return ""
+
+            for i, line in enumerate(lines):
+                stripped = line.strip()
+
+                if stripped.startswith("```") or stripped.startswith("~~~"):
+                    if in_fence:
+                        in_fence = False
+                        fence_marker = None
+                    else:
+                        in_fence = True
+                        fence_marker = stripped[:3]
+                    out.append(line)
+                    continue
+
+                if in_fence:
+                    out.append(line)
+                    continue
+
+                if is_list_line(stripped):
+                    prev = out[-1] if out else ""
+                    if prev.strip() and (not is_list_line(prev.strip())) and (not is_block_boundary(prev)):
+                        out.append("")
+                    # Normalize sublist indentation: markdown expects 4 spaces or a tab.
+                    if re.match(r"^\s{2}(?:[-*+]|(?:\d+\.))\s+", line):
+                        parent = last_nonempty(out[:-1])
+                        if is_list_line(parent.strip()):
+                            line = " " * 4 + line.lstrip()
+                    out.append(line)
+                    continue
+
+                out.append(line)
+
+            return "\n".join(out)
+
+        md_text = _normalize_markdown_lists(md_text)
+        md_text = re.sub(r"^\s*<!--.*?-->\s*$", "", md_text, flags=re.MULTILINE)
+        md_text = re.sub(r"\]\(\.{2}/assets/", "](/assets/", md_text)
+        md_text = re.sub(r"\]\(assets/", "](/assets/", md_text)
+        tool_meta = load_tool_metadata()
+        guide_version = tool_meta.get("version", "unknown")
+        if guide_version == "unknown":
+            filename_match = re.search(r"-v([\d.]+)\.md$", guide_path.name)
+            if filename_match:
+                guide_version = filename_match.group(1)
+
+        base_guide_title = "Technical User Guide — SSB Retuning Automations"
+        if guide_version and guide_version != "unknown":
+            rendered_guide_title = f"{base_guide_title} v{guide_version}"
+            md_text = re.sub(
+                rf"^(\s*#\s*){re.escape(base_guide_title)}\s*$",
+                rf"\1{rendered_guide_title}",
+                md_text,
+                count=1,
+                flags=re.MULTILINE,
+            )
+        else:
+            rendered_guide_title = base_guide_title
+
+        html_body = markdown_module.markdown(md_text, extensions=["tables", "fenced_code", "sane_lists"])
+        guide_title = rendered_guide_title
+        html_doc = f"""
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{guide_title}</title>
+  <link rel="icon" type="image/png" href="/assets/logos/logo_02.png" />
+  <link rel="shortcut icon" type="image/png" href="/assets/logos/logo_02.png" />
+  <style>
+    :root {{ color-scheme: light; }}
+    body {{
+      margin: 0;
+      background: #f6f8fa;
+      color: #1f2328;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif;
+      line-height: 1.5;
+      font-size: 16px;
+    }}
+    .markdown-body {{
+      box-sizing: border-box;
+      max-width: 980px;
+      margin: 2rem auto;
+      padding: 2rem 2.5rem;
+      background: #ffffff;
+      border: 1px solid #d0d7de;
+      border-radius: 8px;
+      box-shadow: 0 1px 2px rgba(31, 35, 40, 0.04);
+    }}
+    .markdown-body h1,
+    .markdown-body h2 {{ border-bottom: 1px solid #d8dee4; padding-bottom: .3em; }}
+    .markdown-body code {{
+      background: rgba(175, 184, 193, 0.2);
+      padding: .2em .4em;
+      border-radius: 6px;
+      font-size: 85%;
+      font-family: ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas, "Liberation Mono", monospace;
+    }}
+    .markdown-body pre {{
+      background: #f6f8fa;
+      color: #1f2328;
+      padding: 1rem;
+      border: 1px solid #d0d7de;
+      border-radius: 6px;
+      overflow-x: auto;
+    }}
+    .markdown-body pre code {{ background: transparent; padding: 0; font-size: 100%; }}
+    .markdown-body table {{ border-collapse: collapse; width: 100%; margin: .75rem 0; display: block; overflow-x: auto; }}
+    .markdown-body th,
+    .markdown-body td {{ border: 1px solid #d0d7de; padding: .45rem .8rem; text-align: left; vertical-align: top; }}
+    .markdown-body th {{ background: #f6f8fa; font-weight: 600; }}
+    .markdown-body a {{ color: #0969da; text-decoration: none; }}
+    .markdown-body a:hover {{ text-decoration: underline; }}
+    .markdown-body img {{ max-width: 100%; height: auto; }}
+    .markdown-body blockquote {{ margin: 0; padding: 0 1em; color: #59636e; border-left: .25em solid #d0d7de; }}
+    .markdown-body hr {{ border: 0; border-top: 1px solid #d8dee4; margin: 1.5rem 0; }}
+    @media (max-width: 768px) {{
+      .markdown-body {{ margin: 1rem; padding: 1rem; }}
+    }}
+  </style>
+</head>
+<body>
+<article class="markdown-body">
+{html_body}
+</article>
+</body>
+</html>
+"""
+        return HTMLResponse(html_doc)
+
+    if normalized_mode == "view" and normalized_format == "pdf":
+        return FileResponse(
+            guide_path,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f'inline; filename="{guide_path.name}"'},
+        )
+
+    return FileResponse(guide_path, filename=guide_path.name)
+
+
+
+
+# ========= Authentication Section ===========
+
+def list_request_access_admin_contacts() -> list[str]:
+    conn = get_conn()
+    rows = conn.execute(
+        """
+        SELECT username
+        FROM users
+        WHERE role = 'admin' AND LOWER(username) != 'admin'
+        ORDER BY username COLLATE NOCASE ASC
+        """
+    ).fetchall()
+    conn.close()
+    return [str(row["username"]) for row in rows if row["username"]]
+
+
+@app.get("/login", response_class=HTMLResponse, tags=["Authentication"])
+def login_get(request: Request):
+    return templates.TemplateResponse(
+        "login.html",
+        {
+            "request": request,
+            "error": "",
+            "request_access_success": False,
+            "request_access_message": "",
+            "request_access_admin_contacts": list_request_access_admin_contacts(),
+            "request_access_reason": "",
+            "request_access_username": "",
+        },
+    )
+
+
+@app.post("/login", response_class=HTMLResponse, tags=["Authentication"])
+def login_post(request: Request, username: str = Form(...), password: str = Form(...)):
+    conn = get_conn()
+    user = conn.execute(
+        "SELECT * FROM users WHERE LOWER(username) = LOWER(?) AND active = 1", (username.strip(),)
+    ).fetchone()
+    try:
+        verified = user and pwd_context.verify(password, user["password_hash"])
+    except (ValueError, TypeError):
+        verified = False
+    if not verified:
+        web_access_logger.warning(
+            "login failed user=%s ip=%s",
+            username.strip() or "unknown",
+            get_client_ip(request),
+        )
+        conn.close()
+        return templates.TemplateResponse(
+            "login.html",
+            {
+                "request": request,
+                "error": "Invalid credentials or disabled user.",
+                "request_access_success": False,
+                "request_access_message": "",
+                "request_access_admin_contacts": list_request_access_admin_contacts(),
+                "request_access_reason": "",
+                "request_access_username": "",
+            },
+            status_code=401,
+        )
+
+    token = secrets.token_urlsafe(32)
+    conn.execute(
+        "INSERT INTO sessions(token, user_id, created_at, last_seen_at, active) VALUES (?, ?, ?, ?, 1)",
+        (token, user["id"], now_iso(), now_iso()),
+    )
+    conn.commit()
+    conn.close()
+
+    web_access_logger.info(
+        "login success user=%s ip=%s",
+        user["username"],
+        get_client_ip(request),
+    )
+    response = RedirectResponse(url="/", status_code=302)
+    response.set_cookie("session_token", token, httponly=True, samesite="lax")
+    return response
+
+@app.get("/logout", tags=["Authentication"])
+def logout(request: Request):
+    token = request.cookies.get("session_token")
+    if token:
+        conn = get_conn()
+        session = conn.execute(
+            """
+            SELECT u.username
+            FROM sessions s
+            LEFT JOIN users u ON u.id = s.user_id
+            WHERE s.token = ?
+            """,
+            (token,),
+        ).fetchone()
+        conn.execute("UPDATE sessions SET active = 0 WHERE token = ?", (token,))
+        conn.commit()
+        conn.close()
+        web_access_logger.info(
+            "logout user=%s ip=%s reason=manual",
+            session["username"] if session and session["username"] else "unknown",
+            get_client_ip(request),
+        )
+    response = RedirectResponse("/login", status_code=302)
+    response.delete_cookie("session_token")
+    return response
+
+
+@app.post("/request-access", response_class=HTMLResponse, tags=["Authentication"])
+def request_access_post(request: Request, username: str = Form(...), password: str = Form(...), reason: str = Form(...)):
+    requested_username = username.strip()
+    requested_password = password.strip()
+    request_reason = reason.strip()
+
+    if not requested_username or not requested_password or not request_reason:
+        return templates.TemplateResponse(
+            "login.html",
+            {
+                "request": request,
+                "error": "All request access fields are required.",
+                "request_access_success": False,
+                "request_access_message": "",
+                "request_access_admin_contacts": list_request_access_admin_contacts(),
+                "request_access_reason": request_reason,
+                "request_access_username": requested_username,
+            },
+            status_code=400,
+        )
+
+    signum_username = requested_username.upper()
+
+    conn = get_conn()
+    existing_user = conn.execute(
+        "SELECT id FROM users WHERE LOWER(username) = LOWER(?)",
+        (signum_username,),
+    ).fetchone()
+    if existing_user:
+        conn.close()
+        return templates.TemplateResponse(
+            "login.html",
+            {
+                "request": request,
+                "error": "This username already exists. Please contact an administrator.",
+                "request_access_success": False,
+                "request_access_message": "",
+                "request_access_admin_contacts": list_request_access_admin_contacts(),
+                "request_access_reason": request_reason,
+                "request_access_username": signum_username,
+            },
+            status_code=409,
+        )
+
+    conn.execute(
+        "INSERT INTO users(username, password_hash, role, active, created_at, access_request_reason) VALUES (?, ?, 'user', 0, ?, ?)",
+        (signum_username, pwd_context.hash(requested_password), now_iso(), request_reason),
+    )
+    conn.commit()
+    conn.close()
+
+    web_access_logger.info(
+        "request access user=%s ip=%s reason=%s",
+        signum_username,
+        get_client_ip(request),
+        request_reason,
+    )
+
+    return templates.TemplateResponse(
+        "login.html",
+        {
+            "request": request,
+            "error": "",
+            "request_access_success": True,
+            "request_access_message": (
+                "Your user has been created and is currently inactive. "
+                "Please email any administrator below and include your reason to request access."
+            ),
+            "request_access_admin_contacts": list_request_access_admin_contacts(),
+            "request_access_reason": request_reason,
+            "request_access_username": signum_username,
+        },
+        status_code=201,
+    )
+
+
+@app.post("/account/change_password", tags=["Authentication"])
+async def change_password(request: Request):
+    try:
+        user = require_user(request)
+    except PermissionError:
+        return {"ok": False}
+
+    payload = await request.json()
+    new_password = (payload.get("new_password") or "").strip()
+    if not new_password:
+        return {"ok": False}
+
+    conn = get_conn()
+    conn.execute("UPDATE users SET password_hash = ? WHERE id = ?", (pwd_context.hash(new_password), user["id"]))
+    conn.execute("UPDATE sessions SET active = 0 WHERE user_id = ?", (user["id"],))
+    conn.commit()
+    conn.close()
+    return {"ok": True}
+
+
+@app.post("/settings/update", tags=["Configuration"])
+async def settings_update(request: Request):
+    try:
+        user = require_user(request)
+    except PermissionError:
+        return {"ok": False}
+
+    incoming_payload = await request.json()
+    existing_settings = load_user_settings(user["id"])
+    payload = build_settings_with_module_inputs(existing_settings, incoming_payload)
+    save_user_settings(user["id"], payload)
+    save_global_runtime_form_settings(incoming_payload)
+    module_value = payload.get("module") or "configuration-audit"
+    persist_settings_to_config(module_value, payload)
+    return {"ok": True}
+
+
+@app.get("/config/load", tags=["Configuration"])
+def load_config():
+    return load_persistent_config()
+
+
+@app.get("/config/export", tags=["Configuration"])
+def export_config():
+    if CONFIG_PATH.exists():
+        return FileResponse(CONFIG_PATH, filename="config.cfg")
+    return PlainTextResponse("", media_type="text/plain")
+
+
+
+
+
+@app.post("/inputs/upload", tags=["Inputs"])
+async def inputs_upload(
+    request: Request,
+    module: str = Form(...),
+    kind: str = Form(...),
+    session_id: str = Form(""),
+    input_name: str = Form(""),
+    parent_folder_name: str = Form(""),
+    overwrite: str = Form("0"),
+    files: list[UploadFile] = File(...),
+):
+    try:
+        user = require_user(request)
+    except PermissionError:
+        return {"ok": False, "error": "auth"}
+
+    if not files:
+        return {"ok": False, "error": "invalid_file"}
+
+    inferred_parent = sanitize_component(parent_folder_name) if parent_folder_name.strip() else infer_parent_folder_name(files)
+    requested_name = sanitize_component(input_name) if input_name.strip() else inferred_parent
+    if not requested_name:
+        requested_name = inferred_parent or "uploaded_input"
+
+    target_dir = INPUTS_REPOSITORY_DIR / requested_name
+    zip_target = target_dir / f"{requested_name}.zip"
+    should_overwrite = parse_bool(overwrite)
+    if target_dir.exists() and not should_overwrite:
+        return {"ok": False, "error": "already_exists", "existing_name": requested_name}
+
+    if target_dir.exists() and should_overwrite:
+        shutil.rmtree(target_dir, ignore_errors=True)
+
+    accepted_files: list[UploadFile] = []
+    for upload in files:
+        filename = upload.filename or ""
+        lower_name = filename.lower()
+        if lower_name.endswith((".zip", ".log", ".logs", ".txt")):
+            accepted_files.append(upload)
+
+    if not accepted_files:
+        return {"ok": False, "error": "invalid_file"}
+
+    target_dir.mkdir(parents=True, exist_ok=True)
+
+    # Keep already compressed uploads as-is to avoid unnecessary recompression,
+    # but normalize the zip filename to <input_name>.zip.
+    if len(accepted_files) == 1 and (accepted_files[0].filename or "").lower().endswith(".zip"):
+        source_upload = accepted_files[0]
+        with zip_target.open("wb") as buffer:
+            while True:
+                chunk = await source_upload.read(1024 * 1024)
+                if not chunk:
+                    break
+                buffer.write(chunk)
+    else:
+        with zipfile.ZipFile(zip_target, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+            for upload in accepted_files:
+                raw_name = (upload.filename or "uploaded_input").replace("\\", "/").strip("/")
+                path_parts = [sanitize_component(part) for part in raw_name.split("/") if part and part not in {".", ".."}]
+                if len(path_parts) > 1 and path_parts[0] == requested_name:
+                    zip_member = "/".join(path_parts[1:])
+                elif len(path_parts) > 1:
+                    zip_member = "/".join(path_parts)
+                else:
+                    zip_member = path_parts[0] if path_parts else "uploaded_input.log"
+                raw_bytes = bytearray()
+                while True:
+                    chunk = await upload.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    raw_bytes.extend(chunk)
+                zf.writestr(zip_member, bytes(raw_bytes))
+
+    size_bytes = compute_path_size(target_dir)
+    conn = get_conn()
+    conn.execute(
+        """
+        INSERT INTO inputs_repository(user_id, input_name, input_path, uploaded_at, size_bytes)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(input_name) DO UPDATE SET
+            user_id = excluded.user_id,
+            input_path = excluded.input_path,
+            uploaded_at = excluded.uploaded_at,
+            size_bytes = excluded.size_bytes
+        """,
+        (user["id"], requested_name, str(target_dir), now_iso(), size_bytes),
+    )
+    conn.commit()
+    conn.close()
+
+    return {"ok": True, "path": str(target_dir), "input_name": requested_name}
+
+
+@app.get("/inputs/list", tags=["Inputs"])
+def inputs_list(request: Request):
+    try:
+        require_user(request)
+    except PermissionError:
+        return {"ok": False, "items": [], "total_size": format_mb(0)}
+    return {"ok": True, "items": list_inputs_repository(), "total_size": get_inputs_repository_total_size(), "uploaders": list_inputs_uploaders()}
+
+
+@app.post("/inputs/delete", tags=["Inputs"])
+async def inputs_delete(request: Request):
+    try:
+        user = require_user(request)
+    except PermissionError:
+        return {"ok": False}
+
+    payload = await request.json()
+    input_ids = payload.get("ids", [])
+    if not input_ids:
+        return {"ok": False}
+
+    conn = get_conn()
+    rows = conn.execute(
+        "SELECT id, user_id, input_path FROM inputs_repository WHERE id IN (%s)" % ",".join("?" for _ in input_ids),
+        tuple(input_ids),
+    ).fetchall()
+    denied_count = 0
+    for row in rows:
+        if row["user_id"] != user["id"]:
+            denied_count += 1
+            continue
+        input_path = Path(row["input_path"])
+        if is_safe_path(INPUTS_REPOSITORY_DIR, input_path):
+            if input_path.is_dir():
+                shutil.rmtree(input_path, ignore_errors=True)
+            elif input_path.exists():
+                input_path.unlink(missing_ok=True)
+        conn.execute("DELETE FROM inputs_repository WHERE id = ?", (row["id"],))
+    conn.commit()
+    conn.close()
+    if denied_count:
+        return {
+            "ok": False,
+            "error": "forbidden_inputs",
+            "message": "Only inputs uploaded by your own user can be deleted from this panel.",
+        }
+    return {"ok": True}
+
+
+
+def inputs_rename_common(user_id: int | None, rename_items: list[dict[str, Any]]) -> dict[str, Any]:
+    valid_items: list[tuple[int, str]] = []
+    for item in rename_items:
+        raw_id = item.get("id") if isinstance(item, dict) else None
+        raw_name = item.get("new_name") if isinstance(item, dict) else None
+        if raw_id is None or raw_name is None:
+            continue
+        if not str(raw_id).isdigit():
+            continue
+        sanitized_name = sanitize_component(str(raw_name))
+        if not sanitized_name:
+            continue
+        valid_items.append((int(raw_id), sanitized_name))
+
+    if not valid_items:
+        return {"ok": False, "error": "no_valid_items"}
+
+    requested_by_id: dict[int, str] = {item_id: new_name for item_id, new_name in valid_items}
+    ids = list(requested_by_id.keys())
+
+    conn = get_conn()
+    rows = conn.execute(
+        "SELECT id, user_id, input_name, input_path FROM inputs_repository WHERE id IN (%s)" % ",".join("?" for _ in ids),
+        tuple(ids),
+    ).fetchall()
+
+    denied_count = 0
+    renamed_count = 0
+    conflict_names: list[str] = []
+
+    for row in rows:
+        if user_id is not None and int(row["user_id"]) != int(user_id):
+            denied_count += 1
+            continue
+
+        input_id = int(row["id"])
+        old_name = str(row["input_name"] or "")
+        new_name = requested_by_id.get(input_id, old_name)
+        if not new_name or new_name == old_name:
+            continue
+
+        source_path = Path(row["input_path"] or "")
+        target_path = INPUTS_REPOSITORY_DIR / new_name
+
+        if target_path.exists():
+            same_target = False
+            try:
+                same_target = source_path.exists() and source_path.resolve() == target_path.resolve()
+            except OSError:
+                same_target = str(source_path) == str(target_path)
+            if not same_target:
+                conflict_names.append(new_name)
+                continue
+
+        if source_path.exists() and is_safe_path(INPUTS_REPOSITORY_DIR, source_path):
+            try:
+                source_path.rename(target_path)
+            except OSError:
+                try:
+                    shutil.move(str(source_path), str(target_path))
+                except OSError:
+                    conflict_names.append(new_name)
+                    continue
+
+        conn.execute(
+            "UPDATE inputs_repository SET input_name = ?, input_path = ? WHERE id = ?",
+            (new_name, str(target_path), input_id),
+        )
+        renamed_count += 1
+
+    conn.commit()
+    conn.close()
+
+    if denied_count:
+        return {
+            "ok": False,
+            "error": "forbidden_inputs",
+            "message": "Only inputs uploaded by your own user can be renamed from this panel.",
+            "renamed": renamed_count,
+            "conflicts": conflict_names,
+        }
+    if conflict_names:
+        return {
+            "ok": False,
+            "error": "name_conflict",
+            "message": "Some input names already exist and could not be renamed.",
+            "renamed": renamed_count,
+            "conflicts": conflict_names,
+        }
+    return {"ok": True, "renamed": renamed_count}
+
+
+@app.post("/inputs/rename", tags=["Inputs"])
+async def inputs_rename(request: Request):
+    try:
+        user = require_user(request)
+    except PermissionError:
+        return {"ok": False}
+
+    payload = await request.json()
+    items = payload.get("items", []) if isinstance(payload, dict) else []
+    return inputs_rename_common(int(user["id"]), items)
+
+
+
+# ========= Execution Section ===========
+
+def serialize_run_row(row: dict[str, Any], run_sizes: dict[int, int]) -> dict[str, Any]:
+    data = dict(row)
+    started_at_raw = data.get("started_at")
+    data["started_at_raw"] = started_at_raw
+    started_at_epoch = 0
+    if started_at_raw:
+        try:
+            started_at_epoch = int(datetime.fromisoformat(started_at_raw).timestamp())
+        except ValueError:
+            started_at_epoch = 0
+    data["started_at_epoch"] = started_at_epoch
+    data["started_at"] = format_timestamp(data.get("started_at"))
+    data["finished_at"] = format_timestamp(data.get("finished_at"))
+    data["duration_hms"] = format_seconds_hms(data.get("duration_seconds"))
+    raw_status = (data.get("status") or "").strip().lower()
+    data["status_lower"] = "success" if raw_status == "ok" else raw_status
+    data["status_display"] = format_task_status(data.get("status") or "")
+    data["run_label"] = f"#{data.get('id')} - {data.get('module') or '—'} - {data.get('started_at') or '—'}"
+    data["size_mb"] = format_mb(run_sizes.get(int(data.get("id") or 0), 0))
+    return data
+
+
+
+@app.get("/", response_class=HTMLResponse, tags=["Execution"])
+def index(request: Request):
+    user = get_current_user(request)
+    if user is None:
+        return RedirectResponse("/login", status_code=302)
+
+    config_values = load_persistent_config()
+    user_settings = load_user_settings(user["id"])
+    module_value = user_settings.get("module") or "configuration-audit"
+    settings = build_settings_defaults(module_value, config_values)
+    admin_settings = get_admin_settings()
+    for key in GLOBAL_RUNTIME_FORM_KEYS:
+        settings[key] = str(admin_settings.get(key, settings.get(key, "")) or "")
+    tool_meta = load_tool_metadata()
+    network_frequencies = load_network_frequencies()
+    settings.update(user_settings)
+    settings["module"] = module_value
+    for key in GLOBAL_RUNTIME_FORM_KEYS:
+        settings[key] = str(admin_settings.get(key, settings.get(key, "")) or "")
+    module_inputs_map = normalize_module_inputs_map(settings.get("module_inputs_map"))
+    current_module_inputs = module_inputs_map.get(module_value, {})
+    settings["input"] = str(current_module_inputs.get("input", settings.get("input", "")) or "")
+    settings["input_pre"] = str(current_module_inputs.get("input_pre", settings.get("input_pre", "")) or "")
+    settings["input_post"] = str(current_module_inputs.get("input_post", settings.get("input_post", "")) or "")
+    settings["module_inputs_map"] = module_inputs_map
+    cleanup_stale_runs_for_user(user["id"])
+
+    conn = get_conn()
+    latest_runs = conn.execute(
+        """
+        SELECT tr.id, tr.user_id, u.username, tr.module, tr.tool_version, tr.input_name, tr.status, tr.started_at, tr.finished_at, tr.duration_seconds, tr.output_zip, tr.output_log_file
+        FROM task_runs tr
+        JOIN users u ON u.id = tr.user_id
+        ORDER BY tr.id DESC
+        """
+    ).fetchall()
+    latest_runs = [dict(row) for row in latest_runs]
+
+    all_runs = conn.execute("SELECT id, status, input_dir, output_dir, output_zip FROM task_runs").fetchall()
+    conn.close()
+
+    run_sizes, total_bytes = compute_runs_size(all_runs)
+
+    latest_runs = [serialize_run_row(row, run_sizes) for row in latest_runs]
+
+    total_size_mb = format_mb(total_bytes)
+    input_items = list_inputs_repository()
+    input_uploaders = list_inputs_uploaders()
+    inputs_total_size = get_inputs_repository_total_size()
+
+    return templates.TemplateResponse(
+        "index.html",
+        {
+            "request": request,
+            "user": user,
+            "module_options": MODULE_OPTIONS,
+            "settings": settings,
+            "module_inputs_map": module_inputs_map,
+            "latest_runs": latest_runs,
+            "tool_meta": tool_meta,
+            "network_frequencies": network_frequencies,
+            "total_runs_size": total_size_mb,
+            "input_items": input_items,
+            "input_uploaders": input_uploaders,
+            "inputs_total_size": inputs_total_size,
+            "runs_users": sorted({user["username"], *{str(row.get("username") or "") for row in latest_runs if row.get("username")}}),
+        },
+    )
+
+
+
+@app.post("/run", tags=["Execution"])
+def run_module(
+    request: Request,
+    module: str = Form(...),
+    input: str = Form(""),
+    input_pre: str = Form(""),
+    input_post: str = Form(""),
+    n77_ssb_pre: str = Form(""),
+    n77_ssb_post: str = Form(""),
+    n77b_ssb: str = Form(""),
+    allowed_n77_ssb_pre: str = Form(""),
+    allowed_n77_arfcn_pre: str = Form(""),
+    allowed_n77_ssb_post: str = Form(""),
+    allowed_n77_arfcn_post: str = Form(""),
+    ca_freq_filters: str = Form(""),
+    cc_freq_filters: str = Form(""),
+    output: str = Form(""),
+    network_frequencies: str = Form(""),
+    profiles_audit: str | None = Form(None),
+    frequency_audit: str | None = Form(None),
+    export_correction_cmd: str | None = Form(None),
+    fast_excel_export: str | None = Form(None),
+    selected_inputs_single: str = Form(""),
+    selected_inputs_pre: str = Form(""),
+    selected_inputs_post: str = Form(""),
+):
+    try:
+        user = require_user(request)
+    except PermissionError:
+        return RedirectResponse("/login", status_code=302)
+
+    raw_payload = {
+        "module": module,
+        "input": input.strip(),
+        "input_pre": input_pre.strip(),
+        "input_post": input_post.strip(),
+        "n77_ssb_pre": n77_ssb_pre.strip(),
+        "n77_ssb_post": n77_ssb_post.strip(),
+        "n77b_ssb": n77b_ssb.strip(),
+        "allowed_n77_ssb_pre": allowed_n77_ssb_pre.strip(),
+        "allowed_n77_arfcn_pre": allowed_n77_arfcn_pre.strip(),
+        "allowed_n77_ssb_post": allowed_n77_ssb_post.strip(),
+        "allowed_n77_arfcn_post": allowed_n77_arfcn_post.strip(),
+        "ca_freq_filters": ca_freq_filters.strip(),
+        "cc_freq_filters": cc_freq_filters.strip(),
+        "network_frequencies": network_frequencies.strip(),
+        "profiles_audit": profiles_audit,
+        "frequency_audit": frequency_audit,
+        "export_correction_cmd": export_correction_cmd,
+        "fast_excel_export": fast_excel_export,
+        "output": (output or str((OUTPUTS_DIR / sanitize_component(user["username"])).resolve())).strip(),
+    }
+    existing_settings = load_user_settings(user["id"])
+    payload = build_settings_with_module_inputs(existing_settings, raw_payload)
+    save_user_settings(user["id"], payload)
+    save_global_runtime_form_settings(raw_payload)
+    persist_settings_to_config(module, payload)
+    if module in WEB_INTERFACE_BLOCKED_MODULES:
+        logger.info("Blocked module run from web interface: %s", module)
+        return RedirectResponse("/", status_code=302)
+
+    tool_meta = load_tool_metadata()
+    tool_version = tool_meta.get("version", "unknown")
+
+    def parse_selected(raw: str) -> list[str]:
+        return [item.strip() for item in (raw or "").split("|") if item.strip()]
+
+    queue_payloads = [dict(raw_payload)]
+    selected_single = parse_selected(selected_inputs_single)
+    selected_pre = parse_selected(selected_inputs_pre)
+    selected_post = parse_selected(selected_inputs_post)
+
+    if module != "consistency-check" and len(selected_single) > 1:
+        queue_payloads = []
+        for selected_input in selected_single:
+            payload_copy = dict(raw_payload)
+            payload_copy["input"] = selected_input
+            queue_payloads.append(payload_copy)
+    elif module == "consistency-check" and (len(selected_pre) > 1 or len(selected_post) > 1):
+        pairable = len(selected_pre) == len(selected_post) or len(selected_pre) == 1 or len(selected_post) == 1
+        if pairable:
+            queue_payloads = []
+            queued_len = max(len(selected_pre), len(selected_post))
+            for idx in range(queued_len):
+                pre_value = selected_pre[idx] if len(selected_pre) > 1 else (selected_pre[0] if selected_pre else raw_payload.get("input_pre", ""))
+                post_value = selected_post[idx] if len(selected_post) > 1 else (selected_post[0] if selected_post else raw_payload.get("input_post", ""))
+                payload_copy = dict(raw_payload)
+                payload_copy["input_pre"] = pre_value
+                payload_copy["input_post"] = post_value
+                queue_payloads.append(payload_copy)
+
+    conn = get_conn()
+    enqueue_payloads_for_user(conn, user["id"], user["username"], queue_payloads, tool_version)
+    conn.commit()
+    conn.close()
+
+    if queue_payloads:
+        latest_payload = queue_payloads[-1]
+        latest_settings_payload = build_settings_with_module_inputs(payload, latest_payload)
+        save_user_settings(user["id"], latest_settings_payload)
+        persist_settings_to_config(module, latest_settings_payload)
+
+    queue_event.set()
+    ensure_worker_started()
+    return RedirectResponse("/", status_code=302)
+
+
+
+@app.post("/runs/stop", tags=["Execution"])
+async def runs_stop(request: Request):
+    try:
+        user = require_user(request)
+    except PermissionError:
+        return {"ok": False}
+
+    payload = await request.json()
+    raw_run_ids = payload.get("ids", [])
+    run_ids = [int(run_id) for run_id in raw_run_ids if str(run_id).isdigit()]
+    if not run_ids:
+        return {"ok": False}
+
+    conn = get_conn()
+    rows = conn.execute(
+        "SELECT id, status FROM task_runs WHERE user_id = ? AND id IN (%s)" % ",".join("?" for _ in run_ids),
+        (user["id"], *run_ids),
+    ).fetchall()
+
+    now_value = now_iso()
+    queued_ids: list[int] = []
+    running_ids: list[int] = []
+    running_without_process_ids: list[int] = []
+    for row in rows:
+        status = (row["status"] or "").lower()
+        if status == "queued":
+            queued_ids.append(row["id"])
+        elif status == "running":
+            running_ids.append(row["id"])
+
+    if queued_ids:
+        conn.execute(
+            "UPDATE task_runs SET status = 'canceled', finished_at = ?, output_log = TRIM(output_log || '\\nCanceled by user before execution.') WHERE user_id = ? AND id IN (%s)"
+            % ",".join("?" for _ in queued_ids),
+            (now_value, user["id"], *queued_ids),
+        )
+    running_with_process_ids: list[int] = []
+    with running_processes_lock:
+        for task_id in running_ids:
+            proc = running_processes.get(task_id)
+            if proc and proc.poll() is None:
+                running_with_process_ids.append(task_id)
+            else:
+                running_without_process_ids.append(task_id)
+
+    if running_with_process_ids:
+        conn.execute(
+            "UPDATE task_runs SET status = 'canceling', output_log = TRIM(output_log || '\\nCancellation requested by user.') WHERE user_id = ? AND id IN (%s)"
+            % ",".join("?" for _ in running_with_process_ids),
+            (user["id"], *running_with_process_ids),
+        )
+    if running_without_process_ids:
+        conn.execute(
+            "UPDATE task_runs SET status = 'canceled', finished_at = ?, output_log = TRIM(output_log || '\\nCanceled by user (no active process found).') WHERE user_id = ? AND id IN (%s)"
+            % ",".join("?" for _ in running_without_process_ids),
+            (now_value, user["id"], *running_without_process_ids),
+        )
+    conn.commit()
+    conn.close()
+
+    with canceled_task_ids_lock:
+        canceled_task_ids.update(running_with_process_ids)
+    with running_processes_lock:
+        for task_id in running_with_process_ids:
+            proc = running_processes.get(task_id)
+            if proc and proc.poll() is None:
+                try:
+                    proc.terminate()
+                except OSError:
+                    pass
+
+    queue_event.set()
+    return {
+        "ok": True,
+        "stopped": len(queued_ids) + len(running_ids),
+        "canceled_immediately": len(queued_ids) + len(running_without_process_ids),
+    }
+
+
+@app.post("/runs/rerun", tags=["Execution"])
+async def runs_rerun(request: Request):
+    try:
+        user = require_user(request)
+    except PermissionError:
+        return {"ok": False}
+
+    payload = await request.json()
+    raw_run_ids = payload.get("ids", [])
+    run_ids = [int(run_id) for run_id in raw_run_ids if str(run_id).isdigit()]
+    if not run_ids:
+        return {"ok": False}
+
+    conn = get_conn()
+    rows = conn.execute(
+        "SELECT id, payload_json FROM task_runs WHERE id IN (%s)" % ",".join("?" for _ in run_ids),
+        (*run_ids,),
+    ).fetchall()
+
+    run_payload_by_id: dict[int, dict[str, Any]] = {}
+    for row in rows:
+        try:
+            payload_json = json.loads(row["payload_json"] or "{}")
+        except json.JSONDecodeError:
+            payload_json = {}
+        run_payload_by_id[int(row["id"])] = dict(payload_json)
+
+    queue_payloads: list[dict[str, Any]] = []
+    for run_id in run_ids:
+        payload_json = run_payload_by_id.get(run_id)
+        if payload_json:
+            queue_payloads.append(payload_json)
+
+    if not queue_payloads:
+        conn.close()
+        return {"ok": False, "queued": 0}
+
+    tool_meta = load_tool_metadata()
+    tool_version = tool_meta.get("version", "unknown")
+    queued = enqueue_payloads_for_user(conn, user["id"], user["username"], queue_payloads, tool_version, force_user_output_root=True)
+
+    conn.commit()
+    conn.close()
+
+    if queued:
+        queue_event.set()
+        ensure_worker_started()
+
+    return {"ok": True, "queued": queued}
+
+
+
+@app.get("/runs/list", tags=["Execution"])
+def runs_list(request: Request):
+    try:
+        user = require_user(request)
+    except PermissionError:
+        return JSONResponse({"ok": False, "items": []}, headers=NO_CACHE_HEADERS)
+
+    conn = get_conn()
+    latest_runs = conn.execute(
+        """
+        SELECT tr.id, tr.user_id, u.username, tr.module, tr.tool_version, tr.input_name, tr.status, tr.started_at, tr.finished_at, tr.duration_seconds, tr.output_zip, tr.output_log_file
+        FROM task_runs tr
+        JOIN users u ON u.id = tr.user_id
+        ORDER BY tr.id DESC
+        """
+    ).fetchall()
+    latest_runs = [dict(row) for row in latest_runs]
+    all_runs = conn.execute("SELECT id, status, input_dir, output_dir, output_zip FROM task_runs").fetchall()
+    conn.close()
+
+    run_sizes, _ = compute_runs_size(all_runs)
+    items = [serialize_run_row(row, run_sizes) for row in latest_runs]
+    return JSONResponse({"ok": True, "items": items}, headers=NO_CACHE_HEADERS)
+
+
+@app.get("/runs/{run_id}/download", tags=["Execution"])
+def runs_download_output(request: Request, run_id: int):
     try:
         require_user(request)
     except PermissionError:
@@ -3560,30 +3395,9 @@ def download_run_output(request: Request, run_id: int):
     return FileResponse(output_zip, filename=output_zip.name)
 
 
-@app.get("/admin/runs/{run_id}/download", tags=["Administration"])
-def admin_download_run_output(request: Request, run_id: int):
-    try:
-        require_admin(request)
-    except PermissionError:
-        return PlainTextResponse("", status_code=403)
 
-    conn = get_conn()
-    row = conn.execute("SELECT tr.user_id, u.username, tr.module, tr.tool_version, tr.output_zip, tr.output_dir, tr.finished_at FROM task_runs tr JOIN users u ON u.id = tr.user_id WHERE tr.id = ?", (run_id,)).fetchone()
-    if not row:
-        conn.close()
-        return PlainTextResponse("", status_code=404)
-
-    output_zip = resolve_run_zip_path(conn, int(row["user_id"]), row["username"], run_id, row["output_zip"], row["output_dir"], row["module"], row["tool_version"], row["finished_at"])
-    conn.close()
-
-    if not output_zip or not output_zip.exists():
-        return PlainTextResponse("", status_code=404)
-
-    return FileResponse(output_zip, filename=output_zip.name)
-
-
-@app.get("/runs/{run_id}/log", tags=["Runs & Logs"])
-def download_run_log(request: Request, run_id: int):
+@app.get("/runs/{run_id}/log", tags=["Execution"])
+def runs_download_log(request: Request, run_id: int):
     try:
         require_user(request)
     except PermissionError:
@@ -3607,30 +3421,9 @@ def download_run_log(request: Request, run_id: int):
     return FileResponse(log_path, filename=log_path.name)
 
 
-@app.get("/admin/runs/{run_id}/log", tags=["Administration"])
-def admin_download_run_log(request: Request, run_id: int):
-    try:
-        require_admin(request)
-    except PermissionError:
-        return PlainTextResponse("", status_code=403)
 
-    conn = get_conn()
-    row = conn.execute("SELECT tr.user_id, u.username, tr.module, tr.tool_version, tr.output_log_file, tr.output_dir, tr.finished_at FROM task_runs tr JOIN users u ON u.id = tr.user_id WHERE tr.id = ?", (run_id,)).fetchone()
-    if not row:
-        conn.close()
-        return PlainTextResponse("", status_code=404)
-
-    log_path = resolve_run_log_path(conn, int(row["user_id"]), row["username"], run_id, row["output_log_file"], row["output_dir"], row["module"], row["tool_version"], row["finished_at"])
-    conn.close()
-
-    if not log_path or not log_path.exists():
-        return PlainTextResponse("", status_code=404)
-
-    return FileResponse(log_path, filename=log_path.name)
-
-
-@app.post("/runs/delete", tags=["Runs & Logs"])
-async def delete_runs(request: Request):
+@app.post("/runs/delete", tags=["Execution"])
+async def runs_delete(request: Request):
     try:
         user = require_user(request)
     except PermissionError:
@@ -3693,6 +3486,205 @@ async def delete_runs(request: Request):
     conn.close()
 
     return {"ok": True}
+
+
+
+
+
+
+@app.get("/logs/latest", tags=["Logs"])
+def logs_latest(request: Request):
+    try:
+        user = require_user(request)
+    except PermissionError:
+        return JSONResponse({"log": ""}, headers=NO_CACHE_HEADERS)
+
+    conn = get_conn()
+    row = conn.execute(
+        "SELECT output_log FROM task_runs WHERE user_id = ? ORDER BY id DESC LIMIT 1",
+        (user["id"],),
+    ).fetchone()
+    conn.close()
+    return JSONResponse({"log": row["output_log"] if row else ""}, headers=NO_CACHE_HEADERS)
+
+
+
+@app.get("/logs/by_run/{run_id}", tags=["Logs"])
+def logs_by_run(request: Request, run_id: int):
+    try:
+        user = require_user(request)
+    except PermissionError:
+        return JSONResponse({"log": ""}, headers=NO_CACHE_HEADERS)
+
+    conn = get_conn()
+    row = conn.execute(
+        "SELECT output_log FROM task_runs WHERE id = ? AND user_id = ?",
+        (run_id, user["id"]),
+    ).fetchone()
+    conn.close()
+    return JSONResponse({"log": row["output_log"] if row else ""}, headers=NO_CACHE_HEADERS)
+
+
+
+@app.get("/logs/system", tags=["Logs"])
+def logs_system(request: Request, source: str = "app"):
+    try:
+        user = require_user(request)
+    except PermissionError:
+        return JSONResponse({"log": ""}, headers=NO_CACHE_HEADERS)
+
+    source_key = (source or "app").lower().strip()
+    if source_key in {"api", "access"}:
+        path = API_LOG_PATH
+    elif source_key in {"web-access", "web_access"}:
+        if user["role"] != "admin":
+            return JSONResponse({"log": ""}, headers=NO_CACHE_HEADERS)
+        path = WEB_ACCESS_LOG_PATH
+    else:
+        path = APP_LOG_PATH
+
+    return JSONResponse({"log": read_tail(path)}, headers=NO_CACHE_HEADERS)
+
+
+
+@app.post("/logs/system/delete", tags=["Logs"])
+def logs_system_delete(request: Request, source: str = "app"):
+    try:
+        user = require_admin(request)
+    except PermissionError:
+        return {"ok": False}
+
+    source_key = (source or "app").lower().strip()
+    if source_key in {"api", "access"}:
+        path = API_LOG_PATH
+    elif source_key in {"web-access", "web_access"}:
+        if user["role"] != "admin":
+            return {"ok": False}
+        path = WEB_ACCESS_LOG_PATH
+    else:
+        path = APP_LOG_PATH
+
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("", encoding="utf-8")
+    except OSError:
+        return {"ok": False}
+    return {"ok": True}
+
+
+
+# ========= Admin Section ============
+
+@app.post("/admin/inputs/rename", tags=["Administration"])
+async def admin_rename_inputs(request: Request):
+    try:
+        require_admin(request)
+    except PermissionError:
+        return {"ok": False}
+
+    payload = await request.json()
+    items = payload.get("items", []) if isinstance(payload, dict) else []
+    return inputs_rename_common(None, items)
+
+
+@app.post("/admin/inputs/delete", tags=["Administration"])
+async def admin_delete_inputs(request: Request):
+    try:
+        require_admin(request)
+    except PermissionError:
+        return {"ok": False}
+
+    payload = await request.json()
+    input_ids = payload.get("ids", [])
+    if not input_ids:
+        return {"ok": False}
+
+    conn = get_conn()
+    rows = conn.execute(
+        "SELECT id, input_path FROM inputs_repository WHERE id IN (%s)" % ",".join("?" for _ in input_ids),
+        tuple(input_ids),
+    ).fetchall()
+    for row in rows:
+        input_path = Path(row["input_path"])
+        if is_safe_path(INPUTS_REPOSITORY_DIR, input_path):
+            if input_path.is_dir():
+                shutil.rmtree(input_path, ignore_errors=True)
+            elif input_path.exists():
+                input_path.unlink(missing_ok=True)
+    conn.execute("DELETE FROM inputs_repository WHERE id IN (%s)" % ",".join("?" for _ in input_ids), tuple(input_ids))
+    conn.commit()
+    conn.close()
+    return {"ok": True}
+
+
+@app.get("/admin/logs/by_run/{run_id}", tags=["Administration"])
+def admin_logs_by_run(request: Request, run_id: int):
+    try:
+        require_admin(request)
+    except PermissionError:
+        return JSONResponse({"log": ""}, headers=NO_CACHE_HEADERS)
+
+    conn = get_conn()
+    row = conn.execute("SELECT output_log FROM task_runs WHERE id = ?", (run_id,)).fetchone()
+    conn.close()
+    return JSONResponse({"log": row["output_log"] if row else ""}, headers=NO_CACHE_HEADERS)
+
+
+@app.get("/admin/runs/list", tags=["Administration"])
+def admin_runs_list(request: Request):
+    try:
+        require_admin(request)
+    except PermissionError:
+        return JSONResponse({"ok": False, "items": []}, headers=NO_CACHE_HEADERS)
+
+    conn = get_conn()
+    latest_runs = conn.execute(
+        """
+        SELECT tr.id, u.username, tr.module, tr.tool_version, tr.input_name, tr.status, tr.started_at, tr.finished_at, tr.duration_seconds, tr.output_zip, tr.output_log_file, tr.input_dir, tr.output_dir
+        FROM task_runs tr
+        JOIN users u ON u.id = tr.user_id
+        ORDER BY tr.id DESC
+        """
+    ).fetchall()
+    latest_runs = [dict(row) for row in latest_runs]
+    run_sizes, _ = compute_runs_size(latest_runs)
+    conn.close()
+
+    items = [serialize_run_row(row, run_sizes) for row in latest_runs]
+    return JSONResponse({"ok": True, "items": items}, headers=NO_CACHE_HEADERS)
+
+
+@app.get("/admin/runs/active_status", tags=["Administration"])
+def admin_runs_active_status(request: Request):
+    try:
+        require_admin(request)
+    except PermissionError:
+        return JSONResponse({"ok": False, "has_active_tasks": False}, headers=NO_CACHE_HEADERS)
+
+    conn = get_conn()
+    row = conn.execute(
+        """
+        SELECT COUNT(1) AS active_count
+        FROM task_runs
+        WHERE LOWER(COALESCE(status, '')) IN ('running', 'queued', 'canceling')
+        """
+    ).fetchone()
+    conn.close()
+    active_count = int(row["active_count"] or 0) if row else 0
+    return JSONResponse({"ok": True, "has_active_tasks": active_count > 0}, headers=NO_CACHE_HEADERS)
+
+
+@app.get("/admin/users/connected_status", tags=["Administration"])
+def admin_users_connected_status(request: Request):
+    try:
+        require_admin(request)
+    except PermissionError:
+        return JSONResponse({"ok": False, "connected_users": 0}, headers=NO_CACHE_HEADERS)
+
+    conn = get_conn()
+    _, connected_users_count = build_connected_users_snapshot(conn)
+    conn.close()
+    return JSONResponse({"ok": True, "connected_users": connected_users_count}, headers=NO_CACHE_HEADERS)
 
 
 @app.post("/admin/runs/stop", tags=["Administration"])
@@ -4336,10 +4328,47 @@ def admin_delete_user(request: Request, user_id: int):
     return RedirectResponse("/admin", status_code=302)
 
 
-@app.get("/release-notes", response_class=HTMLResponse)
-async def release_notes(request: Request, user=Depends(get_current_user)):
-    # Serve CHANGELOG.md from the repo mounted at /app and render it client-side
-    changelog_path = Path("/app/CHANGELOG.md")
-    changelog_md = changelog_path.read_text(encoding="utf-8", errors="replace") if changelog_path.exists() else "CHANGELOG.md not found at /app/CHANGELOG.md"
-    tool_meta = load_tool_metadata()
-    return templates.TemplateResponse("release_notes.html", {"request": request, "tool_meta": tool_meta, "user": user, "changelog_md": changelog_md})
+
+@app.get("/admin/runs/{run_id}/download", tags=["Administration"])
+def admin_download_run_output(request: Request, run_id: int):
+    try:
+        require_admin(request)
+    except PermissionError:
+        return PlainTextResponse("", status_code=403)
+
+    conn = get_conn()
+    row = conn.execute("SELECT tr.user_id, u.username, tr.module, tr.tool_version, tr.output_zip, tr.output_dir, tr.finished_at FROM task_runs tr JOIN users u ON u.id = tr.user_id WHERE tr.id = ?", (run_id,)).fetchone()
+    if not row:
+        conn.close()
+        return PlainTextResponse("", status_code=404)
+
+    output_zip = resolve_run_zip_path(conn, int(row["user_id"]), row["username"], run_id, row["output_zip"], row["output_dir"], row["module"], row["tool_version"], row["finished_at"])
+    conn.close()
+
+    if not output_zip or not output_zip.exists():
+        return PlainTextResponse("", status_code=404)
+
+    return FileResponse(output_zip, filename=output_zip.name)
+
+
+
+@app.get("/admin/runs/{run_id}/log", tags=["Administration"])
+def admin_download_run_log(request: Request, run_id: int):
+    try:
+        require_admin(request)
+    except PermissionError:
+        return PlainTextResponse("", status_code=403)
+
+    conn = get_conn()
+    row = conn.execute("SELECT tr.user_id, u.username, tr.module, tr.tool_version, tr.output_log_file, tr.output_dir, tr.finished_at FROM task_runs tr JOIN users u ON u.id = tr.user_id WHERE tr.id = ?", (run_id,)).fetchone()
+    if not row:
+        conn.close()
+        return PlainTextResponse("", status_code=404)
+
+    log_path = resolve_run_log_path(conn, int(row["user_id"]), row["username"], run_id, row["output_log_file"], row["output_dir"], row["module"], row["tool_version"], row["finished_at"])
+    conn.close()
+
+    if not log_path or not log_path.exists():
+        return PlainTextResponse("", status_code=404)
+
+    return FileResponse(log_path, filename=log_path.name)
