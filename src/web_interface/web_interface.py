@@ -3164,6 +3164,38 @@ def resolve_queue_task_output_dir(stored_output_dir: str | None, payload_json: s
     return candidate
 
 
+def resolve_strict_run_artifacts_for_deletion(stored_output_dir: str | None, stored_output_zip: str | None, stored_output_log_file: str | None, payload_json: str | None) -> tuple[Path | None, Path | None, Path | None]:
+    """Resolve run artifacts using only explicitly stored paths.
+
+    Deletion operations must never perform heuristic discovery because that can
+    match artifacts belonging to a different execution.
+    """
+    output_dir: Path | None = None
+    output_zip: Path | None = None
+    output_log: Path | None = None
+
+    queue_output_dir = resolve_queue_task_output_dir(stored_output_dir, payload_json)
+    if queue_output_dir:
+        output_dir = queue_output_dir
+
+    if output_dir is None and stored_output_dir:
+        candidate = Path(stored_output_dir)
+        if candidate.exists() and candidate.is_dir() and is_safe_path(OUTPUTS_DIR, candidate):
+            output_dir = candidate
+
+    if stored_output_zip:
+        zip_candidate = Path(stored_output_zip)
+        if zip_candidate.exists() and zip_candidate.is_file() and is_safe_path(OUTPUTS_DIR, zip_candidate):
+            output_zip = zip_candidate
+
+    if stored_output_log_file:
+        log_candidate = Path(stored_output_log_file)
+        if log_candidate.exists() and log_candidate.is_file() and is_safe_path(OUTPUTS_DIR, log_candidate):
+            output_log = log_candidate
+
+    return output_dir, output_zip, output_log
+
+
 def resolve_run_output_dir_path(conn: sqlite3.Connection, user_id: int, username: str, run_id: int, stored_output_dir: str | None, stored_output_zip: str | None, stored_output_log_file: str | None, module: str | None, tool_version: str | None, finished_at_raw: str | None) -> Path | None:
     """Best-effort locate the output directory for a run even if output folders were renamed manually."""
     out_dir = Path(stored_output_dir) if stored_output_dir else None
@@ -3322,23 +3354,22 @@ async def delete_runs(request: Request):
     ).fetchall()
 
     for row in rows:
-        run_id = int(row["id"])
         run_status = (row["status"] or "").strip().lower()
 
-        if run_status in {"queued", "running", "canceling"}:
-            queue_output_dir = resolve_queue_task_output_dir(row["output_dir"], row["payload_json"])
-            if queue_output_dir:
-                shutil.rmtree(queue_output_dir, ignore_errors=True)
-            continue
+        output_dir, output_zip, output_log = resolve_strict_run_artifacts_for_deletion(
+            row["output_dir"],
+            row["output_zip"],
+            row["output_log_file"],
+            row["payload_json"],
+        )
 
-        output_dir = resolve_run_output_dir_path(conn, user["id"], user["username"], run_id, row["output_dir"], row["output_zip"], row["output_log_file"], row["module"], row["tool_version"], row["finished_at"])
+        if output_dir and run_status in {"queued", "running", "canceling", "canceled"}:
+            shutil.rmtree(output_dir, ignore_errors=True)
+            continue
 
         if output_dir and is_safe_path(OUTPUTS_DIR, output_dir):
             shutil.rmtree(output_dir, ignore_errors=True)
             continue
-
-        output_zip = resolve_run_zip_path(conn, user["id"], user["username"], run_id, row["output_zip"], row["output_dir"], row["module"], row["tool_version"], row["finished_at"])
-        output_log = resolve_run_log_path(conn, user["id"], user["username"], run_id, row["output_log_file"], row["output_dir"], row["module"], row["tool_version"], row["finished_at"])
 
         if output_zip and output_zip.is_file() and is_safe_path(OUTPUTS_DIR, output_zip):
             output_zip.unlink(missing_ok=True)
@@ -3501,25 +3532,22 @@ async def admin_delete_runs(request: Request):
     ).fetchall()
 
     for row in rows:
-        run_id = int(row["id"])
-        user_id = int(row["user_id"])
-        username = row["username"] or "unknown"
         run_status = (row["status"] or "").strip().lower()
 
-        if run_status in {"queued", "running", "canceling"}:
-            queue_output_dir = resolve_queue_task_output_dir(row["output_dir"], row["payload_json"])
-            if queue_output_dir:
-                shutil.rmtree(queue_output_dir, ignore_errors=True)
-            continue
+        output_dir, output_zip, output_log = resolve_strict_run_artifacts_for_deletion(
+            row["output_dir"],
+            row["output_zip"],
+            row["output_log_file"],
+            row["payload_json"],
+        )
 
-        output_dir = resolve_run_output_dir_path(conn, user_id, username, run_id, row["output_dir"], row["output_zip"], row["output_log_file"], row["module"], row["tool_version"], row["finished_at"])
+        if output_dir and run_status in {"queued", "running", "canceling", "canceled"}:
+            shutil.rmtree(output_dir, ignore_errors=True)
+            continue
 
         if output_dir and is_safe_path(OUTPUTS_DIR, output_dir):
             shutil.rmtree(output_dir, ignore_errors=True)
             continue
-
-        output_zip = resolve_run_zip_path(conn, user_id, username, run_id, row["output_zip"], row["output_dir"], row["module"], row["tool_version"], row["finished_at"])
-        output_log = resolve_run_log_path(conn, user_id, username, run_id, row["output_log_file"], row["output_dir"], row["module"], row["tool_version"], row["finished_at"])
 
         if output_zip and output_zip.is_file() and is_safe_path(OUTPUTS_DIR, output_zip):
             output_zip.unlink(missing_ok=True)
