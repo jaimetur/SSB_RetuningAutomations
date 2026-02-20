@@ -117,7 +117,7 @@ Each module generates a dedicated output folder containing Excel reports, logs, 
 ## 3) SSB Retuning Automations - Interfaces 
 
 ### Graphical User Interface - GUI Panel
-![Module Selector](../assets/screenshots/module_selector.png)
+![Module Selector](../assets/screenshots/gui-interface.png)
 
 - This is the main Graphical User Interface for SSB Retuning Automations.. From this panel you can select the modules you want to run and the inputs you want to provide.
 - You can also configure some settings like the network frequencies to use or the Input folder to use.

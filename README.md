@@ -52,7 +52,7 @@ You can find the technical user guide in these formats:
 ---
 
 ## 🖥️ Module Selector
-![Module Selector](assets/screenshots/module_selector.png?raw=true) 
+![Module Selector](assets/screenshots/gui-interface.png?raw=true) 
 
 ---
 
