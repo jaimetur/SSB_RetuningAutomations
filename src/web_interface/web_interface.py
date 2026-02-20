@@ -583,6 +583,28 @@ def migrate_user_references(conn: sqlite3.Connection, user_id: int, old_username
             (input_dir, output_dir, output_zip, output_log_file, rewritten_payload_json, row["id"]),
         )
 
+    user_settings_row = conn.execute(
+        "SELECT settings_json FROM user_settings WHERE user_id = ?",
+        (user_id,),
+    ).fetchone()
+    if user_settings_row and user_settings_row["settings_json"]:
+        raw_settings_json = user_settings_row["settings_json"]
+        rewritten_settings_json = raw_settings_json
+        try:
+            settings_obj = json.loads(raw_settings_json)
+            rewritten_settings_json = json.dumps(
+                rewrite_payload_user_paths(settings_obj, old_username, new_username),
+                ensure_ascii=False,
+            )
+        except json.JSONDecodeError:
+            rewritten_settings_json = raw_settings_json
+
+        if rewritten_settings_json != raw_settings_json:
+            conn.execute(
+                "UPDATE user_settings SET settings_json = ?, updated_at = ? WHERE user_id = ?",
+                (rewritten_settings_json, now_iso(), user_id),
+            )
+
 
 def parse_frequency_csv(raw: str) -> list[str]:
     values = [v.strip() for v in (raw or "").split(",") if v.strip()]
@@ -730,6 +752,15 @@ def init_db() -> None:
             settings_json TEXT NOT NULL,
             updated_at TEXT NOT NULL,
             FOREIGN KEY(user_id) REFERENCES users(id)
+        )
+        """
+    )
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS app_settings (
+            key TEXT PRIMARY KEY,
+            value_json TEXT NOT NULL,
+            updated_at TEXT NOT NULL
         )
         """
     )
@@ -982,16 +1013,11 @@ def coerce_int(value: Any, default: int, minimum: int, maximum: int) -> int:
     return max(minimum, min(maximum, parsed))
 
 
-def get_admin_settings_storage_user_id() -> int:
+def load_legacy_admin_settings_payload() -> dict[str, Any]:
+    """Backward-compatible reader for old builds storing admin settings in user_settings(admin)."""
     conn = get_conn()
     admin_row = conn.execute("SELECT id FROM users WHERE LOWER(username) = 'admin' ORDER BY id ASC LIMIT 1").fetchone()
-    conn.close()
-    return int(admin_row["id"]) if admin_row else -1
-
-
-def load_admin_settings_payload() -> dict[str, Any]:
-    conn = get_conn()
-    storage_user_id = get_admin_settings_storage_user_id()
+    storage_user_id = int(admin_row["id"]) if admin_row else -1
     row = conn.execute("SELECT settings_json FROM user_settings WHERE user_id = ?", (storage_user_id,)).fetchone()
     conn.close()
     if not row:
@@ -1003,18 +1029,47 @@ def load_admin_settings_payload() -> dict[str, Any]:
         return {}
 
 
-def save_admin_settings_payload(payload: dict[str, Any]) -> None:
+def load_app_setting_payload(key: str) -> dict[str, Any]:
+    conn = get_conn()
+    row = conn.execute("SELECT value_json FROM app_settings WHERE key = ?", (key,)).fetchone()
+    conn.close()
+    if not row:
+        return {}
+    try:
+        payload = json.loads(row["value_json"])
+        return payload if isinstance(payload, dict) else {}
+    except json.JSONDecodeError:
+        return {}
+
+
+def save_app_setting_payload(key: str, payload: dict[str, Any]) -> None:
     conn = get_conn()
     conn.execute(
         """
-        INSERT INTO user_settings(user_id, settings_json, updated_at)
+        INSERT INTO app_settings(key, value_json, updated_at)
         VALUES(?, ?, ?)
-        ON CONFLICT(user_id) DO UPDATE SET settings_json = excluded.settings_json, updated_at = excluded.updated_at
+        ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json, updated_at = excluded.updated_at
         """,
-        (get_admin_settings_storage_user_id(), json.dumps(payload, ensure_ascii=False), now_iso()),
+        (key, json.dumps(payload, ensure_ascii=False), now_iso()),
     )
     conn.commit()
     conn.close()
+
+
+def load_admin_settings_payload() -> dict[str, Any]:
+    payload = load_app_setting_payload("global_admin_settings")
+    if payload:
+        return payload
+
+    # One-time fallback for older installations.
+    legacy_payload = load_legacy_admin_settings_payload()
+    if legacy_payload:
+        save_app_setting_payload("global_admin_settings", legacy_payload)
+    return legacy_payload
+
+
+def save_admin_settings_payload(payload: dict[str, Any]) -> None:
+    save_app_setting_payload("global_admin_settings", payload)
 
 
 def coerce_hour(value: Any, default: int = 2) -> int:
