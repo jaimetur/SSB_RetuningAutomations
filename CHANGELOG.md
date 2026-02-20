@@ -10,7 +10,7 @@
 - #### 🚀 Enhancements:
   - Modified several Tips on SumaryAudit Table.
   - Improved MEContext table header alligment for better readability.
-  - SummaryAudit table now color in grey all rows whose Value column is 0.
+  - SummaryAudit table now colors in gray all rows whose Value column is 0.
 
 - #### 🐛 Bug fixes:
 
