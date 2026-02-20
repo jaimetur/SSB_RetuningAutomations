@@ -50,6 +50,8 @@
   - Renamed API docs button to Web API
   - Reorganized FastAPI sections and endpoint tags.
   - Renamed FastAPI methods to allign with its endpoints.
+  - Auto Generate docx/pptx PDF guides and updated web documentation links.
+  - Added selectable guide formats in UpdateAll.py workflow.
 
 ---
 

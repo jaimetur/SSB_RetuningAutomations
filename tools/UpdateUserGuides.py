@@ -102,6 +102,22 @@ def guide_paths(version: str) -> dict[str, Path]:
     }
 
 
+def list_legacy_plain_pdfs() -> list[Path]:
+    """
+    Legacy support: files like User-Guide-...-vX.Y.Z.pdf (WITHOUT .docx.pdf or .pptx.pdf)
+    """
+    pattern = f"{GUIDE_PREFIX}*.pdf"
+    candidates = []
+    for p in HELP_DIR.glob(pattern):
+        if not p.is_file():
+            continue
+        name = p.name.lower()
+        if name.endswith(".docx.pdf") or name.endswith(".pptx.pdf"):
+            continue
+        candidates.append(p)
+    return sorted(candidates, key=lambda p: p.stat().st_mtime, reverse=True)
+
+
 def list_versioned_guides(extension: str) -> list[Path]:
     pattern = f"{GUIDE_PREFIX}*.{extension}"
     return sorted((p for p in HELP_DIR.glob(pattern) if p.is_file()), key=lambda p: p.stat().st_mtime, reverse=True)
@@ -135,7 +151,12 @@ def align_help_guides_to_version(version: str) -> dict[str, Path]:
     for ext, target in legacy_to_target.items():
         if target.exists():
             continue
-        candidates = list_versioned_guides(ext)
+
+        if ext == "pdf":
+            candidates = list_legacy_plain_pdfs()
+        else:
+            candidates = list_versioned_guides(ext)
+
         if candidates:
             candidates[0].rename(target)
 
@@ -152,7 +173,12 @@ def cleanup_old_versioned_guides(paths: dict[str, Path]) -> None:
         "pdf": paths["docx_pdf"],
     }
     for ext, keep_path in keep_by_ext.items():
-        for candidate in list_versioned_guides(ext):
+        if ext == "pdf":
+            candidates = list_legacy_plain_pdfs()
+        else:
+            candidates = list_versioned_guides(ext)
+
+        for candidate in candidates:
             if candidate != keep_path:
                 candidate.unlink(missing_ok=True)
 
@@ -224,7 +250,7 @@ def try_update_docx_fields_and_export_pdf(docx_file: Path, pdf_file: Path) -> bo
     if os.name != "nt":
         return False
 
-    print(f"\tUpdating Word fields and exporting PDF from Word...")
+    print(f"\tConverting DOCX to PDF (and updating Word fields)...")
     ps_script = f"""
 $ErrorActionPreference = 'Stop'
 $word = $null
