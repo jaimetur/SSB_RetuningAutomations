@@ -111,6 +111,52 @@ CFG_FIELD_MAP = {
 
 CFG_FIELDS = tuple(CFG_FIELD_MAP.keys())
 
+USER_SETTINGS_ALLOWED_KEYS = {
+    "module",
+    "input",
+    "input_pre",
+    "input_post",
+    "profiles_audit",
+    "frequency_audit",
+    "export_correction_cmd",
+    "fast_excel_export",
+    "output",
+    "module_inputs_map",
+    "ui_panels",
+    "user_system_log_source",
+    "runs_user_filter",
+    "inputs_user_filter",
+    "wildcard_history_inputs",
+    "wildcard_history_executions",
+    "admin_system_log_source",
+    "admin_users_filter",
+    "admin_inputs_filter",
+    "admin_runs_filter",
+    "admin_users_sort",
+}
+
+USER_SETTINGS_OBSOLETE_KEYS = {
+    "max_cpu_percent",
+    "max_memory_percent",
+    "max_parallel_tasks",
+    "db_backup_auto_mode",
+    "db_backup_auto_enabled",
+    "db_backup_auto_path",
+    "db_backup_auto_hour",
+    "db_backup_max_to_store",
+    "db_backup_last_run_date",
+    "n77_ssb_pre",
+    "n77_ssb_post",
+    "n77b_ssb",
+    "allowed_n77_ssb_pre",
+    "allowed_n77_arfcn_pre",
+    "allowed_n77_ssb_post",
+    "allowed_n77_arfcn_post",
+    "ca_freq_filters",
+    "cc_freq_filters",
+    "network_frequencies",
+}
+
 pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 
 
@@ -583,6 +629,28 @@ def migrate_user_references(conn: sqlite3.Connection, user_id: int, old_username
             (input_dir, output_dir, output_zip, output_log_file, rewritten_payload_json, row["id"]),
         )
 
+    user_settings_row = conn.execute(
+        "SELECT settings_json FROM user_settings WHERE user_id = ?",
+        (user_id,),
+    ).fetchone()
+    if user_settings_row and user_settings_row["settings_json"]:
+        raw_settings_json = user_settings_row["settings_json"]
+        rewritten_settings_json = raw_settings_json
+        try:
+            settings_obj = json.loads(raw_settings_json)
+            rewritten_settings_json = json.dumps(
+                rewrite_payload_user_paths(settings_obj, old_username, new_username),
+                ensure_ascii=False,
+            )
+        except json.JSONDecodeError:
+            rewritten_settings_json = raw_settings_json
+
+        if rewritten_settings_json != raw_settings_json:
+            conn.execute(
+                "UPDATE user_settings SET settings_json = ?, updated_at = ? WHERE user_id = ?",
+                (rewritten_settings_json, now_iso(), user_id),
+            )
+
 
 def parse_frequency_csv(raw: str) -> list[str]:
     values = [v.strip() for v in (raw or "").split(",") if v.strip()]
@@ -730,6 +798,15 @@ def init_db() -> None:
             settings_json TEXT NOT NULL,
             updated_at TEXT NOT NULL,
             FOREIGN KEY(user_id) REFERENCES users(id)
+        )
+        """
+    )
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS app_settings (
+            key TEXT PRIMARY KEY,
+            value_json TEXT NOT NULL,
+            updated_at TEXT NOT NULL
         )
         """
     )
@@ -941,6 +1018,7 @@ def get_client_ip(request: Request) -> str:
 
 
 def save_user_settings(user_id: int, settings: dict[str, Any]) -> None:
+    sanitized_settings = sanitize_user_settings_payload(settings)
     conn = get_conn()
     conn.execute(
         """
@@ -948,7 +1026,7 @@ def save_user_settings(user_id: int, settings: dict[str, Any]) -> None:
         VALUES (?, ?, ?)
         ON CONFLICT(user_id) DO UPDATE SET settings_json = excluded.settings_json, updated_at = excluded.updated_at
         """,
-        (user_id, json.dumps(settings), now_iso()),
+        (user_id, json.dumps(sanitized_settings, ensure_ascii=False), now_iso()),
     )
     conn.commit()
     conn.close()
@@ -961,9 +1039,13 @@ def load_user_settings(user_id: int) -> dict[str, Any]:
     if not row:
         return {}
     try:
-        return json.loads(row["settings_json"])
+        payload = json.loads(row["settings_json"])
     except json.JSONDecodeError:
-        return {}
+        payload = {}
+    sanitized_payload = sanitize_user_settings_payload(payload)
+    if sanitized_payload != payload:
+        save_user_settings(user_id, sanitized_payload)
+    return sanitized_payload
 
 
 def parse_bool(value: str | bool | None) -> bool:
@@ -982,16 +1064,11 @@ def coerce_int(value: Any, default: int, minimum: int, maximum: int) -> int:
     return max(minimum, min(maximum, parsed))
 
 
-def get_admin_settings_storage_user_id() -> int:
+def load_legacy_admin_settings_payload() -> dict[str, Any]:
+    """Backward-compatible reader for old builds storing admin settings in user_settings(admin)."""
     conn = get_conn()
     admin_row = conn.execute("SELECT id FROM users WHERE LOWER(username) = 'admin' ORDER BY id ASC LIMIT 1").fetchone()
-    conn.close()
-    return int(admin_row["id"]) if admin_row else -1
-
-
-def load_admin_settings_payload() -> dict[str, Any]:
-    conn = get_conn()
-    storage_user_id = get_admin_settings_storage_user_id()
+    storage_user_id = int(admin_row["id"]) if admin_row else -1
     row = conn.execute("SELECT settings_json FROM user_settings WHERE user_id = ?", (storage_user_id,)).fetchone()
     conn.close()
     if not row:
@@ -1003,18 +1080,47 @@ def load_admin_settings_payload() -> dict[str, Any]:
         return {}
 
 
-def save_admin_settings_payload(payload: dict[str, Any]) -> None:
+def load_app_setting_payload(key: str) -> dict[str, Any]:
+    conn = get_conn()
+    row = conn.execute("SELECT value_json FROM app_settings WHERE key = ?", (key,)).fetchone()
+    conn.close()
+    if not row:
+        return {}
+    try:
+        payload = json.loads(row["value_json"])
+        return payload if isinstance(payload, dict) else {}
+    except json.JSONDecodeError:
+        return {}
+
+
+def save_app_setting_payload(key: str, payload: dict[str, Any]) -> None:
     conn = get_conn()
     conn.execute(
         """
-        INSERT INTO user_settings(user_id, settings_json, updated_at)
+        INSERT INTO app_settings(key, value_json, updated_at)
         VALUES(?, ?, ?)
-        ON CONFLICT(user_id) DO UPDATE SET settings_json = excluded.settings_json, updated_at = excluded.updated_at
+        ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json, updated_at = excluded.updated_at
         """,
-        (get_admin_settings_storage_user_id(), json.dumps(payload, ensure_ascii=False), now_iso()),
+        (key, json.dumps(payload, ensure_ascii=False), now_iso()),
     )
     conn.commit()
     conn.close()
+
+
+def load_admin_settings_payload() -> dict[str, Any]:
+    payload = load_app_setting_payload("global_admin_settings")
+    if payload:
+        return payload
+
+    # One-time fallback for older installations.
+    legacy_payload = load_legacy_admin_settings_payload()
+    if legacy_payload:
+        save_app_setting_payload("global_admin_settings", legacy_payload)
+    return legacy_payload
+
+
+def save_admin_settings_payload(payload: dict[str, Any]) -> None:
+    save_app_setting_payload("global_admin_settings", payload)
 
 
 def coerce_hour(value: Any, default: int = 2) -> int:
@@ -1032,8 +1138,25 @@ def coerce_backup_mode(value: Any) -> str:
     return "disabled"
 
 
+def get_global_radio_defaults() -> dict[str, str]:
+    config_values = load_persistent_config()
+    return {
+        "n77_ssb_pre": str(config_values.get("n77_ssb_pre", "") or ""),
+        "n77_ssb_post": str(config_values.get("n77_ssb_post", "") or ""),
+        "n77b_ssb": str(config_values.get("n77b_ssb", "") or ""),
+        "allowed_n77_ssb_pre": str(config_values.get("allowed_n77_ssb_pre", "") or ""),
+        "allowed_n77_arfcn_pre": str(config_values.get("allowed_n77_arfcn_pre", "") or ""),
+        "allowed_n77_ssb_post": str(config_values.get("allowed_n77_ssb_post", "") or ""),
+        "allowed_n77_arfcn_post": str(config_values.get("allowed_n77_arfcn_post", "") or ""),
+        "ca_freq_filters": str(config_values.get("ca_freq_filters", "") or ""),
+        "cc_freq_filters": str(config_values.get("cc_freq_filters", "") or ""),
+        "network_frequencies": str(config_values.get("network_frequencies", "") or ""),
+    }
+
+
 def get_admin_settings() -> dict[str, Any]:
     payload = load_admin_settings_payload()
+    defaults = get_global_radio_defaults()
     backup_auto_path = str(payload.get("db_backup_auto_path") or "").strip()
     if not backup_auto_path:
         backup_auto_path = str((DATA_DB_DIR / "backups").resolve())
@@ -1046,6 +1169,16 @@ def get_admin_settings() -> dict[str, Any]:
         "db_backup_auto_hour": coerce_hour(payload.get("db_backup_auto_hour"), 2),
         "db_backup_max_to_store": coerce_int(payload.get("db_backup_max_to_store"), 30, 1, 3650),
         "db_backup_last_run_date": str(payload.get("db_backup_last_run_date") or ""),
+        "n77_ssb_pre": str(payload.get("n77_ssb_pre", defaults["n77_ssb_pre"]) or ""),
+        "n77_ssb_post": str(payload.get("n77_ssb_post", defaults["n77_ssb_post"]) or ""),
+        "n77b_ssb": str(payload.get("n77b_ssb", defaults["n77b_ssb"]) or ""),
+        "allowed_n77_ssb_pre": str(payload.get("allowed_n77_ssb_pre", defaults["allowed_n77_ssb_pre"]) or ""),
+        "allowed_n77_arfcn_pre": str(payload.get("allowed_n77_arfcn_pre", defaults["allowed_n77_arfcn_pre"]) or ""),
+        "allowed_n77_ssb_post": str(payload.get("allowed_n77_ssb_post", defaults["allowed_n77_ssb_post"]) or ""),
+        "allowed_n77_arfcn_post": str(payload.get("allowed_n77_arfcn_post", defaults["allowed_n77_arfcn_post"]) or ""),
+        "ca_freq_filters": str(payload.get("ca_freq_filters", defaults["ca_freq_filters"]) or ""),
+        "cc_freq_filters": str(payload.get("cc_freq_filters", defaults["cc_freq_filters"]) or ""),
+        "network_frequencies": str(payload.get("network_frequencies", defaults["network_frequencies"]) or ""),
     }
 
 
@@ -1058,6 +1191,16 @@ def save_admin_settings(
     db_backup_auto_hour: int = 2,
     db_backup_max_to_store: int = 30,
     db_backup_last_run_date: str | None = None,
+    n77_ssb_pre: str | None = None,
+    n77_ssb_post: str | None = None,
+    n77b_ssb: str | None = None,
+    allowed_n77_ssb_pre: str | None = None,
+    allowed_n77_arfcn_pre: str | None = None,
+    allowed_n77_ssb_post: str | None = None,
+    allowed_n77_arfcn_post: str | None = None,
+    ca_freq_filters: str | None = None,
+    cc_freq_filters: str | None = None,
+    network_frequencies: str | None = None,
 ) -> None:
     current = get_admin_settings()
     backup_path = str(db_backup_auto_path or "").strip() or current["db_backup_auto_path"]
@@ -1070,6 +1213,16 @@ def save_admin_settings(
         "db_backup_auto_hour": coerce_hour(db_backup_auto_hour, current["db_backup_auto_hour"]),
         "db_backup_max_to_store": coerce_int(db_backup_max_to_store, current["db_backup_max_to_store"], 1, 3650),
         "db_backup_last_run_date": db_backup_last_run_date if db_backup_last_run_date is not None else current["db_backup_last_run_date"],
+        "n77_ssb_pre": str(n77_ssb_pre if n77_ssb_pre is not None else current.get("n77_ssb_pre", "")),
+        "n77_ssb_post": str(n77_ssb_post if n77_ssb_post is not None else current.get("n77_ssb_post", "")),
+        "n77b_ssb": str(n77b_ssb if n77b_ssb is not None else current.get("n77b_ssb", "")),
+        "allowed_n77_ssb_pre": str(allowed_n77_ssb_pre if allowed_n77_ssb_pre is not None else current.get("allowed_n77_ssb_pre", "")),
+        "allowed_n77_arfcn_pre": str(allowed_n77_arfcn_pre if allowed_n77_arfcn_pre is not None else current.get("allowed_n77_arfcn_pre", "")),
+        "allowed_n77_ssb_post": str(allowed_n77_ssb_post if allowed_n77_ssb_post is not None else current.get("allowed_n77_ssb_post", "")),
+        "allowed_n77_arfcn_post": str(allowed_n77_arfcn_post if allowed_n77_arfcn_post is not None else current.get("allowed_n77_arfcn_post", "")),
+        "ca_freq_filters": str(ca_freq_filters if ca_freq_filters is not None else current.get("ca_freq_filters", "")),
+        "cc_freq_filters": str(cc_freq_filters if cc_freq_filters is not None else current.get("cc_freq_filters", "")),
+        "network_frequencies": str(network_frequencies if network_frequencies is not None else current.get("network_frequencies", "")),
     }
     save_admin_settings_payload(settings)
 
@@ -1556,6 +1709,44 @@ def load_persistent_config() -> dict[str, str]:
     return load_cfg_values(CONFIG_PATH, CONFIG_SECTION, CFG_FIELD_MAP, *CFG_FIELDS)
 
 
+GLOBAL_RUNTIME_FORM_KEYS = (
+    "n77_ssb_pre",
+    "n77_ssb_post",
+    "n77b_ssb",
+    "allowed_n77_ssb_pre",
+    "allowed_n77_arfcn_pre",
+    "allowed_n77_ssb_post",
+    "allowed_n77_arfcn_post",
+    "ca_freq_filters",
+    "cc_freq_filters",
+    "network_frequencies",
+)
+
+
+def save_global_runtime_form_settings(values: dict[str, Any]) -> None:
+    current = get_admin_settings()
+    save_admin_settings(
+        current["max_cpu_percent"],
+        current["max_memory_percent"],
+        current["max_parallel_tasks"],
+        db_backup_auto_mode=current["db_backup_auto_mode"],
+        db_backup_auto_path=current["db_backup_auto_path"],
+        db_backup_auto_hour=current["db_backup_auto_hour"],
+        db_backup_max_to_store=current["db_backup_max_to_store"],
+        db_backup_last_run_date=current["db_backup_last_run_date"],
+        n77_ssb_pre=str(values.get("n77_ssb_pre", current.get("n77_ssb_pre", "")) or ""),
+        n77_ssb_post=str(values.get("n77_ssb_post", current.get("n77_ssb_post", "")) or ""),
+        n77b_ssb=str(values.get("n77b_ssb", current.get("n77b_ssb", "")) or ""),
+        allowed_n77_ssb_pre=str(values.get("allowed_n77_ssb_pre", current.get("allowed_n77_ssb_pre", "")) or ""),
+        allowed_n77_arfcn_pre=str(values.get("allowed_n77_arfcn_pre", current.get("allowed_n77_arfcn_pre", "")) or ""),
+        allowed_n77_ssb_post=str(values.get("allowed_n77_ssb_post", current.get("allowed_n77_ssb_post", "")) or ""),
+        allowed_n77_arfcn_post=str(values.get("allowed_n77_arfcn_post", current.get("allowed_n77_arfcn_post", "")) or ""),
+        ca_freq_filters=str(values.get("ca_freq_filters", current.get("ca_freq_filters", "")) or ""),
+        cc_freq_filters=str(values.get("cc_freq_filters", current.get("cc_freq_filters", "")) or ""),
+        network_frequencies=str(values.get("network_frequencies", current.get("network_frequencies", "")) or ""),
+    )
+
+
 def build_settings_defaults(module_value: str, config_values: dict[str, str]) -> dict[str, Any]:
     settings: dict[str, Any] = {
         "module": module_value,
@@ -1602,6 +1793,97 @@ def normalize_module_inputs_map(raw_map: Any) -> dict[str, dict[str, str]]:
             "input_post": str(module_inputs.get("input_post", "") or ""),
         }
     return normalized
+
+
+def sanitize_wildcard_history(items: Any) -> list[str]:
+    if not isinstance(items, list):
+        return []
+    seen: set[str] = set()
+    cleaned: list[str] = []
+    for item in items:
+        value = str(item or "").strip()
+        if not value or value in seen:
+            continue
+        seen.add(value)
+        cleaned.append(value)
+        if len(cleaned) >= 10:
+            break
+    return cleaned
+
+
+def sanitize_ui_panels(raw_panels: Any) -> dict[str, bool]:
+    if not isinstance(raw_panels, dict):
+        return {}
+    sanitized: dict[str, bool] = {}
+    for key, value in raw_panels.items():
+        key_name = str(key or "").strip()
+        if not key_name:
+            continue
+        sanitized[key_name] = bool(value)
+    return sanitized
+
+
+def sanitize_admin_users_sort(raw_sort: Any) -> dict[str, str]:
+    if not isinstance(raw_sort, dict):
+        return {}
+    sort_id = str(raw_sort.get("sort_id") or "").strip()
+    direction = str(raw_sort.get("direction") or "asc").strip().lower()
+    if direction not in {"asc", "desc"}:
+        direction = "asc"
+    return {"sort_id": sort_id, "direction": direction}
+
+
+def sanitize_user_settings_payload(raw_payload: Any) -> dict[str, Any]:
+    if not isinstance(raw_payload, dict):
+        return {}
+
+    sanitized: dict[str, Any] = {}
+    for key, value in raw_payload.items():
+        key_name = str(key or "").strip()
+        if not key_name:
+            continue
+        if key_name in USER_SETTINGS_OBSOLETE_KEYS:
+            continue
+        if key_name not in USER_SETTINGS_ALLOWED_KEYS:
+            continue
+
+        if key_name in {"profiles_audit", "frequency_audit", "export_correction_cmd", "fast_excel_export"}:
+            sanitized[key_name] = parse_bool(value)
+        elif key_name == "module_inputs_map":
+            sanitized[key_name] = normalize_module_inputs_map(value)
+        elif key_name == "ui_panels":
+            sanitized[key_name] = sanitize_ui_panels(value)
+        elif key_name in {"wildcard_history_inputs", "wildcard_history_executions"}:
+            sanitized[key_name] = sanitize_wildcard_history(value)
+        elif key_name == "admin_users_sort":
+            sanitized[key_name] = sanitize_admin_users_sort(value)
+        else:
+            sanitized[key_name] = str(value or "") if value is not None else ""
+
+    return sanitized
+
+
+def sanitize_all_user_settings_rows() -> None:
+    conn = get_conn()
+    rows = conn.execute("SELECT user_id, settings_json FROM user_settings").fetchall()
+    changed = 0
+    for row in rows:
+        raw_json = row["settings_json"] or ""
+        try:
+            payload = json.loads(raw_json)
+        except json.JSONDecodeError:
+            payload = {}
+        sanitized = sanitize_user_settings_payload(payload)
+        if sanitized != payload:
+            conn.execute(
+                "UPDATE user_settings SET settings_json = ?, updated_at = ? WHERE user_id = ?",
+                (json.dumps(sanitized, ensure_ascii=False), now_iso(), int(row["user_id"])),
+            )
+            changed += 1
+
+    if changed:
+        conn.commit()
+    conn.close()
 
 
 def build_settings_with_module_inputs(existing_settings: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:
@@ -1760,6 +2042,7 @@ async def access_log_middleware(request: Request, call_next):
 @app.on_event("startup")
 def startup() -> None:
     init_db()
+    sanitize_all_user_settings_rows()
     recover_incomplete_tasks()
     ensure_worker_started()
     ensure_backup_worker_started()
@@ -1810,10 +2093,15 @@ def index(request: Request):
     user_settings = load_user_settings(user["id"])
     module_value = user_settings.get("module") or "configuration-audit"
     settings = build_settings_defaults(module_value, config_values)
+    admin_settings = get_admin_settings()
+    for key in GLOBAL_RUNTIME_FORM_KEYS:
+        settings[key] = str(admin_settings.get(key, settings.get(key, "")) or "")
     tool_meta = load_tool_metadata()
     network_frequencies = load_network_frequencies()
     settings.update(user_settings)
     settings["module"] = module_value
+    for key in GLOBAL_RUNTIME_FORM_KEYS:
+        settings[key] = str(admin_settings.get(key, settings.get(key, "")) or "")
     module_inputs_map = normalize_module_inputs_map(settings.get("module_inputs_map"))
     current_module_inputs = module_inputs_map.get(module_value, {})
     settings["input"] = str(current_module_inputs.get("input", settings.get("input", "")) or "")
@@ -2291,6 +2579,7 @@ def run_module(
     existing_settings = load_user_settings(user["id"])
     payload = build_settings_with_module_inputs(existing_settings, raw_payload)
     save_user_settings(user["id"], payload)
+    save_global_runtime_form_settings(raw_payload)
     persist_settings_to_config(module, payload)
     if module in WEB_INTERFACE_BLOCKED_MODULES:
         logger.info("Blocked module run from web interface: %s", module)
@@ -2354,6 +2643,7 @@ async def update_settings(request: Request):
     existing_settings = load_user_settings(user["id"])
     payload = build_settings_with_module_inputs(existing_settings, incoming_payload)
     save_user_settings(user["id"], payload)
+    save_global_runtime_form_settings(incoming_payload)
     module_value = payload.get("module") or "configuration-audit"
     persist_settings_to_config(module_value, payload)
     return {"ok": True}
@@ -3628,7 +3918,7 @@ def admin_panel(request: Request):
         row["status_display"] = format_task_status(row.get("status") or "")
         row["size_mb"] = format_mb(run_sizes.get(row["id"], 0))
 
-    editable_tables = ["users", "sessions", "task_runs", "inputs_repository", "user_settings"]
+    editable_tables = ["users", "sessions", "task_runs", "inputs_repository", "user_settings", "app_settings"]
 
     return templates.TemplateResponse(
         "admin.html",
@@ -3758,7 +4048,7 @@ def admin_database_table_data(request: Request, table: str):
     except PermissionError:
         return JSONResponse({"ok": False, "columns": [], "rows": [], "primary_keys": []}, headers=NO_CACHE_HEADERS)
 
-    allowed_tables = {"users", "sessions", "task_runs", "inputs_repository", "user_settings"}
+    allowed_tables = {"users", "sessions", "task_runs", "inputs_repository", "user_settings", "app_settings"}
     if table not in allowed_tables:
         return JSONResponse({"ok": False, "columns": [], "rows": [], "primary_keys": []}, headers=NO_CACHE_HEADERS)
 
@@ -3792,7 +4082,7 @@ async def admin_database_table_update(request: Request):
     primary_keys = payload.get("primary_keys") or {}
     updates = payload.get("updates") or {}
 
-    allowed_tables = {"users", "sessions", "task_runs", "inputs_repository", "user_settings"}
+    allowed_tables = {"users", "sessions", "task_runs", "inputs_repository", "user_settings", "app_settings"}
     if table not in allowed_tables or not isinstance(primary_keys, dict) or not isinstance(updates, dict) or not updates:
         return {"ok": False}
 
