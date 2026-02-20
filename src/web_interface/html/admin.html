@@ -104,7 +104,9 @@
                 </select>
             </td>
             <td class="cell-middle">
-              {% if u.connected %}
+              {% if not u.active %}
+                <span class="inactive-users-badge">inactive</span>
+              {% elif u.connected %}
                 <span class="connected-users-badge">connected</span>
               {% else %}
                 <span class="disconnected-users-badge">disconnected</span>

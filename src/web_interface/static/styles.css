@@ -205,4 +205,15 @@ th,td{border-bottom:1px solid #e3e8ee;padding:.55rem;text-align:left;font-size:.
   font-weight: 400;
 }
 
+.inactive-users-badge {
+  display: inline-block;
+  margin-left: 0.05rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  background: #fff3e0;
+  color: #c87b00;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
 .cell-nowrap{white-space:nowrap}
