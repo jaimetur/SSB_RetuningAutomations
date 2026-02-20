@@ -2075,7 +2075,11 @@ OPENAPI_TAGS = [
 ]
 
 
-app = FastAPI(title="SSB Retuning Automations Web Interface", openapi_tags=OPENAPI_TAGS)
+app = FastAPI(
+    title="SSB Retuning Automations Web Interface",
+    openapi_tags=OPENAPI_TAGS,
+    docs_url="/api",
+)
 
 
 def custom_openapi():
