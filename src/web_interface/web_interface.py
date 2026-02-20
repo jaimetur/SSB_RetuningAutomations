@@ -880,6 +880,11 @@ def init_db() -> None:
     if "access_request_reason" not in user_columns:
         cur.execute("ALTER TABLE users ADD COLUMN access_request_reason TEXT")
 
+    session_columns = {row["name"] for row in cur.execute("PRAGMA table_info(sessions)").fetchall()}
+    if "last_activity_at" not in session_columns:
+        cur.execute("ALTER TABLE sessions ADD COLUMN last_activity_at TEXT")
+        cur.execute("UPDATE sessions SET last_activity_at = last_seen_at WHERE last_activity_at IS NULL")
+
     admin = cur.execute(
         "SELECT id, password_hash FROM users WHERE username = ?", ("admin",)
     ).fetchone()
@@ -931,16 +936,39 @@ def apply_session_idle_timeout(
 ) -> bool:
     if session_row["active"] == 0:
         return False
-    last_seen = parse_iso_datetime(session_row["last_seen_at"])
-    if not last_seen:
+
+    last_activity_raw = session_row["last_activity_at"] if "last_activity_at" in session_row.keys() else session_row["last_seen_at"]
+    last_activity = parse_iso_datetime(last_activity_raw)
+    if not last_activity:
         return False
-    idle_seconds = (now - last_seen).total_seconds()
+
+    user_id = int(session_row["user_id"])
+    active_run_row = conn.execute(
+        "SELECT COUNT(1) AS active_count FROM task_runs WHERE user_id = ? AND status IN ('queued', 'running', 'canceling')",
+        (user_id,),
+    ).fetchone()
+    active_run_count = int(active_run_row["active_count"] or 0) if active_run_row else 0
+    if active_run_count > 0:
+        return False
+
+    latest_finished_row = conn.execute(
+        "SELECT MAX(finished_at) AS latest_finished_at FROM task_runs WHERE user_id = ? AND finished_at IS NOT NULL",
+        (user_id,),
+    ).fetchone()
+    latest_finished_at = parse_iso_datetime(latest_finished_row["latest_finished_at"]) if latest_finished_row else None
+
+    reference_time = last_activity
+    if latest_finished_at and latest_finished_at > reference_time:
+        reference_time = latest_finished_at
+
+    idle_seconds = (now - reference_time).total_seconds()
     if idle_seconds <= SESSION_IDLE_TIMEOUT_SECONDS:
         return False
-    cutoff = last_seen + timedelta(seconds=SESSION_IDLE_TIMEOUT_SECONDS)
+
+    cutoff = reference_time + timedelta(seconds=SESSION_IDLE_TIMEOUT_SECONDS)
     conn.execute(
-        "UPDATE sessions SET active = 0, last_seen_at = ? WHERE token = ?",
-        (cutoff.isoformat(), session_row["token"]),
+        "UPDATE sessions SET active = 0, last_seen_at = ?, last_activity_at = ? WHERE token = ?",
+        (cutoff.isoformat(), cutoff.isoformat(), session_row["token"]),
     )
     conn.commit()
     username = session_row["username"] if "username" in session_row.keys() and session_row["username"] else "unknown"
@@ -982,7 +1010,7 @@ def get_current_user(request: Request) -> sqlite3.Row | None:
     conn = get_conn()
     session = conn.execute(
         """
-        SELECT s.token, s.user_id, s.active, s.last_seen_at, u.username
+        SELECT s.token, s.user_id, s.active, s.last_seen_at, s.last_activity_at, u.username
         FROM sessions s
         LEFT JOIN users u ON u.id = s.user_id
         WHERE s.token = ?
@@ -2591,8 +2619,8 @@ def login_post(request: Request, username: str = Form(...), password: str = Form
 
     token = secrets.token_urlsafe(32)
     conn.execute(
-        "INSERT INTO sessions(token, user_id, created_at, last_seen_at, active) VALUES (?, ?, ?, ?, 1)",
-        (token, user["id"], now_iso(), now_iso()),
+        "INSERT INTO sessions(token, user_id, created_at, last_seen_at, last_activity_at, active) VALUES (?, ?, ?, ?, ?, 1)",
+        (token, user["id"], now_iso(), now_iso(), now_iso()),
     )
     conn.commit()
     conn.close()
@@ -2632,6 +2660,25 @@ def logout(request: Request):
     response.delete_cookie("session_token")
     return response
 
+
+
+
+@app.post("/session/activity", tags=["Authentication"])
+def session_activity(request: Request):
+    try:
+        require_user(request)
+    except PermissionError:
+        return JSONResponse({"ok": False}, status_code=401, headers=NO_CACHE_HEADERS)
+
+    token = request.cookies.get("session_token")
+    if not token:
+        return JSONResponse({"ok": False}, status_code=401, headers=NO_CACHE_HEADERS)
+
+    conn = get_conn()
+    conn.execute("UPDATE sessions SET last_activity_at = ?, last_seen_at = ? WHERE token = ?", (now_iso(), now_iso(), token))
+    conn.commit()
+    conn.close()
+    return JSONResponse({"ok": True}, headers=NO_CACHE_HEADERS)
 
 @app.post("/request-access", response_class=HTMLResponse, tags=["Authentication"])
 def request_access_post(request: Request, username: str = Form(...), password: str = Form(...), reason: str = Form(...)):
