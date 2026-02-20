@@ -111,6 +111,52 @@ CFG_FIELD_MAP = {
 
 CFG_FIELDS = tuple(CFG_FIELD_MAP.keys())
 
+USER_SETTINGS_ALLOWED_KEYS = {
+    "module",
+    "input",
+    "input_pre",
+    "input_post",
+    "n77_ssb_pre",
+    "n77_ssb_post",
+    "n77b_ssb",
+    "allowed_n77_ssb_pre",
+    "allowed_n77_arfcn_pre",
+    "allowed_n77_ssb_post",
+    "allowed_n77_arfcn_post",
+    "ca_freq_filters",
+    "cc_freq_filters",
+    "network_frequencies",
+    "profiles_audit",
+    "frequency_audit",
+    "export_correction_cmd",
+    "fast_excel_export",
+    "output",
+    "module_inputs_map",
+    "ui_panels",
+    "user_system_log_source",
+    "runs_user_filter",
+    "inputs_user_filter",
+    "wildcard_history_inputs",
+    "wildcard_history_executions",
+    "admin_system_log_source",
+    "admin_users_filter",
+    "admin_inputs_filter",
+    "admin_runs_filter",
+    "admin_users_sort",
+}
+
+USER_SETTINGS_OBSOLETE_KEYS = {
+    "max_cpu_percent",
+    "max_memory_percent",
+    "max_parallel_tasks",
+    "db_backup_auto_mode",
+    "db_backup_auto_enabled",
+    "db_backup_auto_path",
+    "db_backup_auto_hour",
+    "db_backup_max_to_store",
+    "db_backup_last_run_date",
+}
+
 pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 
 
@@ -972,6 +1018,7 @@ def get_client_ip(request: Request) -> str:
 
 
 def save_user_settings(user_id: int, settings: dict[str, Any]) -> None:
+    sanitized_settings = sanitize_user_settings_payload(settings)
     conn = get_conn()
     conn.execute(
         """
@@ -979,7 +1026,7 @@ def save_user_settings(user_id: int, settings: dict[str, Any]) -> None:
         VALUES (?, ?, ?)
         ON CONFLICT(user_id) DO UPDATE SET settings_json = excluded.settings_json, updated_at = excluded.updated_at
         """,
-        (user_id, json.dumps(settings), now_iso()),
+        (user_id, json.dumps(sanitized_settings, ensure_ascii=False), now_iso()),
     )
     conn.commit()
     conn.close()
@@ -992,9 +1039,13 @@ def load_user_settings(user_id: int) -> dict[str, Any]:
     if not row:
         return {}
     try:
-        return json.loads(row["settings_json"])
+        payload = json.loads(row["settings_json"])
     except json.JSONDecodeError:
-        return {}
+        payload = {}
+    sanitized_payload = sanitize_user_settings_payload(payload)
+    if sanitized_payload != payload:
+        save_user_settings(user_id, sanitized_payload)
+    return sanitized_payload
 
 
 def parse_bool(value: str | bool | None) -> bool:
@@ -1659,6 +1710,97 @@ def normalize_module_inputs_map(raw_map: Any) -> dict[str, dict[str, str]]:
     return normalized
 
 
+def sanitize_wildcard_history(items: Any) -> list[str]:
+    if not isinstance(items, list):
+        return []
+    seen: set[str] = set()
+    cleaned: list[str] = []
+    for item in items:
+        value = str(item or "").strip()
+        if not value or value in seen:
+            continue
+        seen.add(value)
+        cleaned.append(value)
+        if len(cleaned) >= 10:
+            break
+    return cleaned
+
+
+def sanitize_ui_panels(raw_panels: Any) -> dict[str, bool]:
+    if not isinstance(raw_panels, dict):
+        return {}
+    sanitized: dict[str, bool] = {}
+    for key, value in raw_panels.items():
+        key_name = str(key or "").strip()
+        if not key_name:
+            continue
+        sanitized[key_name] = bool(value)
+    return sanitized
+
+
+def sanitize_admin_users_sort(raw_sort: Any) -> dict[str, str]:
+    if not isinstance(raw_sort, dict):
+        return {}
+    sort_id = str(raw_sort.get("sort_id") or "").strip()
+    direction = str(raw_sort.get("direction") or "asc").strip().lower()
+    if direction not in {"asc", "desc"}:
+        direction = "asc"
+    return {"sort_id": sort_id, "direction": direction}
+
+
+def sanitize_user_settings_payload(raw_payload: Any) -> dict[str, Any]:
+    if not isinstance(raw_payload, dict):
+        return {}
+
+    sanitized: dict[str, Any] = {}
+    for key, value in raw_payload.items():
+        key_name = str(key or "").strip()
+        if not key_name:
+            continue
+        if key_name in USER_SETTINGS_OBSOLETE_KEYS:
+            continue
+        if key_name not in USER_SETTINGS_ALLOWED_KEYS:
+            continue
+
+        if key_name in {"profiles_audit", "frequency_audit", "export_correction_cmd", "fast_excel_export"}:
+            sanitized[key_name] = parse_bool(value)
+        elif key_name == "module_inputs_map":
+            sanitized[key_name] = normalize_module_inputs_map(value)
+        elif key_name == "ui_panels":
+            sanitized[key_name] = sanitize_ui_panels(value)
+        elif key_name in {"wildcard_history_inputs", "wildcard_history_executions"}:
+            sanitized[key_name] = sanitize_wildcard_history(value)
+        elif key_name == "admin_users_sort":
+            sanitized[key_name] = sanitize_admin_users_sort(value)
+        else:
+            sanitized[key_name] = str(value or "") if value is not None else ""
+
+    return sanitized
+
+
+def sanitize_all_user_settings_rows() -> None:
+    conn = get_conn()
+    rows = conn.execute("SELECT user_id, settings_json FROM user_settings").fetchall()
+    changed = 0
+    for row in rows:
+        raw_json = row["settings_json"] or ""
+        try:
+            payload = json.loads(raw_json)
+        except json.JSONDecodeError:
+            payload = {}
+        sanitized = sanitize_user_settings_payload(payload)
+        if sanitized != payload:
+            conn.execute(
+                "UPDATE user_settings SET settings_json = ?, updated_at = ? WHERE user_id = ?",
+                (json.dumps(sanitized, ensure_ascii=False), now_iso(), int(row["user_id"])),
+            )
+            changed += 1
+
+    if changed:
+        conn.commit()
+    conn.close()
+
+
 def build_settings_with_module_inputs(existing_settings: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:
     merged_settings = dict(existing_settings)
     merged_settings.update(payload)
@@ -1815,6 +1957,7 @@ async def access_log_middleware(request: Request, call_next):
 @app.on_event("startup")
 def startup() -> None:
     init_db()
+    sanitize_all_user_settings_rows()
     recover_incomplete_tasks()
     ensure_worker_started()
     ensure_backup_worker_started()
@@ -3683,7 +3826,7 @@ def admin_panel(request: Request):
         row["status_display"] = format_task_status(row.get("status") or "")
         row["size_mb"] = format_mb(run_sizes.get(row["id"], 0))
 
-    editable_tables = ["users", "sessions", "task_runs", "inputs_repository", "user_settings"]
+    editable_tables = ["users", "sessions", "task_runs", "inputs_repository", "user_settings", "app_settings"]
 
     return templates.TemplateResponse(
         "admin.html",
@@ -3813,7 +3956,7 @@ def admin_database_table_data(request: Request, table: str):
     except PermissionError:
         return JSONResponse({"ok": False, "columns": [], "rows": [], "primary_keys": []}, headers=NO_CACHE_HEADERS)
 
-    allowed_tables = {"users", "sessions", "task_runs", "inputs_repository", "user_settings"}
+    allowed_tables = {"users", "sessions", "task_runs", "inputs_repository", "user_settings", "app_settings"}
     if table not in allowed_tables:
         return JSONResponse({"ok": False, "columns": [], "rows": [], "primary_keys": []}, headers=NO_CACHE_HEADERS)
 
@@ -3847,7 +3990,7 @@ async def admin_database_table_update(request: Request):
     primary_keys = payload.get("primary_keys") or {}
     updates = payload.get("updates") or {}
 
-    allowed_tables = {"users", "sessions", "task_runs", "inputs_repository", "user_settings"}
+    allowed_tables = {"users", "sessions", "task_runs", "inputs_repository", "user_settings", "app_settings"}
     if table not in allowed_tables or not isinstance(primary_keys, dict) or not isinstance(updates, dict) or not updates:
         return {"ok": False}
 
