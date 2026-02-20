@@ -1,5 +1,20 @@
 # 🗓️ CHANGELOG
 
+## Release: v0.7.7
+### Release Date: 2026-02-23
+  
+- #### 🚨 Breaking Changes:
+
+- #### 🌟 New Features:
+
+- #### 🚀 Enhancements:
+
+- #### 🐛 Bug fixes:
+
+- #### 📚 Documentation:
+  - Updated Documentation to align with the latest changes.
+
+
 ---
 
 ## Release: v0.7.6
