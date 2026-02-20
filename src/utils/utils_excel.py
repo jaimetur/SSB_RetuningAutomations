@@ -421,7 +421,25 @@ def style_headers_autofilter_and_autofit_xlsxwriter(writer, sheet_dfs: dict, fre
     # Pre-calc if SummaryAudit exists
     has_summaryaudit = bool(hyperlink_sheet) and (hyperlink_sheet in writer.sheets)
 
+    def _meta_from_item(item):
+        """
+        Accept either:
+          - DataFrame
+          - metadata dict with keys: n_rows, columns, sample_df (optional DataFrame)
+        """
+        if pd is not None and isinstance(item, pd.DataFrame):
+            return item, int(item.shape[0]), list(item.columns), item
+        if isinstance(item, dict):
+            n_rows = int(item.get("n_rows", 0) or 0)
+            cols = list(item.get("columns", []) or [])
+            sample_df = item.get("sample_df", None)
+            if pd is not None and isinstance(sample_df, pd.DataFrame):
+                return item, n_rows, cols, sample_df
+            return item, n_rows, cols, None
+        return item, 0, [], None
+
     for sheet_name, df in (sheet_dfs or {}).items():
+        _, n_rows_meta, cols_meta, sample_df_meta = _meta_from_item(df)
         ws = writer.sheets.get(sheet_name)
         if ws is None:
             continue
@@ -448,22 +466,19 @@ def style_headers_autofilter_and_autofit_xlsxwriter(writer, sheet_dfs: dict, fre
 
         # Autofilter on used range
         try:
-            n_rows = int(getattr(df, "shape", (0, 0))[0]) if df is not None else 0
-            n_cols = int(getattr(df, "shape", (0, 0))[1]) if df is not None else 0
-            if n_cols > 0:
-                ws.autofilter(0, 0, max(0, n_rows), n_cols - 1)
+            if cols_meta:
+                ws.autofilter(0, 0, max(0, n_rows_meta), len(cols_meta) - 1)
         except Exception:
             pass
 
         # Column widths (sampled)
         try:
-            if df is not None and hasattr(df, "columns"):
-                if pd is not None and isinstance(df, pd.DataFrame) and not df.empty:
-                    sample_df = df.head(int(max_autofit_rows)) if max_autofit_rows and max_autofit_rows > 0 else df
-                    for col_idx, col_name in enumerate(list(df.columns)):
+            if cols_meta:
+                if pd is not None and isinstance(sample_df_meta, pd.DataFrame) and not sample_df_meta.empty:
+                    for col_idx, col_name in enumerate(cols_meta):
                         header_len = len(str(col_name)) if col_name is not None else 0
                         try:
-                            ser = sample_df.iloc[:, col_idx]
+                            ser = sample_df_meta.iloc[:, col_idx]
                             max_val_len = int(ser.astype(str).map(len).max()) if not ser.empty else 0
                         except Exception:
                             max_val_len = 0
@@ -471,9 +486,7 @@ def style_headers_autofilter_and_autofit_xlsxwriter(writer, sheet_dfs: dict, fre
                         width = max(width, 8)
                         ws.set_column(col_idx, col_idx, width)
                 else:
-                    # If df isn't a DataFrame, at least set widths based on headers if possible
-                    cols = list(getattr(df, "columns", [])) if df is not None else []
-                    for col_idx, col_name in enumerate(cols):
+                    for col_idx, col_name in enumerate(cols_meta):
                         width = min(max(len(str(col_name)) + 2, 8), int(max_col_width))
                         ws.set_column(col_idx, col_idx, width)
         except Exception:
@@ -483,8 +496,8 @@ def style_headers_autofilter_and_autofit_xlsxwriter(writer, sheet_dfs: dict, fre
         if enable_a1_hyperlinks and has_summaryaudit and sheet_name != hyperlink_sheet:
             try:
                 header_text = ""
-                if df is not None and hasattr(df, "columns") and len(list(df.columns)) > 0:
-                    header_text = str(list(df.columns)[0])
+                if cols_meta:
+                    header_text = str(cols_meta[0])
                 else:
                     header_text = "A1"
                 ws.write_url(0, 0, f"internal:{hyperlink_sheet}!A1", header_hlink_format, header_text)

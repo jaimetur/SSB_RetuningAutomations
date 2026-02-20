@@ -5,6 +5,7 @@ import time
 import re
 import shutil
 import tempfile
+import gc
 from typing import List, Tuple, Optional, Dict
 from openpyxl.styles import Font, PatternFill, Alignment
 from openpyxl.utils import get_column_letter
@@ -743,6 +744,13 @@ class ConfigurationAudit:
                         entry["df"] = reinject_map[sheet_name]
                         reinjected_once.add(sheet_name)
 
+            # Release transient structures before writing Excel to reduce peak RSS.
+            try:
+                mo_collectors.clear()
+            except Exception:
+                pass
+            gc.collect()
+
             # =====================================================================
             #                PHASE 5: Write the Excel file
             # =====================================================================
@@ -778,7 +786,22 @@ class ConfigurationAudit:
                         else:
                             writer = pd.ExcelWriter(tmp_excel_path_long, engine="openpyxl")
 
-                        written_sheet_dfs: dict[str, pd.DataFrame] = {}
+                        written_sheet_dfs: dict[str, object] = {}
+
+                        def _sheet_meta(df: pd.DataFrame) -> dict[str, object]:
+                            cols = list(df.columns) if isinstance(df, pd.DataFrame) else []
+                            n_rows = int(len(df)) if isinstance(df, pd.DataFrame) else 0
+                            sample_df = None
+                            if isinstance(df, pd.DataFrame) and not df.empty:
+                                try:
+                                    sample_n = int(fast_excel_autofit_rows) if str(fast_excel_autofit_rows).strip().lower() != "all" else len(df)
+                                except Exception:
+                                    sample_n = 50
+                                if sample_n < 0:
+                                    sample_n = 0
+                                sample_df = df.head(sample_n).copy() if sample_n > 0 else df.head(0).copy()
+                            return {"n_rows": n_rows, "columns": cols, "sample_df": sample_df}
+
                         _log_info(f"PHASE 5.0: Using Excel engine: {excel_engine}")
 
                         t_open1 = time.perf_counter()
@@ -1076,7 +1099,7 @@ class ConfigurationAudit:
                         with log_phase_timer("PHASE 5.1: Write Summary + SummaryAudit", log_fn=_log_info, show_start=show_phase_starts, show_end=False, show_timing=show_phase_timings, line_prefix="", start_level="INFO", end_level="INFO", timing_level="INFO"):
                             # Write Summary first
                             pd.DataFrame(summary_rows).to_excel(writer, sheet_name="Summary", index=False)
-                            written_sheet_dfs["Summary"] = pd.DataFrame(summary_rows)
+                            written_sheet_dfs["Summary"] = _sheet_meta(pd.DataFrame(summary_rows))
 
                             # SummaryAudit with high-level checks
                             summary_audit_df.to_excel(writer, sheet_name="SummaryAudit", index=False)
@@ -1092,11 +1115,11 @@ class ConfigurationAudit:
                             # New: separate NR / LTE param mismatching sheets
                             if not param_mismatch_nr_df.empty:
                                 param_mismatch_nr_df.to_excel(writer, sheet_name="Summary NR Param Mismatching", index=False)
-                                written_sheet_dfs["Summary NR Param Mismatching"] = param_mismatch_nr_df
+                                written_sheet_dfs["Summary NR Param Mismatching"] = _sheet_meta(param_mismatch_nr_df)
 
                             if not param_mismatch_gu_df.empty:
                                 param_mismatch_gu_df.to_excel(writer, sheet_name="Summary LTE Param Mismatching", index=False)
-                                written_sheet_dfs["Summary LTE Param Mismatching"] = param_mismatch_gu_df
+                                written_sheet_dfs["Summary LTE Param Mismatching"] = _sheet_meta(param_mismatch_gu_df)
 
                         # ------------------------------------------------------------------
                         # PHASE 5.2: Write pivot summary sheets
@@ -1104,17 +1127,17 @@ class ConfigurationAudit:
                         with log_phase_timer("PHASE 5.2: Write pivot summary sheets", log_fn=_log_info, show_start=show_phase_starts, show_end=False, show_timing=show_phase_timings, line_prefix="", start_level="INFO", end_level="INFO", timing_level="INFO"):
                             # Extra summary sheets
                             pivot_nr_cells_du.to_excel(writer, sheet_name="Summary NR_CellDU", index=False)
-                            written_sheet_dfs["Summary NR_CellDU"] = pivot_nr_cells_du
+                            written_sheet_dfs["Summary NR_CellDU"] = _sheet_meta(pivot_nr_cells_du)
                             pivot_nr_sector_carrier.to_excel(writer, sheet_name="Summary NR_SectorCarrier", index=False)
-                            written_sheet_dfs["Summary NR_SectorCarrier"] = pivot_nr_sector_carrier
+                            written_sheet_dfs["Summary NR_SectorCarrier"] = _sheet_meta(pivot_nr_sector_carrier)
                             pivot_nr_freq.to_excel(writer, sheet_name="Summary NR_Frequency", index=False)
-                            written_sheet_dfs["Summary NR_Frequency"] = pivot_nr_freq
+                            written_sheet_dfs["Summary NR_Frequency"] = _sheet_meta(pivot_nr_freq)
                             pivot_nr_freq_rel.to_excel(writer, sheet_name="Summary NR_FreqRelation", index=False)
-                            written_sheet_dfs["Summary NR_FreqRelation"] = pivot_nr_freq_rel
+                            written_sheet_dfs["Summary NR_FreqRelation"] = _sheet_meta(pivot_nr_freq_rel)
                             pivot_gu_sync_signal_freq.to_excel(writer, sheet_name="Summary GU_SyncSignalFrequency", index=False)
-                            written_sheet_dfs["Summary GU_SyncSignalFrequency"] = pivot_gu_sync_signal_freq
+                            written_sheet_dfs["Summary GU_SyncSignalFrequency"] = _sheet_meta(pivot_gu_sync_signal_freq)
                             pivot_gu_freq_rel.to_excel(writer, sheet_name="Summary GU_FreqRelation", index=False)
-                            written_sheet_dfs["Summary GU_FreqRelation"] = pivot_gu_freq_rel
+                            written_sheet_dfs["Summary GU_FreqRelation"] = _sheet_meta(pivot_gu_freq_rel)
 
 
                         # ------------------------------------------------------------------
@@ -1132,8 +1155,10 @@ class ConfigurationAudit:
 
                                 written += 1
                                 sheet_start = time.perf_counter()
-                                entry["df"].to_excel(writer, sheet_name=entry["final_sheet"], index=False)
-                                written_sheet_dfs[str(entry["final_sheet"])] = entry["df"]
+                                df_to_write = entry["df"]
+                                df_to_write.to_excel(writer, sheet_name=entry["final_sheet"], index=False)
+                                written_sheet_dfs[str(entry["final_sheet"])] = _sheet_meta(df_to_write)
+                                entry["df"] = pd.DataFrame()
                                 sheet_elapsed = time.perf_counter() - sheet_start
 
                                 if show_phase_timings and sheet_elapsed >= float(slow_sheet_seconds_threshold):
@@ -1160,11 +1185,13 @@ class ConfigurationAudit:
                             # MeContext additional conditional formatting (based on slide requirements)
                             try:
                                 me_sheet_name = candidate_to_final_sheet.get("MeContext", "MeContext")
-                                me_df = written_sheet_dfs.get(me_sheet_name)
+                                me_df_meta = written_sheet_dfs.get(me_sheet_name) or {}
                                 ws_me = writer.sheets.get(me_sheet_name)
 
-                                if me_df is not None and ws_me is not None and not me_df.empty:
-                                    me_cols = list(me_df.columns)
+                                me_cols = list(me_df_meta.get("columns", [])) if isinstance(me_df_meta, dict) else []
+                                me_rows = int(me_df_meta.get("n_rows", 0)) if isinstance(me_df_meta, dict) else 0
+
+                                if me_cols and ws_me is not None and me_rows > 0:
                                     me_col_map = {str(c): i + 1 for i, c in enumerate(me_cols)}
 
                                     # Slide format: keep first and last headers horizontal, rotate middle headers vertically.
@@ -1233,7 +1260,7 @@ class ConfigurationAudit:
                                         ws_me.conditional_format(
                                             1,
                                             me_col_map[col_target] - 1,
-                                            len(me_df),
+                                            me_rows,
                                             me_col_map[col_target] - 1,
                                             {
                                                 "type": "formula",
@@ -1256,7 +1283,7 @@ class ConfigurationAudit:
                                         ]:
                                             idx = me_col_map.get(col_name)
                                             if idx:
-                                                ws_me.conditional_format(1, idx - 1, len(me_df), idx - 1, {"type": "cell", "criteria": ">", "value": 0, "format": fmt_yellow})
+                                                ws_me.conditional_format(1, idx - 1, me_rows, idx - 1, {"type": "cell", "criteria": ">", "value": 0, "format": fmt_yellow})
 
                                         _add_fmt_equals_xlsx("N77A new SSB cells", "N77A old SSB cells", "#C6EFCE")
                                         _add_fmt_equals_xlsx("NRFreqRelation to new N77A SSB", "NRFreqRelation to old N77A SSB", "#C6EFCE")
@@ -1266,26 +1293,26 @@ class ConfigurationAudit:
                                         nr_new = _xl_col("NRFreqRelation to new N77A SSB cellReselPrio")
                                         nr_old = _xl_col("NRFreqRelation to old N77A SSB cellReselPrio")
                                         if nr_new and nr_old:
-                                            ws_me.conditional_format(1, me_col_map["NRFreqRelation to new N77A SSB cellReselPrio"] - 1, len(me_df), me_col_map["NRFreqRelation to new N77A SSB cellReselPrio"] - 1, {"type": "formula", "criteria": f"=AND(${nr_new}2<>\"\",${nr_old}2<>\"\",${nr_new}2<>${nr_old}2)", "format": fmt_red})
+                                            ws_me.conditional_format(1, me_col_map["NRFreqRelation to new N77A SSB cellReselPrio"] - 1, me_rows, me_col_map["NRFreqRelation to new N77A SSB cellReselPrio"] - 1, {"type": "formula", "criteria": f"=AND(${nr_new}2<>\"\",${nr_old}2<>\"\",${nr_new}2<>${nr_old}2)", "format": fmt_red})
 
                                         _add_fmt_equals_xlsx("GUtranFreqRelation to new N77A SSB cellReselPrio", "NRFreqRelation to old N77A SSB cellReselPrio", "#C6EFCE")
                                         gu_new_resel = _xl_col("GUtranFreqRelation to new N77A SSB cellReselPrio")
                                         if gu_new_resel and nr_old:
-                                            ws_me.conditional_format(1, me_col_map["GUtranFreqRelation to new N77A SSB cellReselPrio"] - 1, len(me_df), me_col_map["GUtranFreqRelation to new N77A SSB cellReselPrio"] - 1, {"type": "formula", "criteria": f"=AND(${gu_new_resel}2<>\"\",${nr_old}2<>\"\",${gu_new_resel}2<>${nr_old}2)", "format": fmt_red})
+                                            ws_me.conditional_format(1, me_col_map["GUtranFreqRelation to new N77A SSB cellReselPrio"] - 1, me_rows, me_col_map["GUtranFreqRelation to new N77A SSB cellReselPrio"] - 1, {"type": "formula", "criteria": f"=AND(${gu_new_resel}2<>\"\",${nr_old}2<>\"\",${gu_new_resel}2<>${nr_old}2)", "format": fmt_red})
 
                                         gu_old_endc = _xl_col("GUtranFreqRelation to old N77A SSB EndcPrio")
                                         gu_new_endc = _xl_col("GUtranFreqRelation to new N77A SSB EndcPrio")
                                         if gu_old_endc and gu_new_endc:
-                                            ws_me.conditional_format(1, me_col_map["GUtranFreqRelation to new N77A SSB EndcPrio"] - 1, len(me_df), me_col_map["GUtranFreqRelation to new N77A SSB EndcPrio"] - 1, {"type": "formula", "criteria": f"=AND(${gu_new_endc}2<>\"\",${gu_old_endc}2<>\"\",${gu_new_endc}2=${gu_old_endc}2)", "format": fmt_red})
+                                            ws_me.conditional_format(1, me_col_map["GUtranFreqRelation to new N77A SSB EndcPrio"] - 1, me_rows, me_col_map["GUtranFreqRelation to new N77A SSB EndcPrio"] - 1, {"type": "formula", "criteria": f"=AND(${gu_new_endc}2<>\"\",${gu_old_endc}2<>\"\",${gu_new_endc}2=${gu_old_endc}2)", "format": fmt_red})
 
                                         step1_col = _xl_col("Step1")
                                         if step1_col:
-                                            ws_me.conditional_format(1, me_col_map["Step1"] - 1, len(me_df), me_col_map["Step1"] - 1, {"type": "formula", "criteria": f"=${step1_col}2=\"SkipNoRels\"", "format": fmt_gray})
+                                            ws_me.conditional_format(1, me_col_map["Step1"] - 1, me_rows, me_col_map["Step1"] - 1, {"type": "formula", "criteria": f"=${step1_col}2=\"SkipNoRels\"", "format": fmt_gray})
 
                                         step2ac_col = _xl_col("Step2ac")
                                         if step2ac_col:
-                                            ws_me.conditional_format(1, me_col_map["Step2ac"] - 1, len(me_df), me_col_map["Step2ac"] - 1, {"type": "formula", "criteria": f"=ISNUMBER(SEARCH(\"Review\",${step2ac_col}2))", "format": fmt_red})
-                                            ws_me.conditional_format(1, me_col_map["Step2ac"] - 1, len(me_df), me_col_map["Step2ac"] - 1, {"type": "formula", "criteria": f"=${step2ac_col}2=\"SkipNoRels\"", "format": fmt_gray})
+                                            ws_me.conditional_format(1, me_col_map["Step2ac"] - 1, me_rows, me_col_map["Step2ac"] - 1, {"type": "formula", "criteria": f"=ISNUMBER(SEARCH(\"Review\",${step2ac_col}2))", "format": fmt_red})
+                                            ws_me.conditional_format(1, me_col_map["Step2ac"] - 1, me_rows, me_col_map["Step2ac"] - 1, {"type": "formula", "criteria": f"=${step2ac_col}2=\"SkipNoRels\"", "format": fmt_gray})
                                     else:
                                         from openpyxl.formatting.rule import FormulaRule, CellIsRule
 
@@ -1298,7 +1325,7 @@ class ConfigurationAudit:
                                             cl = _xl_col(col_name)
                                             if cl:
                                                 ws_me.conditional_formatting.add(
-                                                    f"{cl}2:{cl}{len(me_df)+1}",
+                                                    f"{cl}2:{cl}{me_rows+1}",
                                                     CellIsRule(operator="greaterThan", formula=["0"], stopIfTrue=False, fill=PatternFill(start_color="FFF2CC", end_color="FFF2CC", fill_type="solid")),
                                                 )
 
@@ -1308,7 +1335,7 @@ class ConfigurationAudit:
                                             if not ct or not cr:
                                                 return
                                             ws_me.conditional_formatting.add(
-                                                f"{ct}2:{ct}{len(me_df)+1}",
+                                                f"{ct}2:{ct}{me_rows+1}",
                                                 FormulaRule(formula=[f"=${ct}2=${cr}2"], stopIfTrue=False, fill=PatternFill(start_color=rgb, end_color=rgb, fill_type="solid")),
                                             )
 
@@ -1322,14 +1349,14 @@ class ConfigurationAudit:
                                         nr_old = _xl_col("NRFreqRelation to old N77A SSB cellReselPrio")
                                         if nr_new and nr_old:
                                             ws_me.conditional_formatting.add(
-                                                f"{nr_new}2:{nr_new}{len(me_df)+1}",
+                                                f"{nr_new}2:{nr_new}{me_rows+1}",
                                                 FormulaRule(formula=[f"=AND(${nr_new}2<>\"\",${nr_old}2<>\"\",${nr_new}2<>${nr_old}2)"], stopIfTrue=False, fill=PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid")),
                                             )
 
                                         gu_new_resel = _xl_col("GUtranFreqRelation to new N77A SSB cellReselPrio")
                                         if gu_new_resel and nr_old:
                                             ws_me.conditional_formatting.add(
-                                                f"{gu_new_resel}2:{gu_new_resel}{len(me_df)+1}",
+                                                f"{gu_new_resel}2:{gu_new_resel}{me_rows+1}",
                                                 FormulaRule(formula=[f"=AND(${gu_new_resel}2<>\"\",${nr_old}2<>\"\",${gu_new_resel}2<>${nr_old}2)"], stopIfTrue=False, fill=PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid")),
                                             )
 
@@ -1337,25 +1364,25 @@ class ConfigurationAudit:
                                         gu_new_endc = _xl_col("GUtranFreqRelation to new N77A SSB EndcPrio")
                                         if gu_old_endc and gu_new_endc:
                                             ws_me.conditional_formatting.add(
-                                                f"{gu_new_endc}2:{gu_new_endc}{len(me_df)+1}",
+                                                f"{gu_new_endc}2:{gu_new_endc}{me_rows+1}",
                                                 FormulaRule(formula=[f"=AND(${gu_new_endc}2<>\"\",${gu_old_endc}2<>\"\",${gu_new_endc}2=${gu_old_endc}2)"], stopIfTrue=False, fill=PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid")),
                                             )
 
                                         step1_col = _xl_col("Step1")
                                         if step1_col:
                                             ws_me.conditional_formatting.add(
-                                                f"{step1_col}2:{step1_col}{len(me_df)+1}",
+                                                f"{step1_col}2:{step1_col}{me_rows+1}",
                                                 FormulaRule(formula=[f"=${step1_col}2=\"SkipNoRels\""], stopIfTrue=False, fill=PatternFill(start_color="D9D9D9", end_color="D9D9D9", fill_type="solid")),
                                             )
 
                                         step2ac_col = _xl_col("Step2ac")
                                         if step2ac_col:
                                             ws_me.conditional_formatting.add(
-                                                f"{step2ac_col}2:{step2ac_col}{len(me_df)+1}",
+                                                f"{step2ac_col}2:{step2ac_col}{me_rows+1}",
                                                 FormulaRule(formula=[f"=ISNUMBER(SEARCH(\"Review\",${step2ac_col}2))"], stopIfTrue=False, fill=PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid")),
                                             )
                                             ws_me.conditional_formatting.add(
-                                                f"{step2ac_col}2:{step2ac_col}{len(me_df)+1}",
+                                                f"{step2ac_col}2:{step2ac_col}{me_rows+1}",
                                                 FormulaRule(formula=[f"=${step2ac_col}2=\"SkipNoRels\""], stopIfTrue=False, fill=PatternFill(start_color="D9D9D9", end_color="D9D9D9", fill_type="solid")),
                                             )
                             except Exception as ex:

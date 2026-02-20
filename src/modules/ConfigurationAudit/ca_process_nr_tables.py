@@ -452,39 +452,65 @@ def process_nr_freq_rel(df_nr_freq_rel, is_old, add_row, n77_ssb_pre, is_new, n7
                             merged = old_base.merge(new_base, on=key_cols_no_rel, how="inner", suffixes=("_old", "_new"))
 
                         if merged is not None and not merged.empty:
-                            # Detect mismatching params row-by-row but only report the actual diffs (fast path)
-                            for _, mrow in merged.iterrows():
-                                node_val = str(mrow.get(node_col, "")).strip()
-                                nrcell_val = str(mrow.get(cell_col, "")).strip()
-                                gnb_val = ""
-                                nrfreqrel_val = ""
-                                try:
-                                    if gnb_col and gnb_col in old_df.columns:
-                                        gnb_candidates = old_df.loc[(old_df[node_col].astype(str) == node_val) & (old_df[cell_col].astype(str) == nrcell_val), gnb_col]
-                                        if not gnb_candidates.empty:
-                                            gnb_val = str(gnb_candidates.iloc[0])
-                                    arfcn_candidates = old_df.loc[(old_df[node_col].astype(str) == node_val) & (old_df[cell_col].astype(str) == nrcell_val), arfcn_col]
-                                    if not arfcn_candidates.empty:
-                                        nrfreqrel_val = str(arfcn_candidates.iloc[0])
-                                except Exception:
-                                    pass
+                            merged[node_col] = merged[node_col].astype(str).str.strip()
+                            merged[cell_col] = merged[cell_col].astype(str).str.strip()
 
-                                row_has_diff = False
-                                for col_name in compare_cols:
-                                    old_col = f"{col_name}_old"
-                                    new_col = f"{col_name}_new"
-                                    if old_col not in merged.columns or new_col not in merged.columns:
-                                        continue
+                            old_lookup_cols = [node_col, cell_col, arfcn_col] + ([gnb_col] if gnb_col and gnb_col in old_df.columns else [])
+                            old_lookup = old_df[old_lookup_cols].copy()
+                            old_lookup[node_col] = old_lookup[node_col].astype(str).str.strip()
+                            old_lookup[cell_col] = old_lookup[cell_col].astype(str).str.strip()
+                            old_lookup = old_lookup.drop_duplicates(subset=[node_col, cell_col], keep="first")
 
-                                    old_val = mrow.get(old_col, None)
-                                    new_val = mrow.get(new_col, None)
+                            lookup_map = {
+                                (str(r[node_col]), str(r[cell_col])): {
+                                    "GNBCUCPFunctionId": "" if not (gnb_col and gnb_col in old_lookup.columns) else str(r.get(gnb_col, "") or ""),
+                                    "NRFreqRelationId": "" if r.get(arfcn_col, None) is None else str(r.get(arfcn_col, "") or ""),
+                                }
+                                for _, r in old_lookup.iterrows()
+                            }
 
-                                    if _values_differ(str(col_name), old_val, new_val):
-                                        param_mismatch_rows_nr.append({"Layer": "NR", "Table": "NRFreqRelation", "NodeId": node_val, "GNBCUCPFunctionId": gnb_val, "NRCellCUId": nrcell_val, "NRFreqRelationId": nrfreqrel_val, "Parameter": str(col_name), "OldSSB": n77_ssb_pre, "NewSSB": n77_ssb_post, "OldValue": "" if (old_val is None or (isinstance(old_val, float) and pd.isna(old_val))) else str(old_val), "NewValue": "" if (new_val is None or (isinstance(new_val, float) and pd.isna(new_val))) else str(new_val)})
-                                        row_has_diff = True
+                            for col_name in compare_cols:
+                                old_col = f"{col_name}_old"
+                                new_col = f"{col_name}_new"
+                                if old_col not in merged.columns or new_col not in merged.columns:
+                                    continue
 
-                                if row_has_diff and nrcell_val:
-                                    bad_cells_params.append(nrcell_val)
+                                old_norm = merged[old_col].map(_normalize_value_for_compare)
+                                new_norm = merged[new_col].map(_normalize_value_for_compare)
+                                diff_mask = ((old_norm == "") & (new_norm != "")) | ((old_norm != "") & (new_norm == "")) | ((old_norm != "") & (new_norm != "") & (old_norm != new_norm))
+
+                                if profile_ref_col_local and str(col_name) == str(profile_ref_col_local):
+                                    expected_clone_mask = pd.Series(
+                                        [_is_expected_profile_ref_clone(o, n) for o, n in zip(merged[old_col].tolist(), merged[new_col].tolist())],
+                                        index=merged.index,
+                                    )
+                                    diff_mask = diff_mask & (~expected_clone_mask)
+
+                                if not bool(diff_mask.any()):
+                                    continue
+
+                                diff_rows = merged.loc[diff_mask, [node_col, cell_col, old_col, new_col]].copy()
+                                bad_cells_params.extend(diff_rows[cell_col].astype(str).tolist())
+
+                                for _, drow in diff_rows.iterrows():
+                                    node_val = str(drow[node_col]).strip()
+                                    nrcell_val = str(drow[cell_col]).strip()
+                                    lk = lookup_map.get((node_val, nrcell_val), {})
+                                    old_val = drow[old_col]
+                                    new_val = drow[new_col]
+                                    param_mismatch_rows_nr.append({
+                                        "Layer": "NR",
+                                        "Table": "NRFreqRelation",
+                                        "NodeId": node_val,
+                                        "GNBCUCPFunctionId": str(lk.get("GNBCUCPFunctionId", "")),
+                                        "NRCellCUId": nrcell_val,
+                                        "NRFreqRelationId": str(lk.get("NRFreqRelationId", "")),
+                                        "Parameter": str(col_name),
+                                        "OldSSB": n77_ssb_pre,
+                                        "NewSSB": n77_ssb_post,
+                                        "OldValue": "" if (old_val is None or (isinstance(old_val, float) and pd.isna(old_val))) else str(old_val),
+                                        "NewValue": "" if (new_val is None or (isinstance(new_val, float) and pd.isna(new_val))) else str(new_val),
+                                    })
 
                         bad_cells_params = sorted(set(bad_cells_params))
 
@@ -669,4 +695,3 @@ def process_nr_cell_relation(df_nr_cell_rel, _extract_freq_from_nrfreqrelationre
             add_row("NRCellRelation", "NR Frequency Audit", "NRCellRelation table", "Table not found or empty")
     except Exception as ex:
         add_row("NRCellRelation", "NR Frequency Audit", "Error while checking NRCellRelation", f"ERROR: {ex}")
-
