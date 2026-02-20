@@ -6,7 +6,7 @@ import re
 import shutil
 import tempfile
 from typing import List, Tuple, Optional, Dict
-from openpyxl.styles import Font, PatternFill
+from openpyxl.styles import Font, PatternFill, Alignment
 from openpyxl.utils import get_column_letter
 import pandas as pd
 
@@ -1166,6 +1166,60 @@ class ConfigurationAudit:
                                 if me_df is not None and ws_me is not None and not me_df.empty:
                                     me_cols = list(me_df.columns)
                                     me_col_map = {str(c): i + 1 for i, c in enumerate(me_cols)}
+
+                                    # Slide format: keep first and last headers horizontal, rotate middle headers vertically.
+                                    def _apply_mecontext_header_orientation() -> None:
+                                        total_cols = len(me_cols)
+                                        first_horizontal = 4
+                                        last_horizontal = 4
+                                        if total_cols <= (first_horizontal + last_horizontal):
+                                            return
+
+                                        first_vertical_col = first_horizontal + 1  # 1-based
+                                        last_vertical_col = total_cols - last_horizontal  # 1-based
+
+                                        if excel_engine == "xlsxwriter":
+                                            try:
+                                                header_h = max(float(getattr(ws_me, "default_row_height", 15.0)), 120.0)
+                                            except Exception:
+                                                header_h = 120.0
+
+                                            fmt_h = writer.book.add_format({
+                                                "bold": True,
+                                                "bg_color": "#D9E1F2",
+                                                "border": 1,
+                                                "text_wrap": True,
+                                                "valign": "vcenter",
+                                                "align": "left",
+                                            })
+                                            fmt_v = writer.book.add_format({
+                                                "bold": True,
+                                                "bg_color": "#D9E1F2",
+                                                "border": 1,
+                                                "text_wrap": True,
+                                                "valign": "vcenter",
+                                                "align": "center",
+                                                "rotation": 90,
+                                            })
+
+                                            ws_me.set_row(0, header_h)
+                                            for idx, header in enumerate(me_cols, start=1):
+                                                use_vertical = first_vertical_col <= idx <= last_vertical_col
+                                                ws_me.write(0, idx - 1, "" if header is None else str(header), fmt_v if use_vertical else fmt_h)
+                                        else:
+                                            try:
+                                                ws_me.row_dimensions[1].height = max(float(ws_me.row_dimensions[1].height or 15.0), 120.0)
+                                            except Exception:
+                                                ws_me.row_dimensions[1].height = 120.0
+
+                                            for idx in range(1, total_cols + 1):
+                                                cell = ws_me.cell(row=1, column=idx)
+                                                if first_vertical_col <= idx <= last_vertical_col:
+                                                    cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True, text_rotation=90)
+                                                else:
+                                                    cell.alignment = Alignment(horizontal="left", vertical="center", wrap_text=True)
+
+                                    _apply_mecontext_header_orientation()
 
                                     def _xl_col(col_name: str) -> str | None:
                                         idx = me_col_map.get(col_name)

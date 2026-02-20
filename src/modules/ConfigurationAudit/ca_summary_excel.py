@@ -471,6 +471,12 @@ def build_summary_audit(
             ("ExternalNRCellCU", "NR Frequency Audit"),
             ("ExternalNRCellCU", "NR Frequency Inconsistencies"),
 
+            # NEW: TermPointToGNodeB
+            ("TermPointToGNodeB", "NR Termpoint Audit"),
+
+            # NEW: TermPointToENodeB
+            ("TermPointToENodeB", "X2 Termpoint Audit"),
+
             # LTE Frequency GUtranSyncSignalFrequency
             ("GUtranSyncSignalFrequency", "LTE Frequency Audit"),
             ("GUtranSyncSignalFrequency", "LTE Frequency Inconsistencies"),
@@ -487,11 +493,7 @@ def build_summary_audit(
             ("ExternalGUtranCell", "LTE Frequency Audit"),
             ("ExternalGUtranCell", "LTE Frequency Inconsistencies"),
 
-            # NEW: TermPointToGNodeB
-            ("TermPointToGNodeB", "NR Termpoint Audit"),
-
-            # NEW: TermPointToENodeB / TermPointToGNB
-            ("TermPointToENodeB", "X2 Termpoint Audit"),
+            # NEW: TermPointToGNB
             ("TermPointToGNB", "X2 Termpoint Audit"),
 
             # EndcDistrProfile
@@ -601,18 +603,18 @@ def build_summary_audit(
         ("NRCellDU", f"NR LowMidBand Nodes"): " ",
         ("NRCellDU", f"NR mmWave Nodes"): " ",
         ("NRCellDU", f"NR nodes with N77 SSB in band (646600-660000)"): " ",
-        ("NRCellDU", f"NR nodes with N77 SSB in Pre-Retune allowed list ({allowed_pre_str})"): "Nodes with Step2b pending",
-        ("NRCellDU", f"NR nodes with N77 SSB in Post-Retune allowed list ({allowed_post_str})"): "Nodes with Step2b completed",
+        ("NRCellDU", f"NR nodes with N77 SSB in Pre-Retune allowed list ({allowed_pre_str})"): "Nodes with N77A Step2b pending",
+        ("NRCellDU", f"NR nodes with N77 SSB in Post-Retune allowed list ({allowed_post_str})"): "Nodes with N77A Step2b completed",
         ("NRCellDU", f"NR nodes with N77 SSB not in Pre/Post Retune allowed lists"): "These nodes must be checked in preparation phase and confirm if any special action needed",
 
         ("NRSectorCarrier", f"NR nodes with N77 ARCFN in band (646600-660000)"): " ",
-        ("NRSectorCarrier", f"NR nodes with N77 ARCFN in Pre-Retune allowed list ({allowed_pre_str})"): "Nodes with Step2b pending",
-        ("NRSectorCarrier", f"NR nodes with N77 ARCFN in Post-Retune allowed list ({allowed_post_str})"): "Nodes with Step2b completed",
+        ("NRSectorCarrier", f"NR nodes with N77 ARCFN in Pre-Retune allowed list ({allowed_pre_str})"): "Nodes with N77B Step2b pending",
+        ("NRSectorCarrier", f"NR nodes with N77 ARCFN in Post-Retune allowed list ({allowed_post_str})"): "Nodes with N77B Step2b completed",
         ("NRSectorCarrier", f"NR nodes with N77 ARCFN not in Pre/Post Retune allowed lists"): "These nodes must be checked in preparation phase and confirm if any special action needed",
 
         ("NRFreqRelation", f"NR nodes with the old N77 SSB ({n77_ssb_pre})"): " ",
         ("NRFreqRelation", f"NR nodes with the new N77 SSB ({n77_ssb_post})"): " ",
-        ("NRFreqRelation", f"NR nodes with both, the old N77 SSB ({n77_ssb_pre}) and the new N77 SSB ({n77_ssb_post})"): " ",
+        ("NRFreqRelation", f"NR nodes with both, the old N77 SSB ({n77_ssb_pre}) and the new N77 SSB ({n77_ssb_post})"): "Need to run Step1 on these nodes",
         ("NRFreqRelation", f"NR nodes with the old N77 SSB ({n77_ssb_pre}) but without the new N77 SSB ({n77_ssb_post})"): "Need to run Step1 on these nodes",
         ("NRFreqRelation", f"NR nodes with some cells missing relations to new SSB ({n77_ssb_post})"): "Nodes with any relations Step1 pending",
         ("NRFreqRelation", f"NR nodes with the new N77 SSB ({n77_ssb_post}) NRFreqRelation pointing to mcpcPCellNrFreqRelProfileRef containing new SSB name (cloned) or Other"): "Nodes with Step1 completed",
@@ -628,11 +630,17 @@ def build_summary_audit(
         ("ExternalNRCellCU", f"External cells to old N77 SSB ({old_ssb})"): "PN and DAS might have no External relations defined",
         ("ExternalNRCellCU", f"External cells to new N77 SSB ({new_ssb})"): "PN and DAS might have no External relations defined",
 
-        ("GUtranFreqRelation", f"LTE nodes with the old N77 SSB"): "Need to run Step1 on these nodes",
+        ("TermPointToGNodeB", f"NR to NR TermPoints with administrativeState=LOCKED"): " ",
+        ("TermPointToGNodeB", f"NR to NR TermPoints with operationalState=DISABLED"): " ",
+
+        ("TermPointToENodeB", f"NR to LTE TermPoints with administrativeState=LOCKED"): "Helpful to troubleshoot External updates",
+        ("TermPointToENodeB", f"NR to LTE TermPoints with operationalState=DISABLED"): "Helpful to troubleshoot External updates",
+
+        ("GUtranFreqRelation", f"LTE nodes with the old N77 SSB"): " ",
         ("GUtranFreqRelation", f"LTE nodes with the new N77 SSB"): " ",
         ("GUtranFreqRelation", f"LTE nodes with both, the old N77 SSB ({n77_ssb_pre}) and the new N77 SSB ({n77_ssb_post})"): "Nodes with Step1 completed",
-        ("GUtranFreqRelation", f"LTE nodes with the old N77 SSB ({n77_ssb_pre}) but without the new SSB ({n77_ssb_post})"): "Need to run Step1 on this nodes",
-        ("GUtranFreqRelation", f"LTE nodes with some cells missing relations to new SSB {n77_ssb_post}"): " ",
+        ("GUtranFreqRelation", f"LTE nodes with the old N77 SSB ({n77_ssb_pre}) but without the new SSB ({n77_ssb_post})"): "Need to run Step1 on these nodes",
+        ("GUtranFreqRelation", f"LTE nodes with some cells missing relations to new SSB {n77_ssb_post}"): "Need to run Step1 on these nodes",
         ("GUtranFreqRelation", f"LTE nodes with the N77 SSB not in ({n77_ssb_pre}, {n77_ssb_post})"): " ",
         ("GUtranFreqRelation", f"LTE nodes with Auto-created GUtranFreqRelationId to new N77 SSB ({n77_ssb_post}) but not following VZ naming convention ({n77_ssb_post}-30-20-0-1)"): "Not an issue, unless other inconsistencies raised",
         ("GUtranFreqRelation", f"LTE nodes with same endcB1MeasPriority in old N77 SSB"): "Need to review and fix with Step1 or Step2c",
@@ -641,16 +649,10 @@ def build_summary_audit(
         ("GUtranCellRelation", f"LTE cellRelations to old N77 SSB"): "Post Step2 some relations pointing to other Mkts could be on old SSB. See details in table",
         ("GUtranCellRelation", f"LTE cellRelations to new N77 SSB"): " ",
 
-        ("ExternalGUtranCell", f"External cells to old N77 SSB ({old_ssb})"): " ",
+        ("ExternalGUtranCell", f"External cells to old N77 SSB ({old_ssb})"): "Post Step2 some relations pointing to other Mkts could be on old SSB. See details in table",
         ("ExternalGUtranCell", f"External cells to new N77 SSB ({new_ssb})"): " ",
         ("ExternalGUtranCell", f"External cells to old N77 SSB ({old_ssb}) with serviceStatus=OUT_OF_SERVICE"): "Externals with unavailable TermPoints are not operational for ENDC and might not be updated immediately after Step2",
         ("ExternalGUtranCell", f"External cells to new N77 SSB ({new_ssb}) with serviceStatus=OUT_OF_SERVICE"): " ",
-
-        ("TermPointToGNodeB", f"NR to NR TermPoints with administrativeState=LOCKED"): " ",
-        ("TermPointToGNodeB", f"NR to NR TermPoints with operationalState=DISABLED"): " ",
-
-        ("TermPointToENodeB", f"NR to LTE TermPoints with administrativeState=LOCKED"): "Helpful to troubleshoot External updates",
-        ("TermPointToENodeB", f"NR to LTE TermPoints with operationalState=DISABLED"): "Helpful to troubleshoot External updates",
 
         ("TermPointToGNB", f"LTE to NR TermPoints with administrativeState=LOCKED"): "Helpful to troubleshoot External updates",
         ("TermPointToGNB", f"LTE to NR TermPoints with operationalState=DISABLED"): "Helpful to troubleshoot External updates",
@@ -663,7 +665,7 @@ def build_summary_audit(
         ("EndcDistrProfile", f"Nodes with gUtranFreqRef not containing N77 SSBs ({n77_ssb_pre} or {n77_ssb_post}) together with N77B SSB ({n77b_ssb})"): "Need to run Step1 on this nodes",
         ("EndcDistrProfile", f"Nodes with mandatoryGUtranFreqRef not empty and not containing N77 SSBs ({n77_ssb_pre} or {n77_ssb_post}) together with N77B SSB ({n77b_ssb})"): "These nodes must be checked in preparation phase and confirm if any special action needed",
 
-        ("FreqPrioNR", f"LTE nodes with the old N77 SSB ({old_ssb}) but without the new N77 SSB ({new_ssb})"): "Need to run Step1 on this nodes",
+        ("FreqPrioNR", f"LTE nodes with the old N77 SSB ({old_ssb}) but without the new N77 SSB ({new_ssb})"): "Need to run Step1 on this nodes if existing GUtranFreqRelation",
         ("FreqPrioNR", f"LTE nodes with both, the old N77 SSB ({old_ssb}) and the new N77 SSB ({new_ssb})"): "Nodes with Step1 completed",
         ("FreqPrioNR", f"NR nodes with RATFreqPrioId = 'fwa' in N77 band"): " ",
         ("FreqPrioNR", "NR nodes with RATFreqPrioId = 'publicsafety' in N77 band"): " ",

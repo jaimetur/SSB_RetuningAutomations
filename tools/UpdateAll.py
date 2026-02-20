@@ -101,16 +101,16 @@ def main() -> None:
     formats_frame.pack(fill="x", pady=(4, 12))
 
     format_vars: dict[str, tk.BooleanVar] = {
-        "pptx": tk.BooleanVar(value=True),
-        "pptx.pdf": tk.BooleanVar(value=True),
         "docx": tk.BooleanVar(value=True),
+        "pptx": tk.BooleanVar(value=True),
         "docx.pdf": tk.BooleanVar(value=True),
+        "pptx.pdf": tk.BooleanVar(value=True),
     }
 
-    tk.Checkbutton(formats_frame, text=".pptx", variable=format_vars["pptx"]).grid(row=0, column=0, sticky="w", padx=(0, 12))
-    tk.Checkbutton(formats_frame, text=".pptx.pdf", variable=format_vars["pptx.pdf"]).grid(row=0, column=1, sticky="w", padx=(0, 12))
-    tk.Checkbutton(formats_frame, text=".docx", variable=format_vars["docx"]).grid(row=0, column=2, sticky="w", padx=(0, 12))
-    tk.Checkbutton(formats_frame, text=".docx.pdf", variable=format_vars["docx.pdf"]).grid(row=0, column=3, sticky="w")
+    tk.Checkbutton(formats_frame, text=".docx", variable=format_vars["docx"]).grid(row=0, column=0, sticky="w", padx=(0, 12))
+    tk.Checkbutton(formats_frame, text=".pptx", variable=format_vars["pptx"]).grid(row=0, column=1, sticky="w", padx=(0, 12))
+    tk.Checkbutton(formats_frame, text=".docx.pdf", variable=format_vars["docx.pdf"]).grid(row=0, column=2, sticky="w")
+    tk.Checkbutton(formats_frame, text=".pptx.pdf", variable=format_vars["pptx.pdf"]).grid(row=0, column=3, sticky="w", padx=(0, 12))
 
     def validate_inputs() -> tuple[str, str] | None:
         new_version = version_var.get().strip()
@@ -129,6 +129,7 @@ def main() -> None:
         if not validated:
             return None
         new_version, new_date = validated
+        print(f"▶️ Updating TOOL_VERSION and TOOL_DATE to : {new_version} - {new_date}...")
 
         # Re-read file to avoid using stale content
         fresh = TOOL_MAIN_PATH.read_text(encoding="utf-8")

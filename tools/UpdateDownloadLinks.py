@@ -15,6 +15,7 @@ import sys
 # ---------------------------------------------------------------------
 # Import TOOL_VERSION dynamically from src/SSB_RetuningAutomations
 # ---------------------------------------------------------------------
+print("")
 try:
     current_dir = os.path.dirname(__file__)
     project_root = os.path.abspath(os.path.join(current_dir, os.pardir))
@@ -26,12 +27,14 @@ except Exception as e:
     print(f"❌ ERROR: Unable to import TOOL_VERSION from SSB_RetuningAutomations.py\n{e}")
     sys.exit(1)
 
+print(f"▶️ Updating Download Links to new version : {TOOL_VERSION}...")
+
 tool_version = f"v{TOOL_VERSION}"
-print(f"🔍 TOOL_VERSION detected: {tool_version}")
+print(f"	🔍 TOOL_VERSION detected: {tool_version}")
 
 download_md = os.path.join(project_root, "DOWNLOAD.md")
 if not os.path.isfile(download_md):
-    print(f"❌ File not found: {download_md}")
+    print(f"	❌ File not found: {download_md}")
     sys.exit(1)
 
 with open(download_md, "r", encoding="utf-8") as f:
@@ -43,7 +46,7 @@ VERSION_RE = r"v\d+\.\d+\.\d+(?:-[0-9A-Za-z\.]+)?"
 m = re.search(VERSION_RE, content)
 download_links_version = m.group(0) if m else "not found"
 
-print(f"📄 Current version in DOWNLOAD.md: {download_links_version}")
+print(f"	📄 Current version in DOWNLOAD.md: {download_links_version}")
 
 
 updated = content
@@ -74,6 +77,6 @@ if updated != content:
     print(f"▶️ Updating DOWNLOAD.md links to new version: {tool_version}...")
     with open(download_md, "w", encoding="utf-8") as f:
         f.write(updated)
-    print(f"✅ Updated DOWNLOAD.md to {tool_version} ({total_replacements} replacements)")
+    print(f"    ✅ Updated DOWNLOAD.md to {tool_version} ({total_replacements} replacements)")
 else:
-    print("ℹ️ No version changes were needed — file already up to date.")
+    print("    ℹ️ No version changes were needed — file already up to date.")

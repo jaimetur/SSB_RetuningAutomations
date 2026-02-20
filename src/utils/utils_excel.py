@@ -50,6 +50,7 @@ def apply_alternating_category_row_fills(
     Additionally:
     - Any row whose SubCategory contains the string "inconsist" (case-insensitive)
       will have its font colored red if Value > 0, or dark gray otherwise.
+    - Any row with Value == 0 will have its font colored dark gray.
     """
 
     # Find the Category column index based on the header name
@@ -113,11 +114,10 @@ def apply_alternating_category_row_fills(
                 if "inconsist" in sub_norm or "discrep" in sub_norm:
                     is_inconsistency_or_discrepancy_row = True
 
-        # Determine if the inconsistency or discrepancy has Value > 0
-        is_positive_inconsistency_or_discrepancy = False
-        if is_inconsistency_or_discrepancy_row and value_col_idx is not None:
+        # Parse Value once (if present)
+        num_val = None
+        if value_col_idx is not None:
             value_cell = ws.cell(row=row_idx, column=value_col_idx).value
-            num_val = None
             if isinstance(value_cell, (int, float)):
                 num_val = float(value_cell)
             else:
@@ -126,8 +126,14 @@ def apply_alternating_category_row_fills(
                         num_val = float(str(value_cell).strip())
                 except Exception:
                     num_val = None
-            if num_val is not None and num_val > 0:
-                is_positive_inconsistency_or_discrepancy = True
+
+        # Determine if the inconsistency or discrepancy has Value > 0
+        is_positive_inconsistency_or_discrepancy = (
+            is_inconsistency_or_discrepancy_row and num_val is not None and num_val > 0
+        )
+
+        # Generic zero-value gray rule for all SummaryAudit rows
+        is_zero_value_row = (num_val is not None and num_val == 0)
 
         # Apply background color and (optionally) red/gray font to the entire row
         for col_idx in range(1, ws.max_column + 1):
@@ -135,6 +141,8 @@ def apply_alternating_category_row_fills(
             cell.fill = current_fill
             if is_inconsistency_or_discrepancy_row:
                 cell.font = red_font if is_positive_inconsistency_or_discrepancy else gray_font
+            elif is_zero_value_row:
+                cell.font = gray_font
 
 
 

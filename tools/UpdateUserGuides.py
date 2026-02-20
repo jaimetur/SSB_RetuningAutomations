@@ -307,6 +307,41 @@ try {{
     return result.returncode == 0 and pdf_file.exists()
 
 
+def try_export_pptx_pdf_windows(pptx_file: Path, pdf_file: Path) -> bool:
+    """Best effort on Windows: export PPTX to PDF through PowerPoint automation."""
+    if os.name != "nt":
+        return False
+
+    ps_script = f"""
+$ErrorActionPreference = 'Stop'
+$ppt = $null
+try {{
+    $pptPath = '{str(pptx_file)}'
+    $pdfPath = '{str(pdf_file)}'
+
+    $ppt = New-Object -ComObject PowerPoint.Application
+    $presentation = $ppt.Presentations.Open($pptPath, $false, $false, $false)
+    # 32 = ppSaveAsPDF
+    $presentation.SaveAs($pdfPath, 32)
+    $presentation.Close()
+}} catch {{
+    Write-Error $_.Exception.Message
+    exit 1
+}} finally {{
+    if ($ppt -ne $null) {{ $ppt.Quit() }}
+}}
+"""
+
+    result = subprocess.run(
+        ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps_script],
+        cwd=str(ROOT),
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        capture_output=True,
+    )
+    return result.returncode == 0 and pdf_file.exists()
+
 
 # Only used when we execute this script in a Non-Windows OS or without Microsoft Word installed
 # Markdown to PDF Converter
@@ -314,7 +349,7 @@ def build_pdf_from_markdown(md_file: Path, pdf_file: Path) -> None:
     if importlib.util.find_spec("reportlab") is None:
         raise RuntimeError("Missing dependency 'reportlab'. Install requirements.txt to generate PDF guides.")
 
-    print(f"\tGenerating PDF from Markdown...")
+    print(f"        Generating PDF from Markdown...")
     colors = importlib.import_module("reportlab.lib.colors")
     pagesizes = importlib.import_module("reportlab.lib.pagesizes")
     styles_mod = importlib.import_module("reportlab.lib.styles")
@@ -419,7 +454,7 @@ def build_pdf_from_markdown(md_file: Path, pdf_file: Path) -> None:
 
 # Markdown to Word Converter
 def build_docx_from_markdown(md_file: Path, docx_file: Path, version: str) -> None:
-    print(f"\tGenerating Word from Markdown...")
+    print(f"        Generating Word from Markdown...")
     # ------------------- Word-only helpers (subfunctions) ------------------- #
     def markdown_segments(text: str) -> list[tuple[str, bool]]:
         """Return [(segment, is_bold)] for markdown strings with **bold** markers."""
@@ -717,8 +752,8 @@ def build_docx_from_markdown(md_file: Path, docx_file: Path, version: str) -> No
 
 
 # Markdown to PowerPoint Converter
-def build_pptx_summary(md_file: Path, pptx_file: Path, version: str) -> None:
-    print(f"\tGenerating PowerPoint from Markdown...")
+def build_pptx_from_markdown(md_file: Path, pptx_file: Path, version: str) -> None:
+    print(f"        Generating PowerPoint from Markdown...")
     # ------------------- PPT-only helpers (subfunctions) ------------------- #
     def _strip_bold(text: str) -> str:
         return re.sub(r"\*\*(.*?)\*\*", r"\1", text)
@@ -1489,45 +1524,11 @@ def build_pptx_summary(md_file: Path, pptx_file: Path, version: str) -> None:
 
 
 
-def try_export_pptx_pdf_windows(pptx_file: Path, pdf_file: Path) -> bool:
-    """Best effort on Windows: export PPTX to PDF through PowerPoint automation."""
-    if os.name != "nt":
-        return False
-
-    ps_script = f"""
-$ErrorActionPreference = 'Stop'
-$ppt = $null
-try {{
-    $pptPath = '{str(pptx_file)}'
-    $pdfPath = '{str(pdf_file)}'
-
-    $ppt = New-Object -ComObject PowerPoint.Application
-    $presentation = $ppt.Presentations.Open($pptPath, $false, $false, $false)
-    # 32 = ppSaveAsPDF
-    $presentation.SaveAs($pdfPath, 32)
-    $presentation.Close()
-}} catch {{
-    Write-Error $_.Exception.Message
-    exit 1
-}} finally {{
-    if ($ppt -ne $null) {{ $ppt.Quit() }}
-}}
-"""
-
-    result = subprocess.run(
-        ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps_script],
-        cwd=str(ROOT),
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        capture_output=True,
-    )
-    return result.returncode == 0 and pdf_file.exists()
-
-
+# Only used when we execute this script in a Non-Windows OS or without Microsoft PowerPoint installed
+# Markdown to PDF PowerPoint Converter
 def build_pdf_from_pptx(pptx_file: Path, pdf_file: Path) -> bool:
     """Best-effort PPTX -> PDF conversion using PowerPoint (Windows) or LibreOffice."""
-    print("	Converting PPTX to PDF...")
+    print("        Converting PPTX to PDF...")
     if not pptx_file.exists():
         raise FileNotFoundError(f"PPTX file not found: {pptx_file}")
 
@@ -1555,7 +1556,7 @@ def build_pdf_from_pptx(pptx_file: Path, pdf_file: Path) -> bool:
         except OSError:
             continue
 
-    print("	[WARN] Unable to convert PPTX to PDF (PowerPoint/LibreOffice not available).")
+    print("    [WARN] Unable to convert PPTX to PDF (PowerPoint/LibreOffice not available).")
     return False
 
 
@@ -1573,19 +1574,19 @@ def parse_args() -> argparse.Namespace:
 
 def update_user_guides(formats: set[str]) -> dict[str, Path]:
     tool_version = get_tool_version()
-    print(f"🔍 TOOL_VERSION detected: v{tool_version}")
+    print(f"▶️ Updating User Guides to new version: {tool_version}...")
+    print(f"    🔍 TOOL_VERSION detected: v{tool_version}")
 
-    print(f"▶️ Updating README.md User Guides links to new version: {tool_version}...")
+    print(f"    ▶️ Updating README.md User Guides links to new version: {tool_version}...")
     update_readme_links(tool_version)
 
-    print(f"▶️ Updating User Guides to new version: {tool_version}...")
     paths = align_help_guides_to_version(tool_version)
 
     if "docx" in formats:
         build_docx_from_markdown(paths["md"], paths["docx"], tool_version)
 
     if "pptx" in formats:
-        build_pptx_summary(paths["md"], paths["pptx"], tool_version)
+        build_pptx_from_markdown(paths["md"], paths["pptx"], tool_version)
 
     if "docx.pdf" in formats:
         if paths["docx"].exists() and try_update_docx_fields_and_export_pdf(paths["docx"], paths["docx_pdf"]):
@@ -1597,7 +1598,7 @@ def update_user_guides(formats: set[str]) -> dict[str, Path]:
     if "pptx.pdf" in formats:
         if not paths["pptx"].exists():
             # PDF conversion requires a PPTX source; generate it when missing.
-            build_pptx_summary(paths["md"], paths["pptx"], tool_version)
+            build_pptx_from_markdown(paths["md"], paths["pptx"], tool_version)
         before_exists = paths["pptx_pdf"].exists()
         before_mtime = paths["pptx_pdf"].stat().st_mtime if before_exists else None
         pptx_pdf_generated = build_pdf_from_pptx(paths["pptx"], paths["pptx_pdf"])
@@ -1609,26 +1610,26 @@ def update_user_guides(formats: set[str]) -> dict[str, Path]:
                 "Install Microsoft PowerPoint (Windows) or LibreOffice/soffice in PATH."
             )
         if after_exists and before_exists and before_mtime == after_mtime and not pptx_pdf_generated:
-            print("	[WARN] PPTX PDF conversion did not refresh the existing file; keeping previous artifact.")
+            print("    [WARN] PPTX PDF conversion did not refresh the existing file; keeping previous artifact.")
 
     cleanup_old_versioned_guides(paths)
 
-    print(f"Using markdown: {paths['md']}")
+    print(f"    Using markdown: {paths['md']}")
     if "docx" in formats:
-        print(f"Generated: {paths['docx']}")
+        print(f"        Generated: {paths['docx']}")
     if "pptx" in formats:
-        print(f"Generated: {paths['pptx']}")
+        print(f"        Generated: {paths['pptx']}")
     if "docx.pdf" in formats:
-        print(f"Generated: {paths['docx_pdf']}")
+        print(f"        Generated: {paths['docx_pdf']}")
     if "pptx.pdf" in formats:
         if pptx_pdf_generated:
-            print(f"Generated: {paths['pptx_pdf']}")
+            print(f"        Generated: {paths['pptx_pdf']}")
         elif paths["pptx_pdf"].exists():
-            print(f"Generated (existing): {paths['pptx_pdf']}")
+            print(f"        Generated (existing): {paths['pptx_pdf']}")
         else:
-            print(f"Skipped (not generated): {paths['pptx_pdf']}")
-    print("User Guides updated.")
-    print("README Technical Guide Links updated.")
+            print(f"        Skipped (not generated): {paths['pptx_pdf']}")
+    print("        User Guides updated.")
+    print("        README Technical Guide Links updated.")
     return paths
 
 
