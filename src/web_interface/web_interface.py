@@ -2166,18 +2166,61 @@ def download_user_guide(request: Request, file_format: str, mode: str = "downloa
   <link rel="icon" type="image/png" href="/assets/logos/logo_02.png" />
   <link rel="shortcut icon" type="image/png" href="/assets/logos/logo_02.png" />
   <style>
-    body {{ font-family: Arial, sans-serif; margin: 2rem auto; max-width: 980px; line-height: 1.5; color: #1f2937; padding: 0 1rem; }}
-    h1,h2,h3,h4 {{ color: #0f172a; }}
-    code {{ background: #f1f5f9; padding: .12rem .35rem; border-radius: 4px; }}
-    pre {{ background: #0f172a; color: #f8fafc; padding: .8rem; border-radius: 8px; overflow-x: auto; }}
-    table {{ border-collapse: collapse; width: 100%; margin: .75rem 0; }}
-    th, td {{ border: 1px solid #cbd5e1; padding: .45rem; text-align: left; vertical-align: top; }}
-    th {{ background: #e2e8f0; }}
-    a {{ color: #1d4ed8; }}
+    :root {{ color-scheme: light; }}
+    body {{
+      margin: 0;
+      background: #f6f8fa;
+      color: #1f2328;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif;
+      line-height: 1.5;
+      font-size: 16px;
+    }}
+    .markdown-body {{
+      box-sizing: border-box;
+      max-width: 980px;
+      margin: 2rem auto;
+      padding: 2rem 2.5rem;
+      background: #ffffff;
+      border: 1px solid #d0d7de;
+      border-radius: 8px;
+      box-shadow: 0 1px 2px rgba(31, 35, 40, 0.04);
+    }}
+    .markdown-body h1,
+    .markdown-body h2 {{ border-bottom: 1px solid #d8dee4; padding-bottom: .3em; }}
+    .markdown-body code {{
+      background: rgba(175, 184, 193, 0.2);
+      padding: .2em .4em;
+      border-radius: 6px;
+      font-size: 85%;
+      font-family: ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas, "Liberation Mono", monospace;
+    }}
+    .markdown-body pre {{
+      background: #f6f8fa;
+      color: #1f2328;
+      padding: 1rem;
+      border: 1px solid #d0d7de;
+      border-radius: 6px;
+      overflow-x: auto;
+    }}
+    .markdown-body pre code {{ background: transparent; padding: 0; font-size: 100%; }}
+    .markdown-body table {{ border-collapse: collapse; width: 100%; margin: .75rem 0; display: block; overflow-x: auto; }}
+    .markdown-body th,
+    .markdown-body td {{ border: 1px solid #d0d7de; padding: .45rem .8rem; text-align: left; vertical-align: top; }}
+    .markdown-body th {{ background: #f6f8fa; font-weight: 600; }}
+    .markdown-body a {{ color: #0969da; text-decoration: none; }}
+    .markdown-body a:hover {{ text-decoration: underline; }}
+    .markdown-body img {{ max-width: 100%; height: auto; }}
+    .markdown-body blockquote {{ margin: 0; padding: 0 1em; color: #59636e; border-left: .25em solid #d0d7de; }}
+    .markdown-body hr {{ border: 0; border-top: 1px solid #d8dee4; margin: 1.5rem 0; }}
+    @media (max-width: 768px) {{
+      .markdown-body {{ margin: 1rem; padding: 1rem; }}
+    }}
   </style>
 </head>
 <body>
+<article class="markdown-body">
 {html_body}
+</article>
 </body>
 </html>
 """
