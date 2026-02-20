@@ -116,16 +116,6 @@ USER_SETTINGS_ALLOWED_KEYS = {
     "input",
     "input_pre",
     "input_post",
-    "n77_ssb_pre",
-    "n77_ssb_post",
-    "n77b_ssb",
-    "allowed_n77_ssb_pre",
-    "allowed_n77_arfcn_pre",
-    "allowed_n77_ssb_post",
-    "allowed_n77_arfcn_post",
-    "ca_freq_filters",
-    "cc_freq_filters",
-    "network_frequencies",
     "profiles_audit",
     "frequency_audit",
     "export_correction_cmd",
@@ -155,6 +145,16 @@ USER_SETTINGS_OBSOLETE_KEYS = {
     "db_backup_auto_hour",
     "db_backup_max_to_store",
     "db_backup_last_run_date",
+    "n77_ssb_pre",
+    "n77_ssb_post",
+    "n77b_ssb",
+    "allowed_n77_ssb_pre",
+    "allowed_n77_arfcn_pre",
+    "allowed_n77_ssb_post",
+    "allowed_n77_arfcn_post",
+    "ca_freq_filters",
+    "cc_freq_filters",
+    "network_frequencies",
 }
 
 pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
@@ -1138,8 +1138,25 @@ def coerce_backup_mode(value: Any) -> str:
     return "disabled"
 
 
+def get_global_radio_defaults() -> dict[str, str]:
+    config_values = load_persistent_config()
+    return {
+        "n77_ssb_pre": str(config_values.get("n77_ssb_pre", "") or ""),
+        "n77_ssb_post": str(config_values.get("n77_ssb_post", "") or ""),
+        "n77b_ssb": str(config_values.get("n77b_ssb", "") or ""),
+        "allowed_n77_ssb_pre": str(config_values.get("allowed_n77_ssb_pre", "") or ""),
+        "allowed_n77_arfcn_pre": str(config_values.get("allowed_n77_arfcn_pre", "") or ""),
+        "allowed_n77_ssb_post": str(config_values.get("allowed_n77_ssb_post", "") or ""),
+        "allowed_n77_arfcn_post": str(config_values.get("allowed_n77_arfcn_post", "") or ""),
+        "ca_freq_filters": str(config_values.get("ca_freq_filters", "") or ""),
+        "cc_freq_filters": str(config_values.get("cc_freq_filters", "") or ""),
+        "network_frequencies": str(config_values.get("network_frequencies", "") or ""),
+    }
+
+
 def get_admin_settings() -> dict[str, Any]:
     payload = load_admin_settings_payload()
+    defaults = get_global_radio_defaults()
     backup_auto_path = str(payload.get("db_backup_auto_path") or "").strip()
     if not backup_auto_path:
         backup_auto_path = str((DATA_DB_DIR / "backups").resolve())
@@ -1152,6 +1169,16 @@ def get_admin_settings() -> dict[str, Any]:
         "db_backup_auto_hour": coerce_hour(payload.get("db_backup_auto_hour"), 2),
         "db_backup_max_to_store": coerce_int(payload.get("db_backup_max_to_store"), 30, 1, 3650),
         "db_backup_last_run_date": str(payload.get("db_backup_last_run_date") or ""),
+        "n77_ssb_pre": str(payload.get("n77_ssb_pre", defaults["n77_ssb_pre"]) or ""),
+        "n77_ssb_post": str(payload.get("n77_ssb_post", defaults["n77_ssb_post"]) or ""),
+        "n77b_ssb": str(payload.get("n77b_ssb", defaults["n77b_ssb"]) or ""),
+        "allowed_n77_ssb_pre": str(payload.get("allowed_n77_ssb_pre", defaults["allowed_n77_ssb_pre"]) or ""),
+        "allowed_n77_arfcn_pre": str(payload.get("allowed_n77_arfcn_pre", defaults["allowed_n77_arfcn_pre"]) or ""),
+        "allowed_n77_ssb_post": str(payload.get("allowed_n77_ssb_post", defaults["allowed_n77_ssb_post"]) or ""),
+        "allowed_n77_arfcn_post": str(payload.get("allowed_n77_arfcn_post", defaults["allowed_n77_arfcn_post"]) or ""),
+        "ca_freq_filters": str(payload.get("ca_freq_filters", defaults["ca_freq_filters"]) or ""),
+        "cc_freq_filters": str(payload.get("cc_freq_filters", defaults["cc_freq_filters"]) or ""),
+        "network_frequencies": str(payload.get("network_frequencies", defaults["network_frequencies"]) or ""),
     }
 
 
@@ -1164,6 +1191,16 @@ def save_admin_settings(
     db_backup_auto_hour: int = 2,
     db_backup_max_to_store: int = 30,
     db_backup_last_run_date: str | None = None,
+    n77_ssb_pre: str | None = None,
+    n77_ssb_post: str | None = None,
+    n77b_ssb: str | None = None,
+    allowed_n77_ssb_pre: str | None = None,
+    allowed_n77_arfcn_pre: str | None = None,
+    allowed_n77_ssb_post: str | None = None,
+    allowed_n77_arfcn_post: str | None = None,
+    ca_freq_filters: str | None = None,
+    cc_freq_filters: str | None = None,
+    network_frequencies: str | None = None,
 ) -> None:
     current = get_admin_settings()
     backup_path = str(db_backup_auto_path or "").strip() or current["db_backup_auto_path"]
@@ -1176,6 +1213,16 @@ def save_admin_settings(
         "db_backup_auto_hour": coerce_hour(db_backup_auto_hour, current["db_backup_auto_hour"]),
         "db_backup_max_to_store": coerce_int(db_backup_max_to_store, current["db_backup_max_to_store"], 1, 3650),
         "db_backup_last_run_date": db_backup_last_run_date if db_backup_last_run_date is not None else current["db_backup_last_run_date"],
+        "n77_ssb_pre": str(n77_ssb_pre if n77_ssb_pre is not None else current.get("n77_ssb_pre", "")),
+        "n77_ssb_post": str(n77_ssb_post if n77_ssb_post is not None else current.get("n77_ssb_post", "")),
+        "n77b_ssb": str(n77b_ssb if n77b_ssb is not None else current.get("n77b_ssb", "")),
+        "allowed_n77_ssb_pre": str(allowed_n77_ssb_pre if allowed_n77_ssb_pre is not None else current.get("allowed_n77_ssb_pre", "")),
+        "allowed_n77_arfcn_pre": str(allowed_n77_arfcn_pre if allowed_n77_arfcn_pre is not None else current.get("allowed_n77_arfcn_pre", "")),
+        "allowed_n77_ssb_post": str(allowed_n77_ssb_post if allowed_n77_ssb_post is not None else current.get("allowed_n77_ssb_post", "")),
+        "allowed_n77_arfcn_post": str(allowed_n77_arfcn_post if allowed_n77_arfcn_post is not None else current.get("allowed_n77_arfcn_post", "")),
+        "ca_freq_filters": str(ca_freq_filters if ca_freq_filters is not None else current.get("ca_freq_filters", "")),
+        "cc_freq_filters": str(cc_freq_filters if cc_freq_filters is not None else current.get("cc_freq_filters", "")),
+        "network_frequencies": str(network_frequencies if network_frequencies is not None else current.get("network_frequencies", "")),
     }
     save_admin_settings_payload(settings)
 
@@ -1662,6 +1709,44 @@ def load_persistent_config() -> dict[str, str]:
     return load_cfg_values(CONFIG_PATH, CONFIG_SECTION, CFG_FIELD_MAP, *CFG_FIELDS)
 
 
+GLOBAL_RUNTIME_FORM_KEYS = (
+    "n77_ssb_pre",
+    "n77_ssb_post",
+    "n77b_ssb",
+    "allowed_n77_ssb_pre",
+    "allowed_n77_arfcn_pre",
+    "allowed_n77_ssb_post",
+    "allowed_n77_arfcn_post",
+    "ca_freq_filters",
+    "cc_freq_filters",
+    "network_frequencies",
+)
+
+
+def save_global_runtime_form_settings(values: dict[str, Any]) -> None:
+    current = get_admin_settings()
+    save_admin_settings(
+        current["max_cpu_percent"],
+        current["max_memory_percent"],
+        current["max_parallel_tasks"],
+        db_backup_auto_mode=current["db_backup_auto_mode"],
+        db_backup_auto_path=current["db_backup_auto_path"],
+        db_backup_auto_hour=current["db_backup_auto_hour"],
+        db_backup_max_to_store=current["db_backup_max_to_store"],
+        db_backup_last_run_date=current["db_backup_last_run_date"],
+        n77_ssb_pre=str(values.get("n77_ssb_pre", current.get("n77_ssb_pre", "")) or ""),
+        n77_ssb_post=str(values.get("n77_ssb_post", current.get("n77_ssb_post", "")) or ""),
+        n77b_ssb=str(values.get("n77b_ssb", current.get("n77b_ssb", "")) or ""),
+        allowed_n77_ssb_pre=str(values.get("allowed_n77_ssb_pre", current.get("allowed_n77_ssb_pre", "")) or ""),
+        allowed_n77_arfcn_pre=str(values.get("allowed_n77_arfcn_pre", current.get("allowed_n77_arfcn_pre", "")) or ""),
+        allowed_n77_ssb_post=str(values.get("allowed_n77_ssb_post", current.get("allowed_n77_ssb_post", "")) or ""),
+        allowed_n77_arfcn_post=str(values.get("allowed_n77_arfcn_post", current.get("allowed_n77_arfcn_post", "")) or ""),
+        ca_freq_filters=str(values.get("ca_freq_filters", current.get("ca_freq_filters", "")) or ""),
+        cc_freq_filters=str(values.get("cc_freq_filters", current.get("cc_freq_filters", "")) or ""),
+        network_frequencies=str(values.get("network_frequencies", current.get("network_frequencies", "")) or ""),
+    )
+
+
 def build_settings_defaults(module_value: str, config_values: dict[str, str]) -> dict[str, Any]:
     settings: dict[str, Any] = {
         "module": module_value,
@@ -2008,10 +2093,15 @@ def index(request: Request):
     user_settings = load_user_settings(user["id"])
     module_value = user_settings.get("module") or "configuration-audit"
     settings = build_settings_defaults(module_value, config_values)
+    admin_settings = get_admin_settings()
+    for key in GLOBAL_RUNTIME_FORM_KEYS:
+        settings[key] = str(admin_settings.get(key, settings.get(key, "")) or "")
     tool_meta = load_tool_metadata()
     network_frequencies = load_network_frequencies()
     settings.update(user_settings)
     settings["module"] = module_value
+    for key in GLOBAL_RUNTIME_FORM_KEYS:
+        settings[key] = str(admin_settings.get(key, settings.get(key, "")) or "")
     module_inputs_map = normalize_module_inputs_map(settings.get("module_inputs_map"))
     current_module_inputs = module_inputs_map.get(module_value, {})
     settings["input"] = str(current_module_inputs.get("input", settings.get("input", "")) or "")
@@ -2489,6 +2579,7 @@ def run_module(
     existing_settings = load_user_settings(user["id"])
     payload = build_settings_with_module_inputs(existing_settings, raw_payload)
     save_user_settings(user["id"], payload)
+    save_global_runtime_form_settings(raw_payload)
     persist_settings_to_config(module, payload)
     if module in WEB_INTERFACE_BLOCKED_MODULES:
         logger.info("Blocked module run from web interface: %s", module)
@@ -2552,6 +2643,7 @@ async def update_settings(request: Request):
     existing_settings = load_user_settings(user["id"])
     payload = build_settings_with_module_inputs(existing_settings, incoming_payload)
     save_user_settings(user["id"], payload)
+    save_global_runtime_form_settings(incoming_payload)
     module_value = payload.get("module") or "configuration-audit"
     persist_settings_to_config(module_value, payload)
     return {"ok": True}
