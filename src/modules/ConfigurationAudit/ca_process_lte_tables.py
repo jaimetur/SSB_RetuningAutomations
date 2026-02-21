@@ -224,7 +224,7 @@ def process_gu_freq_rel(df_gu_freq_rel, is_old, add_row, n77_ssb_pre, is_new, n7
                 bad_rows = pattern_work.loc[mask_bad_pattern].copy()
                 bad_nodes = sorted(bad_rows[node_col].astype(str).unique())
 
-                unique_pairs = sorted({(str(r[node_col]).strip(), str(r[arfcn_col]).strip()) for _, r in bad_rows.iterrows()})
+                unique_pairs = sorted({(str(n).strip(), str(a).strip()) for n, a in zip(bad_rows[node_col].tolist(), bad_rows[arfcn_col].tolist())})
                 extra_bad = "; ".join(f"{node}: {rel_id}" for node, rel_id in unique_pairs)
 
                 add_row("GUtranFreqRelation", "LTE Frequency Inconsistencies", f"LTE nodes with Auto-created GUtranFreqRelationId to new N77 SSB ({n77_ssb_post}) but not following VZ naming convention ({n77_ssb_post}-30-20-0-1)", len(bad_nodes), extra_bad)

@@ -36,6 +36,36 @@ class ConfigurationAudit:
 
     SUMMARY_RE = SUMMARY_RE  # keep class reference
 
+    @staticmethod
+    def _write_df_openpyxl_fast(writer: pd.ExcelWriter, df: pd.DataFrame, sheet_name: str) -> None:
+        """
+        Faster/lower-overhead dataframe writer for openpyxl-backed workbooks.
+
+        Why:
+          - For very large MO tables, pandas.DataFrame.to_excel(engine=openpyxl)
+            adds significant overhead and keeps many Python objects alive.
+          - Writing rows directly with worksheet.append() keeps the same engine
+            (openpyxl) while reducing CPU + peak RAM pressure during PHASE 5.3.
+        """
+        wb = writer.book
+        ws = wb.create_sheet(title=sheet_name)
+        writer.sheets[sheet_name] = ws
+
+        if df is None:
+            return
+
+        columns = list(df.columns)
+        if columns:
+            ws.append(columns)
+
+        if df.empty:
+            return
+
+        # Keep NaN/NaT as empty cells to avoid string inflation in workbook shared strings.
+        # itertuples(..., name=None) is consistently faster/lighter than iterrows().
+        for row in df.itertuples(index=False, name=None):
+            ws.append(["" if pd.isna(v) else v for v in row])
+
     def __init__(
         self,
         n77_ssb_pre: int,
@@ -1132,8 +1162,20 @@ class ConfigurationAudit:
 
                                 written += 1
                                 sheet_start = time.perf_counter()
-                                entry["df"].to_excel(writer, sheet_name=entry["final_sheet"], index=False)
-                                written_sheet_dfs[str(entry["final_sheet"])] = entry["df"]
+                                if excel_engine == "openpyxl":
+                                    self._write_df_openpyxl_fast(writer, entry["df"], str(entry["final_sheet"]))
+                                else:
+                                    entry["df"].to_excel(writer, sheet_name=entry["final_sheet"], index=False)
+                                # Keep in-memory references only when required by later styling logic.
+                                # For openpyxl path we only need MeContext here (conditional formatting).
+                                final_sheet_name = str(entry["final_sheet"])
+                                if excel_engine == "xlsxwriter" or final_sheet_name == candidate_to_final_sheet.get("MeContext", "MeContext"):
+                                    written_sheet_dfs[final_sheet_name] = entry["df"]
+
+                                # Release dataframe reference ASAP once written to reduce peak RAM,
+                                # but keep it when correction commands export needs in-memory sheets.
+                                if not export_correction_cmd:
+                                    entry["df"] = None
                                 sheet_elapsed = time.perf_counter() - sheet_start
 
                                 if show_phase_timings and sheet_elapsed >= float(slow_sheet_seconds_threshold):

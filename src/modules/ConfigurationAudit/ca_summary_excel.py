@@ -574,10 +574,8 @@ def build_summary_audit(
 
         order_map = {k: i for i, k in enumerate(desired_order)}
 
-        df["_order_"] = df.apply(
-            lambda r: order_map.get((r["Category"], r["SubCategory"]), len(order_map)),
-            axis=1,
-        )
+        keys = list(zip(df["Category"], df["SubCategory"]))
+        df["_order_"] = [order_map.get(k, len(order_map)) for k in keys]
 
         df = df.sort_values(by=["_order_"], kind="stable").drop(columns="_order_").reset_index(drop=True)
 

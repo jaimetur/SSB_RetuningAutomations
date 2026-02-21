@@ -452,22 +452,23 @@ def process_nr_freq_rel(df_nr_freq_rel, is_old, add_row, n77_ssb_pre, is_new, n7
                             merged = old_base.merge(new_base, on=key_cols_no_rel, how="inner", suffixes=("_old", "_new"))
 
                         if merged is not None and not merged.empty:
+                            old_lookup_base = old_df[[node_col, cell_col, arfcn_col] + ([gnb_col] if gnb_col and gnb_col in old_df.columns else [])].copy()
+                            old_lookup_base[node_col] = old_lookup_base[node_col].astype(str).str.strip()
+                            old_lookup_base[cell_col] = old_lookup_base[cell_col].astype(str).str.strip()
+                            old_lookup_base = old_lookup_base.drop_duplicates(subset=[node_col, cell_col], keep="first")
+
+                            gnb_lookup = {}
+                            if gnb_col and gnb_col in old_lookup_base.columns:
+                                gnb_lookup = dict(zip(zip(old_lookup_base[node_col], old_lookup_base[cell_col]), old_lookup_base[gnb_col].astype(str)))
+                            arfcn_lookup = dict(zip(zip(old_lookup_base[node_col], old_lookup_base[cell_col]), old_lookup_base[arfcn_col].astype(str)))
+
                             # Detect mismatching params row-by-row but only report the actual diffs (fast path)
                             for _, mrow in merged.iterrows():
                                 node_val = str(mrow.get(node_col, "")).strip()
                                 nrcell_val = str(mrow.get(cell_col, "")).strip()
-                                gnb_val = ""
-                                nrfreqrel_val = ""
-                                try:
-                                    if gnb_col and gnb_col in old_df.columns:
-                                        gnb_candidates = old_df.loc[(old_df[node_col].astype(str) == node_val) & (old_df[cell_col].astype(str) == nrcell_val), gnb_col]
-                                        if not gnb_candidates.empty:
-                                            gnb_val = str(gnb_candidates.iloc[0])
-                                    arfcn_candidates = old_df.loc[(old_df[node_col].astype(str) == node_val) & (old_df[cell_col].astype(str) == nrcell_val), arfcn_col]
-                                    if not arfcn_candidates.empty:
-                                        nrfreqrel_val = str(arfcn_candidates.iloc[0])
-                                except Exception:
-                                    pass
+                                key_pair = (node_val, nrcell_val)
+                                gnb_val = str(gnb_lookup.get(key_pair, "")) if gnb_lookup else ""
+                                nrfreqrel_val = str(arfcn_lookup.get(key_pair, ""))
 
                                 row_has_diff = False
                                 for col_name in compare_cols:
@@ -557,7 +558,7 @@ def process_nr_sector_carrier(df_nr_sector_carrier, add_row, allowed_n77_arfcn_p
                     bad_nodes = sorted(bad_rows[node_col].astype(str).unique())
 
                     # Build a unique (NodeId, ARCFN) list to avoid duplicated lines in ExtraInfo
-                    unique_pairs = sorted({(str(r[node_col]).strip(), str(r[arfcn_col]).strip()) for _, r in bad_rows.iterrows()})
+                    unique_pairs = sorted({(str(n).strip(), str(a).strip()) for n, a in zip(bad_rows[node_col].tolist(), bad_rows[arfcn_col].tolist())})
                     extra = "; ".join(f"{node}: {arfcn}" for node, arfcn in unique_pairs)
 
                     add_row("NRSectorCarrier", "NR Frequency Inconsistencies", "NR nodes with N77 ARCFN not in Pre/Post Retune allowed lists", len(bad_nodes), extra)
