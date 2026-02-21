@@ -696,6 +696,7 @@ class ConfigurationAudit:
                     profiles_tables=profiles_tables if profiles_audit else None,
                     profiles_audit=profiles_audit,
                     frequency_audit=frequency_audit,
+                    generate_correction_commands=export_correction_cmd,
                 )
 
                 # Cache in-memory outputs for callers that want to avoid re-reading the Excel from disk (e.g., ConsistencyChecks)
@@ -778,7 +779,7 @@ class ConfigurationAudit:
                         else:
                             writer = pd.ExcelWriter(tmp_excel_path_long, engine="openpyxl")
 
-                        written_sheet_dfs: dict[str, pd.DataFrame] = {}
+                        written_sheet_names: set[str] = set()
                         _log_info(f"PHASE 5.0: Using Excel engine: {excel_engine}")
 
                         t_open1 = time.perf_counter()
@@ -1076,11 +1077,11 @@ class ConfigurationAudit:
                         with log_phase_timer("PHASE 5.1: Write Summary + SummaryAudit", log_fn=_log_info, show_start=show_phase_starts, show_end=False, show_timing=show_phase_timings, line_prefix="", start_level="INFO", end_level="INFO", timing_level="INFO"):
                             # Write Summary first
                             pd.DataFrame(summary_rows).to_excel(writer, sheet_name="Summary", index=False)
-                            written_sheet_dfs["Summary"] = pd.DataFrame(summary_rows)
+                            written_sheet_names.add("Summary")
 
                             # SummaryAudit with high-level checks
                             summary_audit_df.to_excel(writer, sheet_name="SummaryAudit", index=False)
-                            written_sheet_dfs["SummaryAudit"] = summary_audit_df
+                            written_sheet_names.add("SummaryAudit")
 
                             # Apply alternating background colors by Category for SummaryAudit sheet
                             # NOTE: apply_alternating_category_row_fills is openpyxl-only (xlsxwriter Worksheet is not subscriptable)
@@ -1092,11 +1093,11 @@ class ConfigurationAudit:
                             # New: separate NR / LTE param mismatching sheets
                             if not param_mismatch_nr_df.empty:
                                 param_mismatch_nr_df.to_excel(writer, sheet_name="Summary NR Param Mismatching", index=False)
-                                written_sheet_dfs["Summary NR Param Mismatching"] = param_mismatch_nr_df
+                                written_sheet_names.add("Summary NR Param Mismatching")
 
                             if not param_mismatch_gu_df.empty:
                                 param_mismatch_gu_df.to_excel(writer, sheet_name="Summary LTE Param Mismatching", index=False)
-                                written_sheet_dfs["Summary LTE Param Mismatching"] = param_mismatch_gu_df
+                                written_sheet_names.add("Summary LTE Param Mismatching")
 
                         # ------------------------------------------------------------------
                         # PHASE 5.2: Write pivot summary sheets
@@ -1104,17 +1105,17 @@ class ConfigurationAudit:
                         with log_phase_timer("PHASE 5.2: Write pivot summary sheets", log_fn=_log_info, show_start=show_phase_starts, show_end=False, show_timing=show_phase_timings, line_prefix="", start_level="INFO", end_level="INFO", timing_level="INFO"):
                             # Extra summary sheets
                             pivot_nr_cells_du.to_excel(writer, sheet_name="Summary NR_CellDU", index=False)
-                            written_sheet_dfs["Summary NR_CellDU"] = pivot_nr_cells_du
+                            written_sheet_names.add("Summary NR_CellDU")
                             pivot_nr_sector_carrier.to_excel(writer, sheet_name="Summary NR_SectorCarrier", index=False)
-                            written_sheet_dfs["Summary NR_SectorCarrier"] = pivot_nr_sector_carrier
+                            written_sheet_names.add("Summary NR_SectorCarrier")
                             pivot_nr_freq.to_excel(writer, sheet_name="Summary NR_Frequency", index=False)
-                            written_sheet_dfs["Summary NR_Frequency"] = pivot_nr_freq
+                            written_sheet_names.add("Summary NR_Frequency")
                             pivot_nr_freq_rel.to_excel(writer, sheet_name="Summary NR_FreqRelation", index=False)
-                            written_sheet_dfs["Summary NR_FreqRelation"] = pivot_nr_freq_rel
+                            written_sheet_names.add("Summary NR_FreqRelation")
                             pivot_gu_sync_signal_freq.to_excel(writer, sheet_name="Summary GU_SyncSignalFrequency", index=False)
-                            written_sheet_dfs["Summary GU_SyncSignalFrequency"] = pivot_gu_sync_signal_freq
+                            written_sheet_names.add("Summary GU_SyncSignalFrequency")
                             pivot_gu_freq_rel.to_excel(writer, sheet_name="Summary GU_FreqRelation", index=False)
-                            written_sheet_dfs["Summary GU_FreqRelation"] = pivot_gu_freq_rel
+                            written_sheet_names.add("Summary GU_FreqRelation")
 
 
                         # ------------------------------------------------------------------
@@ -1133,7 +1134,9 @@ class ConfigurationAudit:
                                 written += 1
                                 sheet_start = time.perf_counter()
                                 entry["df"].to_excel(writer, sheet_name=entry["final_sheet"], index=False)
-                                written_sheet_dfs[str(entry["final_sheet"])] = entry["df"]
+                                written_sheet_names.add(str(entry["final_sheet"]))
+                                if not export_correction_cmd:
+                                    entry["df"] = pd.DataFrame()
                                 sheet_elapsed = time.perf_counter() - sheet_start
 
                                 if show_phase_timings and sheet_elapsed >= float(slow_sheet_seconds_threshold):
@@ -1148,7 +1151,7 @@ class ConfigurationAudit:
                         # ------------------------------------------------------------------
                         with log_phase_timer("PHASE 5.4: Style sheets (tabs, headers, autofit, hyperlinks)", log_fn=_log_info, show_start=show_phase_starts, show_end=False, show_timing=show_phase_timings, line_prefix="", start_level="INFO", end_level="INFO", timing_level="INFO"):
                             if excel_engine == "xlsxwriter":
-                                style_headers_autofilter_and_autofit_xlsxwriter(writer, sheet_dfs=written_sheet_dfs, freeze_header=True, align="left", max_autofit_rows=fast_excel_autofit_rows, max_col_width=fast_excel_autofit_max_width, enable_a1_hyperlinks=True, hyperlink_sheet="SummaryAudit", category_sheet_map=candidate_to_final_sheet)
+                                style_headers_autofilter_and_autofit_xlsxwriter(writer, sheet_names=written_sheet_names, freeze_header=True, align="left", max_autofit_rows=fast_excel_autofit_rows, max_col_width=fast_excel_autofit_max_width, enable_a1_hyperlinks=True, hyperlink_sheet="SummaryAudit", category_sheet_map=candidate_to_final_sheet)
                             else:
                                 # Color the 'Summary*' tabs in green
                                 color_summary_tabs(writer, prefix="Summary", rgb_hex="00B050")
@@ -1160,7 +1163,7 @@ class ConfigurationAudit:
                             # MeContext additional conditional formatting (based on slide requirements)
                             try:
                                 me_sheet_name = candidate_to_final_sheet.get("MeContext", "MeContext")
-                                me_df = written_sheet_dfs.get(me_sheet_name)
+                                me_df = df_me_out if me_sheet_name in written_sheet_names else None
                                 ws_me = writer.sheets.get(me_sheet_name)
 
                                 if me_df is not None and ws_me is not None and not me_df.empty:

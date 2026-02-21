@@ -6,7 +6,7 @@ from src.utils.utils_dataframe import ensure_column_after
 from src.utils.utils_frequency import resolve_column_case_insensitive
 
 # ----------------------------- NEW: ExternalNRCellCU (same value as NRCellRelation old/new counts) -----------------------------
-def process_external_nr_cell_cu(df_external_nr_cell_cu, n77_ssb_pre, n77_ssb_post, add_row, df_term_point_to_gnodeb, extract_freq_from_nrfrequencyref, extract_nrnetwork_tail, nodes_pre=None, nodes_post=None):
+def process_external_nr_cell_cu(df_external_nr_cell_cu, n77_ssb_pre, n77_ssb_post, add_row, df_term_point_to_gnodeb, extract_freq_from_nrfrequencyref, extract_nrnetwork_tail, nodes_pre=None, nodes_post=None, generate_correction_commands: bool = True):
 
     def _normalize_state_local(value: object) -> str:
         """
@@ -132,7 +132,7 @@ def process_external_nr_cell_cu(df_external_nr_cell_cu, n77_ssb_pre, n77_ssb_pos
                 # Correction Command
                 # (only for SSB-PRE frequency AND target != SSB-Pre)
                 # =========================
-                if ext_gnb_col and cell_col:
+                if generate_correction_commands and ext_gnb_col and cell_col:
                     mask_pre = work["Frequency"].astype(str) == old_ssb
                     mask_target = work["GNodeB_SSB_Target"] != "SSB-Pre"
                     mask_final = mask_pre & mask_target
@@ -160,7 +160,7 @@ def process_external_nr_cell_cu(df_external_nr_cell_cu, n77_ssb_pre, n77_ssb_pos
 
 
 # ----------------------------- NEW: ExternalGUtranCell (old/new counts + OUT_OF_SERVICE row counts) -----------------------------
-def process_external_gutran_cell(df_external_gutran_cell, extract_ssb_from_gutran_sync_ref, n77_ssb_pre, n77_ssb_post, add_row, normalize_state, df_term_point_to_gnb, nodes_pre=None, nodes_post=None):
+def process_external_gutran_cell(df_external_gutran_cell, extract_ssb_from_gutran_sync_ref, n77_ssb_pre, n77_ssb_post, add_row, normalize_state, df_term_point_to_gnb, nodes_pre=None, nodes_post=None, generate_correction_commands: bool = True):
     try:
         if df_external_gutran_cell is not None and not df_external_gutran_cell.empty:
             # NEW: Always work on a full copy (same pattern as NR)
@@ -281,14 +281,15 @@ def process_external_gutran_cell(df_external_gutran_cell, extract_ssb_from_gutra
         # -------------------------------------------------
         # Correction Command (LTE)
         # -------------------------------------------------
-        if "Correction_Cmd" not in work.columns:
-            work["Correction_Cmd"] = ""
+        if generate_correction_commands:
+            if "Correction_Cmd" not in work.columns:
+                work["Correction_Cmd"] = ""
 
-        mask_pre = work["Frequency"] == n77_ssb_pre
-        mask_target = work["GNodeB_SSB_Target"] != "SSB-Pre"
+            mask_pre = work["Frequency"] == n77_ssb_pre
+            mask_target = work["GNodeB_SSB_Target"] != "SSB-Pre"
 
-        if ext_gnb_col and cell_col:
-            work.loc[mask_pre & mask_target, "Correction_Cmd"] = work.loc[mask_pre & mask_target].apply(lambda r: build_correction_command_external_gutran_cell(r.get(ext_gnb_col, ""), r.get(cell_col, ""), n77_ssb_post), axis=1)
+            if ext_gnb_col and cell_col:
+                work.loc[mask_pre & mask_target, "Correction_Cmd"] = work.loc[mask_pre & mask_target].apply(lambda r: build_correction_command_external_gutran_cell(r.get(ext_gnb_col, ""), r.get(cell_col, ""), n77_ssb_post), axis=1)
 
         # -------------------------------------------------
         # Write back preserving original columns + new ones
@@ -301,7 +302,7 @@ def process_external_gutran_cell(df_external_gutran_cell, extract_ssb_from_gutra
 
 
 # ----------------------------- NEW: TermPointToGNodeB (NR Termpoint Audit) -----------------------------
-def process_termpoint_to_gnodeb(df_term_point_to_gnodeb, add_row, df_external_nr_cell_cu, n77_ssb_post, n77_ssb_pre, nodes_pre=None, nodes_post=None):
+def process_termpoint_to_gnodeb(df_term_point_to_gnodeb, add_row, df_external_nr_cell_cu, n77_ssb_post, n77_ssb_pre, nodes_pre=None, nodes_post=None, generate_correction_commands: bool = True):
     try:
         if df_term_point_to_gnodeb is None or df_term_point_to_gnodeb.empty:
             add_row("TermPointToGNodeB", "NR Termpoint Audit", "TermPointToGNodeB table", "Table not found or empty")
@@ -391,12 +392,13 @@ def process_termpoint_to_gnodeb(df_term_point_to_gnodeb, add_row, df_external_nr
         # Correction Command
         # (ONLY when SSB needs update == True)
         # -------------------------------------------------
-        if "Correction_Cmd" not in work.columns:
-            work["Correction_Cmd"] = ""
+        if generate_correction_commands:
+            if "Correction_Cmd" not in work.columns:
+                work["Correction_Cmd"] = ""
 
-        mask_update = work["SSB needs update"] == True
+            mask_update = work["SSB needs update"] == True
 
-        work.loc[mask_update, "Correction_Cmd"] = work.loc[mask_update, ext_gnb_col].map(lambda v: build_correction_command_termpoint_to_gnodeb(v, n77_ssb_post, n77_ssb_pre))
+            work.loc[mask_update, "Correction_Cmd"] = work.loc[mask_update, ext_gnb_col].map(lambda v: build_correction_command_termpoint_to_gnodeb(v, n77_ssb_post, n77_ssb_pre))
 
         # -------------------------------------------------
         # Write back (NO column removal)
@@ -418,7 +420,7 @@ def process_termpoint_to_gnodeb(df_term_point_to_gnodeb, add_row, df_external_nr
 
 
 # ----------------------------- NEW: TermPointToGNB (X2 Termpoint Audit, LTE -> NR) -----------------------------
-def process_termpoint_to_gnb(df_term_point_to_gnb, normalize_state, normalize_ip, add_row, df_external_gutran_cell, n77_ssb_post, n77_ssb_pre, nodes_pre=None, nodes_post=None):
+def process_termpoint_to_gnb(df_term_point_to_gnb, normalize_state, normalize_ip, add_row, df_external_gutran_cell, n77_ssb_post, n77_ssb_pre, nodes_pre=None, nodes_post=None, generate_correction_commands: bool = True):
     try:
         # Initialize locals to avoid UnboundLocalError if early branches happen
         work = None
@@ -550,10 +552,11 @@ def process_termpoint_to_gnb(df_term_point_to_gnb, normalize_state, normalize_ip
         # -------------------------------------------------
         # Correction Command
         # -------------------------------------------------
-        if "Correction_Cmd" not in work.columns:
-            work["Correction_Cmd"] = ""
+        if generate_correction_commands:
+            if "Correction_Cmd" not in work.columns:
+                work["Correction_Cmd"] = ""
 
-        work.loc[work["SSB needs update"] == True, "Correction_Cmd"] = work.loc[work["SSB needs update"] == True, ext_gnb_col].map(lambda v: build_correction_command_termpoint_to_gnb(v, n77_ssb_post, n77_ssb_pre))
+            work.loc[work["SSB needs update"] == True, "Correction_Cmd"] = work.loc[work["SSB needs update"] == True, ext_gnb_col].map(lambda v: build_correction_command_termpoint_to_gnb(v, n77_ssb_post, n77_ssb_pre))
 
         # -------------------------------------------------
         # Write back (NO column removal)

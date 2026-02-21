@@ -65,6 +65,7 @@ def build_summary_audit(
         profiles_tables: Dict[str, pd.DataFrame] | None = None,
         profiles_audit: bool = False,
         frequency_audit: bool = False,
+        generate_correction_commands: bool = True,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """
     Build a synthetic 'SummaryAudit' table with high-level checks:
@@ -394,10 +395,10 @@ def build_summary_audit(
     process_gu_cell_relation(df_gu_cell_rel, n77_ssb_pre, n77_ssb_post, add_row, nodes_pre_all, nodes_post_all)
 
     # Externals & Termpoints tables
-    process_external_nr_cell_cu(df_external_nr_cell_cu, n77_ssb_pre, n77_ssb_post, add_row, df_term_point_to_gnodeb, extract_freq_from_nrfrequencyref, extract_nr_network_tail, nodes_pre_all, nodes_post_all)
-    process_external_gutran_cell(df_external_gutran_cell, extract_ssb_from_gutran_sync_ref, n77_ssb_pre, n77_ssb_post, add_row, normalize_state, df_term_point_to_gnb, nodes_pre_all, nodes_post_all)
-    process_termpoint_to_gnodeb(df_term_point_to_gnodeb, add_row, df_external_nr_cell_cu, n77_ssb_post, n77_ssb_pre, nodes_pre_all, nodes_post_all)
-    process_termpoint_to_gnb(df_term_point_to_gnb, normalize_state, normalize_ip, add_row, df_external_gutran_cell, n77_ssb_post, n77_ssb_pre, nodes_pre_all, nodes_post_all)
+    process_external_nr_cell_cu(df_external_nr_cell_cu, n77_ssb_pre, n77_ssb_post, add_row, df_term_point_to_gnodeb, extract_freq_from_nrfrequencyref, extract_nr_network_tail, nodes_pre_all, nodes_post_all, generate_correction_commands=generate_correction_commands)
+    process_external_gutran_cell(df_external_gutran_cell, extract_ssb_from_gutran_sync_ref, n77_ssb_pre, n77_ssb_post, add_row, normalize_state, df_term_point_to_gnb, nodes_pre_all, nodes_post_all, generate_correction_commands=generate_correction_commands)
+    process_termpoint_to_gnodeb(df_term_point_to_gnodeb, add_row, df_external_nr_cell_cu, n77_ssb_post, n77_ssb_pre, nodes_pre_all, nodes_post_all, generate_correction_commands=generate_correction_commands)
+    process_termpoint_to_gnb(df_term_point_to_gnb, normalize_state, normalize_ip, add_row, df_external_gutran_cell, n77_ssb_post, n77_ssb_pre, nodes_pre_all, nodes_post_all, generate_correction_commands=generate_correction_commands)
     process_term_point_to_enodeb(df_term_point_to_enodeb, normalize_state, add_row, nodes_pre_all, nodes_post_all)
 
     # Other Tables

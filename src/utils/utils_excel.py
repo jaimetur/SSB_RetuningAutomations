@@ -394,7 +394,7 @@ def style_headers_autofilter_and_autofit(writer, freeze_header: bool = True, ali
 
 
 
-def style_headers_autofilter_and_autofit_xlsxwriter(writer, sheet_dfs: dict, freeze_header: bool = True, align: str = "left", max_autofit_rows: int = 50, max_col_width: int = 100, enable_a1_hyperlinks: bool = True, hyperlink_sheet: str = "SummaryAudit", category_sheet_map: dict | None = None) -> None:
+def style_headers_autofilter_and_autofit_xlsxwriter(writer, sheet_names: set[str] | None = None, freeze_header: bool = True, align: str = "left", max_autofit_rows: int = 50, max_col_width: int = 100, enable_a1_hyperlinks: bool = True, hyperlink_sheet: str = "SummaryAudit", category_sheet_map: dict | None = None) -> None:
     """
     Fast styling for XLSX generated with xlsxwriter engine:
       - Freeze header row
@@ -405,10 +405,6 @@ def style_headers_autofilter_and_autofit_xlsxwriter(writer, sheet_dfs: dict, fre
       - Optional A1 hyperlink to SummaryAudit (keeps same header text)
       - Optional hyperlinks from SummaryAudit.Category to target sheets (only for small SummaryAudit)
     """
-    try:
-        import pandas as pd
-    except Exception:
-        pd = None
 
     try:
         workbook = writer.book
@@ -421,7 +417,7 @@ def style_headers_autofilter_and_autofit_xlsxwriter(writer, sheet_dfs: dict, fre
     # Pre-calc if SummaryAudit exists
     has_summaryaudit = bool(hyperlink_sheet) and (hyperlink_sheet in writer.sheets)
 
-    for sheet_name, df in (sheet_dfs or {}).items():
+    for sheet_name in sorted(sheet_names or set(writer.sheets.keys())):
         ws = writer.sheets.get(sheet_name)
         if ws is None:
             continue
@@ -445,48 +441,38 @@ def style_headers_autofilter_and_autofit_xlsxwriter(writer, sheet_dfs: dict, fre
             ws.set_row(0, None, header_format)
         except Exception:
             pass
-
         # Autofilter on used range
         try:
-            n_rows = int(getattr(df, "shape", (0, 0))[0]) if df is not None else 0
-            n_cols = int(getattr(df, "shape", (0, 0))[1]) if df is not None else 0
-            if n_cols > 0:
-                ws.autofilter(0, 0, max(0, n_rows), n_cols - 1)
+            max_row = max(1, int(getattr(ws, "dim_rowmax", 0)) + 1)
+            max_col = max(1, int(getattr(ws, "dim_colmax", 0)) + 1)
+            ws.autofilter(0, 0, max_row - 1, max_col - 1)
         except Exception:
             pass
 
-        # Column widths (sampled)
+        # Column widths based on sampled worksheet cells
         try:
-            if df is not None and hasattr(df, "columns"):
-                if pd is not None and isinstance(df, pd.DataFrame) and not df.empty:
-                    sample_df = df.head(int(max_autofit_rows)) if max_autofit_rows and max_autofit_rows > 0 else df
-                    for col_idx, col_name in enumerate(list(df.columns)):
-                        header_len = len(str(col_name)) if col_name is not None else 0
-                        try:
-                            ser = sample_df.iloc[:, col_idx]
-                            max_val_len = int(ser.astype(str).map(len).max()) if not ser.empty else 0
-                        except Exception:
-                            max_val_len = 0
-                        width = min(max(header_len, max_val_len) + 2, int(max_col_width))
-                        width = max(width, 8)
-                        ws.set_column(col_idx, col_idx, width)
-                else:
-                    # If df isn't a DataFrame, at least set widths based on headers if possible
-                    cols = list(getattr(df, "columns", [])) if df is not None else []
-                    for col_idx, col_name in enumerate(cols):
-                        width = min(max(len(str(col_name)) + 2, 8), int(max_col_width))
-                        ws.set_column(col_idx, col_idx, width)
+            max_row = max(1, int(getattr(ws, "dim_rowmax", 0)) + 1)
+            max_col = max(1, int(getattr(ws, "dim_colmax", 0)) + 1)
+            row_limit = max_row if max_autofit_rows <= 0 else min(max_row, max_autofit_rows + 1)
+            for col_idx in range(max_col):
+                max_len = 0
+                for row_idx in range(row_limit):
+                    try:
+                        cell_val = ws.table[row_idx][col_idx].string
+                    except Exception:
+                        cell_val = ""
+                    l = len(str(cell_val)) if cell_val is not None else 0
+                    if l > max_len:
+                        max_len = l
+                width = min(max(max_len + 2, 8), int(max_col_width))
+                ws.set_column(col_idx, col_idx, width)
         except Exception:
             pass
 
         # Optional: A1 hyperlink to SummaryAudit (preserve header text)
         if enable_a1_hyperlinks and has_summaryaudit and sheet_name != hyperlink_sheet:
             try:
-                header_text = ""
-                if df is not None and hasattr(df, "columns") and len(list(df.columns)) > 0:
-                    header_text = str(list(df.columns)[0])
-                else:
-                    header_text = "A1"
+                header_text = "A1"
                 ws.write_url(0, 0, f"internal:{hyperlink_sheet}!A1", header_hlink_format, header_text)
             except Exception:
                 pass
@@ -494,20 +480,28 @@ def style_headers_autofilter_and_autofit_xlsxwriter(writer, sheet_dfs: dict, fre
     # Optional: hyperlinks inside SummaryAudit.Category -> target sheet
     if has_summaryaudit:
         try:
-            import pandas as pd
-            df_sa = sheet_dfs.get(hyperlink_sheet)
             ws_sa = writer.sheets.get(hyperlink_sheet)
-            if ws_sa is not None and isinstance(df_sa, pd.DataFrame) and not df_sa.empty:
-                cols = list(df_sa.columns)
-                if "Category" in cols:
-                    cat_idx = cols.index("Category")
-                    for i, raw in enumerate(df_sa["Category"].astype(str).fillna("").tolist()):
+            if ws_sa is not None:
+                max_row = max(1, int(getattr(ws_sa, "dim_rowmax", 0)) + 1)
+                max_col = max(1, int(getattr(ws_sa, "dim_colmax", 0)) + 1)
+                headers = []
+                for c in range(max_col):
+                    try:
+                        headers.append(str(ws_sa.table[0][c].string))
+                    except Exception:
+                        headers.append("")
+                if "Category" in headers:
+                    cat_idx = headers.index("Category")
+                    for r in range(1, max_row):
+                        try:
+                            raw = str(ws_sa.table[r][cat_idx].string or "")
+                        except Exception:
+                            raw = ""
                         target = raw.strip()
                         if category_sheet_map and target and target not in writer.sheets:
                             target = str(category_sheet_map.get(target, target))
                         if target and target in writer.sheets:
-                            # +1 because row 0 is header in Excel; data starts row 1
-                            ws_sa.write_url(i + 1, cat_idx, f"internal:{target}!A1", hyperlink_format, raw)
+                            ws_sa.write_url(r, cat_idx, f"internal:{target}!A1", hyperlink_format, raw)
         except Exception:
             pass
 
