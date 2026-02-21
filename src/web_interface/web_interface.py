@@ -243,7 +243,7 @@ MODULE_OPTIONS = [
     ("final-cleanup", "4. Final Clean-Up"),
 ]
 WEB_INTERFACE_BLOCKED_MODULES = {"consistency-check-bulk"}
-SESSION_IDLE_TIMEOUT_SECONDS = 3600
+SESSION_IDLE_TIMEOUT_SECONDS = 600
 
 TOOL_METADATA_PATH = PROJECT_ROOT / "src" / "SSB_RetuningAutomations.py"
 

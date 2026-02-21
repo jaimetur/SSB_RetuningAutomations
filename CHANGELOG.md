@@ -14,6 +14,7 @@
   - Modified several Tips on SumaryAudit Table.
   - Improved MEContext table header alignment for better readability.
   - SummaryAudit table now colors in gray all rows whose Value column is 0.
+  - Increased idle timeout and speed up log refresh behavior.
 
 - #### 🐛 Bug fixes:
   - Fixed queue temp folder duplication and restore execution log auto-refresh.
