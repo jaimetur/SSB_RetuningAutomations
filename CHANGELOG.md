@@ -1,11 +1,14 @@
 # 🗓️ CHANGELOG
 
+---
+
 ## Release: v0.7.7
 ### Release Date: 2026-02-23
   
 - #### 🚨 Breaking Changes:
 
 - #### 🌟 New Features:
+  - Recover interrupted tasks safely while preserving auto-resume.
 
 - #### 🚀 Enhancements:
   - Modified several Tips on SumaryAudit Table.
@@ -17,7 +20,6 @@
 - #### 📚 Documentation:
   - Included Web FastAPI interface section in User Guide.
   - Updated Documentation to align with the latest changes.
-
 
 ---
 

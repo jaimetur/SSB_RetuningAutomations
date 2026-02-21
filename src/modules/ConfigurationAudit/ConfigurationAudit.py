@@ -664,8 +664,8 @@ class ConfigurationAudit:
             # =====================================================================
             #                PHASE 4.3: Build SummaryAudit
             # =====================================================================
+            _log_info(f"PHASE 4.3: Build SummaryAudit (this phase can take some time)...")
             with log_phase_timer("PHASE 4.3: Build SummaryAudit", log_fn=_log_info, show_start=show_phase_starts, show_end=False, show_timing=show_phase_timings, line_prefix="", start_level="INFO", end_level="INFO", timing_level="INFO"):
-                _log_info(f"PHASE 4.3: Build SummaryAudit (this phase can take some time)...")
                 summary_audit_df, param_mismatch_nr_df, param_mismatch_gu_df = build_summary_audit(
                     df_mecontext=df_mecontext,
                     df_nr_cell_du=df_nr_cell_du,
