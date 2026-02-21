@@ -16,6 +16,7 @@
   - SummaryAudit table now colors in gray all rows whose Value column is 0.
 
 - #### 🐛 Bug fixes:
+  - Fixed queue temp folder duplication and restore execution log auto-refresh.
 
 - #### 📚 Documentation:
   - Included Web FastAPI interface section in User Guide.
