@@ -5,6 +5,7 @@ import time
 import re
 import shutil
 import tempfile
+import gc
 from typing import List, Tuple, Optional, Dict
 from openpyxl.styles import Font, PatternFill, Alignment
 from openpyxl.utils import get_column_letter
@@ -83,6 +84,19 @@ class ConfigurationAudit:
     # =====================================================================
     #                            PUBLIC API
     # =====================================================================
+
+    @staticmethod
+    def _write_dataframe_openpyxl_stream(ws, df: pd.DataFrame) -> None:
+        """
+        Faster, lower-overhead DataFrame writer for openpyxl worksheets.
+        This avoids pandas.to_excel() cell-by-cell dispatch overhead on very large sheets.
+        """
+        ws.append([str(c) for c in df.columns])
+        if df is None or df.empty:
+            return
+        for row in df.itertuples(index=False, name=None):
+            ws.append(row)
+
     def run(
             self,
             input_dir: str,
@@ -696,6 +710,7 @@ class ConfigurationAudit:
                     profiles_tables=profiles_tables if profiles_audit else None,
                     profiles_audit=profiles_audit,
                     frequency_audit=frequency_audit,
+                    unsync_already_filtered=True,
                 )
 
                 # Cache in-memory outputs for callers that want to avoid re-reading the Excel from disk (e.g., ConsistencyChecks)
@@ -1132,7 +1147,12 @@ class ConfigurationAudit:
 
                                 written += 1
                                 sheet_start = time.perf_counter()
-                                entry["df"].to_excel(writer, sheet_name=entry["final_sheet"], index=False)
+                                if excel_engine == "openpyxl":
+                                    ws = writer.book.create_sheet(title=str(entry["final_sheet"]))
+                                    writer.sheets[str(entry["final_sheet"])] = ws
+                                    self._write_dataframe_openpyxl_stream(ws, entry["df"])
+                                else:
+                                    entry["df"].to_excel(writer, sheet_name=entry["final_sheet"], index=False)
                                 written_sheet_dfs[str(entry["final_sheet"])] = entry["df"]
                                 sheet_elapsed = time.perf_counter() - sheet_start
 
@@ -1142,6 +1162,19 @@ class ConfigurationAudit:
                                         f"(>{slow_sheet_seconds_threshold}s): '{entry['final_sheet']}' ({entry.get('log_file', '')}) "
                                         f"took {sheet_elapsed:.3f}s"
                                     )
+
+                                # Reduce peak memory pressure as soon as each large sheet is materialized in workbook
+                                entry["df"] = pd.DataFrame()
+                                if written % 5 == 0:
+                                    gc.collect()
+
+                            if excel_engine == "openpyxl":
+                                try:
+                                    default_ws = writer.book["Sheet"]
+                                    if default_ws.max_row <= 1 and default_ws.max_column <= 1 and default_ws["A1"].value is None:
+                                        writer.book.remove(default_ws)
+                                except Exception:
+                                    pass
 
                         # ------------------------------------------------------------------
                         # PHASE 5.4: Style sheets (tabs, headers, autofit, hyperlinks)

@@ -65,6 +65,7 @@ def build_summary_audit(
         profiles_tables: Dict[str, pd.DataFrame] | None = None,
         profiles_audit: bool = False,
         frequency_audit: bool = False,
+        unsync_already_filtered: bool = False,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """
     Build a synthetic 'SummaryAudit' table with high-level checks:
@@ -317,23 +318,24 @@ def build_summary_audit(
         except Exception:
             return df
 
-    df_nr_cell_du = _exclude_unsync_df(df_nr_cell_du)
-    df_nr_freq = _exclude_unsync_df(df_nr_freq)
-    df_nr_freq_rel = _exclude_unsync_df(df_nr_freq_rel)
-    df_nr_cell_rel = _exclude_unsync_df(df_nr_cell_rel)
-    df_freq_prio_nr = _exclude_unsync_df(df_freq_prio_nr)
-    df_gu_sync_signal_freq = _exclude_unsync_df(df_gu_sync_signal_freq)
-    df_gu_freq_rel = _exclude_unsync_df(df_gu_freq_rel)
-    df_gu_cell_rel = _exclude_unsync_df(df_gu_cell_rel)
-    df_nr_sector_carrier = _exclude_unsync_df(df_nr_sector_carrier)
-    df_endc_distr_profile = _exclude_unsync_df(df_endc_distr_profile)
-    df_nr_cell_cu = _exclude_unsync_df(df_nr_cell_cu)
-    df_eutran_freq_rel = _exclude_unsync_df(df_eutran_freq_rel)
-    df_external_nr_cell_cu = _exclude_unsync_df(df_external_nr_cell_cu)
-    df_external_gutran_cell = _exclude_unsync_df(df_external_gutran_cell)
-    df_term_point_to_gnodeb = _exclude_unsync_df(df_term_point_to_gnodeb)
-    df_term_point_to_gnb = _exclude_unsync_df(df_term_point_to_gnb)
-    df_term_point_to_enodeb = _exclude_unsync_df(df_term_point_to_enodeb)
+    if not unsync_already_filtered:
+        df_nr_cell_du = _exclude_unsync_df(df_nr_cell_du)
+        df_nr_freq = _exclude_unsync_df(df_nr_freq)
+        df_nr_freq_rel = _exclude_unsync_df(df_nr_freq_rel)
+        df_nr_cell_rel = _exclude_unsync_df(df_nr_cell_rel)
+        df_freq_prio_nr = _exclude_unsync_df(df_freq_prio_nr)
+        df_gu_sync_signal_freq = _exclude_unsync_df(df_gu_sync_signal_freq)
+        df_gu_freq_rel = _exclude_unsync_df(df_gu_freq_rel)
+        df_gu_cell_rel = _exclude_unsync_df(df_gu_cell_rel)
+        df_nr_sector_carrier = _exclude_unsync_df(df_nr_sector_carrier)
+        df_endc_distr_profile = _exclude_unsync_df(df_endc_distr_profile)
+        df_nr_cell_cu = _exclude_unsync_df(df_nr_cell_cu)
+        df_eutran_freq_rel = _exclude_unsync_df(df_eutran_freq_rel)
+        df_external_nr_cell_cu = _exclude_unsync_df(df_external_nr_cell_cu)
+        df_external_gutran_cell = _exclude_unsync_df(df_external_gutran_cell)
+        df_term_point_to_gnodeb = _exclude_unsync_df(df_term_point_to_gnodeb)
+        df_term_point_to_gnb = _exclude_unsync_df(df_term_point_to_gnb)
+        df_term_point_to_enodeb = _exclude_unsync_df(df_term_point_to_enodeb)
 
     # Detailed parameter mismatching rows to build Excel sheets "Summary NR Param Missmatching" and
     # "Summary LTE Param Missmatching"
