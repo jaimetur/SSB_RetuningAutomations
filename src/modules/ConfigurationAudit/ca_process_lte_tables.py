@@ -273,67 +273,42 @@ def process_gu_freq_rel(df_gu_freq_rel, is_old, add_row, n77_ssb_pre, is_new, n7
                     nodes_same_prio: set[str] = set()
 
                     for cell_id in cells_both:
-                        cell_rows = full.loc[full[cell_col_gu].astype(str) == cell_id].copy()
-                        cell_rel_s = cell_rows[arfcn_col].astype(str).str.strip()
-
-                        # IMPORTANT: do NOT use '==' here; match both base and full suffix variants
-                        old_rows = cell_rows.loc[cell_rel_s.str.match(pat_old, na=False)]
-                        new_rows = cell_rows.loc[cell_rel_s.str.match(pat_new, na=False)]
-
+                        old_rows = full.loc[(full[cell_col_gu].astype(str) == cell_id) & mask_old_rel]
+                        new_rows = full.loc[(full[cell_col_gu].astype(str) == cell_id) & mask_new_rel]
                         if old_rows.empty or new_rows.empty:
                             continue
 
-                        old_clean = old_rows.drop(columns=list(cols_to_ignore), errors="ignore").drop_duplicates().reset_index(drop=True)
-                        new_clean = new_rows.drop(columns=list(cols_to_ignore), errors="ignore").drop_duplicates().reset_index(drop=True)
+                        old_row = old_rows.iloc[0]
+                        new_row = new_rows.iloc[0]
 
-                        # Align column order
-                        old_clean = old_clean.reindex(sorted(old_clean.columns), axis=1)
-                        new_clean = new_clean.reindex(sorted(new_clean.columns), axis=1)
+                        node_val = str(old_row.get(node_col, "") or "").strip()
 
-                        # Sort rows by all columns to make comparison order-independent
-                        sort_cols = list(old_clean.columns)
-                        old_clean = old_clean.sort_values(by=sort_cols).reset_index(drop=True)
-                        new_clean = new_clean.sort_values(by=sort_cols).reset_index(drop=True)
-
-                        if not old_clean.equals(new_clean):
-                            old_row = old_clean.iloc[0]
-                            new_row = new_clean.iloc[0]
-
-                            def _values_differ(a: object, b: object) -> bool:
-                                return (pd.isna(a) and not pd.isna(b)) or (not pd.isna(a) and pd.isna(b)) or (a != b)
-
-                            node_val = ""
+                        if prio_col:
                             try:
-                                node_val = str(cell_rows[node_col].iloc[0])
+                                old_prio = old_row.get(prio_col)
+                                new_prio = new_row.get(prio_col)
+                                if (pd.isna(old_prio) and pd.isna(new_prio)) or (not pd.isna(old_prio) and not pd.isna(new_prio) and str(old_prio) == str(new_prio)):
+                                    if node_val:
+                                        nodes_same_prio.add(node_val)
                             except Exception:
-                                node_val = ""
+                                pass
 
-                            # New rule: endcB1MeasPriority can change between old/new (Step1 vs Step2). We only flag cells where it stays the same.
-                            if prio_col:
-                                try:
-                                    old_prio = old_rows[prio_col].iloc[0]
-                                    new_prio = new_rows[prio_col].iloc[0]
-                                    if (pd.isna(old_prio) and pd.isna(new_prio)) or (not pd.isna(old_prio) and not pd.isna(new_prio) and str(old_prio) == str(new_prio)):
-                                        if node_val:
-                                            nodes_same_prio.add(str(node_val))
-                                except Exception:
-                                    pass
+                        new_rel_val = str(new_row.get(arfcn_col, expected_new_rel_id)).strip() or expected_new_rel_id
 
-                            new_rel_val = expected_new_rel_id
-                            try:
-                                new_rel_val = str(new_rows[arfcn_col].iloc[0]).strip()
-                            except Exception:
-                                new_rel_val = expected_new_rel_id
+                        row_has_diff = False
+                        for col_name in full.columns:
+                            if col_name in cols_to_ignore or col_name in {cell_col_gu, node_col}:
+                                continue
+                            old_val = old_row.get(col_name)
+                            new_val = new_row.get(col_name)
+                            if ((pd.isna(old_val) and not pd.isna(new_val)) or (not pd.isna(old_val) and pd.isna(new_val)) or (old_val != new_val)):
+                                param_mismatch_rows_gu.append({"Layer": "LTE", "Table": "GUtranFreqRelation", "NodeId": node_val, "EUtranCellId": str(cell_id), "GUtranFreqRelationId": new_rel_val, "Parameter": str(col_name), "OldSSB": n77_ssb_pre, "NewSSB": n77_ssb_post, "OldValue": "" if pd.isna(old_val) else str(old_val), "NewValue": "" if pd.isna(new_val) else str(new_val)})
+                                row_has_diff = True
 
-                            for col_name in sort_cols:
-                                old_val = old_row[col_name]
-                                new_val = new_row[col_name]
-                                if _values_differ(old_val, new_val):
-                                    param_mismatch_rows_gu.append({"Layer": "LTE", "Table": "GUtranFreqRelation", "NodeId": node_val, "EUtranCellId": str(cell_id), "GUtranFreqRelationId": new_rel_val, "Parameter": str(col_name), "OldSSB": n77_ssb_pre, "NewSSB": n77_ssb_post, "OldValue": "" if pd.isna(old_val) else str(old_val), "NewValue": "" if pd.isna(new_val) else str(new_val)})
-
+                        if row_has_diff:
                             bad_cells_params.append(str(cell_id))
                             if node_val:
-                                bad_nodes_params.add(str(node_val))
+                                bad_nodes_params.add(node_val)
 
                     bad_nodes_params_list = sorted(bad_nodes_params)
                     nodes_same_prio_list = sorted(nodes_same_prio)

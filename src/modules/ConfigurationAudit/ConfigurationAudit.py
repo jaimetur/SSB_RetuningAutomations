@@ -8,6 +8,7 @@ import tempfile
 from typing import List, Tuple, Optional, Dict
 from openpyxl.styles import Font, PatternFill, Alignment
 from openpyxl.utils import get_column_letter
+from openpyxl.utils.dataframe import dataframe_to_rows
 import pandas as pd
 
 from src.utils.utils_io import find_log_files, read_text_file, to_long_path, pretty_path
@@ -779,6 +780,21 @@ class ConfigurationAudit:
                             writer = pd.ExcelWriter(tmp_excel_path_long, engine="openpyxl")
 
                         written_sheet_dfs: dict[str, pd.DataFrame] = {}
+
+                        def _write_df_sheet(sheet_name: str, df: pd.DataFrame) -> None:
+                            """
+                            Write a DataFrame using the selected engine.
+                            For openpyxl we use row-appends directly to reduce pandas->openpyxl overhead
+                            on very large tables while preserving the openpyxl engine.
+                            """
+                            if excel_engine == "openpyxl":
+                                ws = writer.book.create_sheet(title=str(sheet_name))
+                                writer.sheets[str(sheet_name)] = ws
+                                safe_df = df if isinstance(df, pd.DataFrame) else pd.DataFrame()
+                                for row in dataframe_to_rows(safe_df, index=False, header=True):
+                                    ws.append(row)
+                            else:
+                                df.to_excel(writer, sheet_name=sheet_name, index=False)
                         _log_info(f"PHASE 5.0: Using Excel engine: {excel_engine}")
 
                         t_open1 = time.perf_counter()
@@ -1075,11 +1091,12 @@ class ConfigurationAudit:
                         # ------------------------------------------------------------------
                         with log_phase_timer("PHASE 5.1: Write Summary + SummaryAudit", log_fn=_log_info, show_start=show_phase_starts, show_end=False, show_timing=show_phase_timings, line_prefix="", start_level="INFO", end_level="INFO", timing_level="INFO"):
                             # Write Summary first
-                            pd.DataFrame(summary_rows).to_excel(writer, sheet_name="Summary", index=False)
-                            written_sheet_dfs["Summary"] = pd.DataFrame(summary_rows)
+                            df_summary = pd.DataFrame(summary_rows)
+                            _write_df_sheet("Summary", df_summary)
+                            written_sheet_dfs["Summary"] = df_summary
 
                             # SummaryAudit with high-level checks
-                            summary_audit_df.to_excel(writer, sheet_name="SummaryAudit", index=False)
+                            _write_df_sheet("SummaryAudit", summary_audit_df)
                             written_sheet_dfs["SummaryAudit"] = summary_audit_df
 
                             # Apply alternating background colors by Category for SummaryAudit sheet
@@ -1091,11 +1108,11 @@ class ConfigurationAudit:
 
                             # New: separate NR / LTE param mismatching sheets
                             if not param_mismatch_nr_df.empty:
-                                param_mismatch_nr_df.to_excel(writer, sheet_name="Summary NR Param Mismatching", index=False)
+                                _write_df_sheet("Summary NR Param Mismatching", param_mismatch_nr_df)
                                 written_sheet_dfs["Summary NR Param Mismatching"] = param_mismatch_nr_df
 
                             if not param_mismatch_gu_df.empty:
-                                param_mismatch_gu_df.to_excel(writer, sheet_name="Summary LTE Param Mismatching", index=False)
+                                _write_df_sheet("Summary LTE Param Mismatching", param_mismatch_gu_df)
                                 written_sheet_dfs["Summary LTE Param Mismatching"] = param_mismatch_gu_df
 
                         # ------------------------------------------------------------------
@@ -1103,17 +1120,17 @@ class ConfigurationAudit:
                         # ------------------------------------------------------------------
                         with log_phase_timer("PHASE 5.2: Write pivot summary sheets", log_fn=_log_info, show_start=show_phase_starts, show_end=False, show_timing=show_phase_timings, line_prefix="", start_level="INFO", end_level="INFO", timing_level="INFO"):
                             # Extra summary sheets
-                            pivot_nr_cells_du.to_excel(writer, sheet_name="Summary NR_CellDU", index=False)
+                            _write_df_sheet("Summary NR_CellDU", pivot_nr_cells_du)
                             written_sheet_dfs["Summary NR_CellDU"] = pivot_nr_cells_du
-                            pivot_nr_sector_carrier.to_excel(writer, sheet_name="Summary NR_SectorCarrier", index=False)
+                            _write_df_sheet("Summary NR_SectorCarrier", pivot_nr_sector_carrier)
                             written_sheet_dfs["Summary NR_SectorCarrier"] = pivot_nr_sector_carrier
-                            pivot_nr_freq.to_excel(writer, sheet_name="Summary NR_Frequency", index=False)
+                            _write_df_sheet("Summary NR_Frequency", pivot_nr_freq)
                             written_sheet_dfs["Summary NR_Frequency"] = pivot_nr_freq
-                            pivot_nr_freq_rel.to_excel(writer, sheet_name="Summary NR_FreqRelation", index=False)
+                            _write_df_sheet("Summary NR_FreqRelation", pivot_nr_freq_rel)
                             written_sheet_dfs["Summary NR_FreqRelation"] = pivot_nr_freq_rel
-                            pivot_gu_sync_signal_freq.to_excel(writer, sheet_name="Summary GU_SyncSignalFrequency", index=False)
+                            _write_df_sheet("Summary GU_SyncSignalFrequency", pivot_gu_sync_signal_freq)
                             written_sheet_dfs["Summary GU_SyncSignalFrequency"] = pivot_gu_sync_signal_freq
-                            pivot_gu_freq_rel.to_excel(writer, sheet_name="Summary GU_FreqRelation", index=False)
+                            _write_df_sheet("Summary GU_FreqRelation", pivot_gu_freq_rel)
                             written_sheet_dfs["Summary GU_FreqRelation"] = pivot_gu_freq_rel
 
 
@@ -1132,8 +1149,14 @@ class ConfigurationAudit:
 
                                 written += 1
                                 sheet_start = time.perf_counter()
-                                entry["df"].to_excel(writer, sheet_name=entry["final_sheet"], index=False)
-                                written_sheet_dfs[str(entry["final_sheet"])] = entry["df"]
+                                entry_df = entry.get("df", pd.DataFrame())
+                                _write_df_sheet(str(entry["final_sheet"]), entry_df)
+                                # Keep in-memory references only when needed by xlsxwriter styling,
+                                # or for MeContext-specific formatting later in this function.
+                                if excel_engine == "xlsxwriter" or str(entry.get("sheet_candidate", "")).strip() == "MeContext":
+                                    written_sheet_dfs[str(entry["final_sheet"])] = entry_df
+                                # Release written DataFrames ASAP to reduce peak memory footprint.
+                                entry["df"] = pd.DataFrame()
                                 sheet_elapsed = time.perf_counter() - sheet_start
 
                                 if show_phase_timings and sheet_elapsed >= float(slow_sheet_seconds_threshold):
