@@ -1351,7 +1351,7 @@
       Array.from(freqList.options).forEach((option) => { option.selected = true; });
     }
 
-    function renderLog(text) {
+    function renderLog(text, scrollToBottom = false) {
       if (!text) { logOutput.textContent = "No logs yet."; return; }
       const lines = String(text).split(/\r?\n/);
       logOutput.innerHTML = lines.map((line) => {
@@ -1361,7 +1361,7 @@
         else if (line.includes("[DEBUG]")) cls = "log-debug";
         return `<span class="${cls}">${escapeHtml(line)}</span>`;
       }).join("\n");
-      if (executionLogAuto?.checked) logOutput.scrollTop = logOutput.scrollHeight;
+      if (scrollToBottom) logOutput.scrollTop = logOutput.scrollHeight;
     }
 
     function buildNoCacheUrl(baseUrl) {
@@ -1377,12 +1377,13 @@
         .finally(() => clearTimeout(timer));
     }
 
-    function fetchLogByRun() {
+    function fetchLogByRun(forceScrollBottom = false) {
       const runId = logRunSelector?.value;
-      if (!runId) return fetchJsonWithTimeout(buildNoCacheUrl("/logs/latest")).then((data) => renderLog(data.log || "")).catch(() => renderLog(""));
-      fetchJsonWithTimeout(buildNoCacheUrl(`/logs/by_run/${runId}`))
-        .then((data) => renderLog(data.log || ""))
-        .catch(() => renderLog(""));
+      const shouldScrollBottom = Boolean(forceScrollBottom || executionLogAuto?.checked);
+      if (!runId) return fetchJsonWithTimeout(buildNoCacheUrl("/logs/latest")).then((data) => renderLog(data.log || "", shouldScrollBottom)).catch(() => renderLog("", shouldScrollBottom));
+      return fetchJsonWithTimeout(buildNoCacheUrl(`/logs/by_run/${runId}`))
+        .then((data) => renderLog(data.log || "", shouldScrollBottom))
+        .catch(() => renderLog("", shouldScrollBottom));
     }
 
     function sortByExecutionOrder(a, b) {
@@ -1554,10 +1555,10 @@
       return runsRefreshPromise;
     }
 
-    function renderSystemLog(text) {
+    function renderSystemLog(text, scrollToBottom = false) {
       if (!text) {
         systemLogOutput.textContent = "No logs yet.";
-        if (systemLogAuto?.checked) systemLogOutput.scrollTop = systemLogOutput.scrollHeight;
+        if (scrollToBottom) systemLogOutput.scrollTop = systemLogOutput.scrollHeight;
         return;
       }
       const lines = String(text).split(/\r?\n/);
@@ -1577,15 +1578,16 @@
 
         return `<span class="${cls}">${escapeHtml(line)}</span>`;
       }).join("\n");
-      if (systemLogAuto?.checked) systemLogOutput.scrollTop = systemLogOutput.scrollHeight;
+      if (scrollToBottom) systemLogOutput.scrollTop = systemLogOutput.scrollHeight;
     }
 
-    function fetchSystemLog() {
+    function fetchSystemLog(forceScrollBottom = false) {
       const source = systemLogSource?.value || "app";
+      const shouldScrollBottom = Boolean(forceScrollBottom || systemLogAuto?.checked);
       fetch(buildNoCacheUrl(`/logs/system?source=${encodeURIComponent(source)}`), { cache: "no-store" })
         .then((res) => res.json())
-        .then((data) => renderSystemLog(data.log || ""))
-        .catch(() => renderSystemLog(""));
+        .then((data) => renderSystemLog(data.log || "", shouldScrollBottom))
+        .catch(() => renderSystemLog("", shouldScrollBottom));
     }
 
     function persistUserSystemLogSource(source) {
@@ -1783,7 +1785,9 @@
       if (selection) copyToClipboard(selection.toString());
     });
 
-    refreshSystemLogButton?.addEventListener("click", fetchSystemLog);
+    refreshSystemLogButton?.addEventListener("click", () => {
+      fetchSystemLog(true);
+    });
     copySystemLogButton?.addEventListener("click", () => copyToClipboard(systemLogOutput.textContent || ""));
     copySystemSelectionButton?.addEventListener("click", () => {
       const selection = window.getSelection();
@@ -2358,7 +2362,8 @@
       .catch(() => {});
 
     function manualRefreshExecutionLogPanel() {
-      refreshRunsTable({ updateExecutionLogPanel: true });
+      refreshRunsTable({ updateExecutionLogPanel: false })
+        .then(() => fetchLogByRun(true));
     }
 
     const clearBackgroundRefreshTimer = () => {
@@ -2380,7 +2385,7 @@
       if (!systemLogAuto?.checked) return;
       systemLogRefreshTimer = setInterval(() => {
         fetchSystemLog();
-      }, 60000);
+      }, 3000);
     };
 
     const shouldPollBackground = () => {
