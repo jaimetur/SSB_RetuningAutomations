@@ -267,6 +267,8 @@ running_processes: dict[int, subprocess.Popen[str]] = {}
 running_processes_lock = threading.Lock()
 canceled_task_ids: set[int] = set()
 canceled_task_ids_lock = threading.Lock()
+running_external_pids: dict[int, int] = {}
+running_external_pids_lock = threading.Lock()
 
 
 def sync_running_process_registry() -> None:
@@ -281,6 +283,30 @@ def sync_running_process_registry() -> None:
         running_processes.update(active_processes)
 
 
+def is_pid_alive_with_token(pid: int | None, token: str | None) -> bool:
+    if not pid or pid <= 0 or not token:
+        return False
+    try:
+        os.kill(pid, 0)
+    except OSError:
+        return False
+
+    try:
+        env_bytes = Path(f"/proc/{pid}/environ").read_bytes()
+    except OSError:
+        return False
+
+    marker = f"SSB_RA_WEB_TASK_TOKEN={token}".encode("utf-8")
+    return marker in env_bytes.split(b"\x00")
+
+
+def terminate_pid_safe(pid: int) -> None:
+    try:
+        os.kill(pid, 15)
+    except OSError:
+        pass
+
+
 def get_conn() -> sqlite3.Connection:
     conn = sqlite3.connect(DB_PATH, timeout=SQLITE_CONNECT_TIMEOUT_S)
     conn.row_factory = sqlite3.Row
@@ -292,25 +318,104 @@ def get_conn() -> sqlite3.Connection:
 
 
 def recover_incomplete_tasks() -> None:
-    """Re-queue tasks left in non-terminal states after an unexpected restart."""
+    """Recover non-terminal tasks after startup without creating unsafe duplicates."""
     conn = get_conn()
-    pending_count = conn.execute(
-        "SELECT COUNT(*) AS total FROM task_runs WHERE status IN ('running', 'canceling')"
-    ).fetchone()["total"]
-    if pending_count:
+    rows = conn.execute(
+        """
+        SELECT id, user_id, module, tool_version, input_name, payload_json, input_dir, output_log, runtime_pid, runtime_token
+        FROM task_runs
+        WHERE status IN ('running', 'canceling')
+        ORDER BY id ASC
+        """
+    ).fetchall()
+
+    recovered_alive = 0
+    requeued = 0
+    now_value = now_iso()
+
+    for row in rows:
+        task_id = int(row["id"])
+        runtime_pid = int(row["runtime_pid"] or 0)
+        runtime_token = str(row["runtime_token"] or "").strip()
+
+        if is_pid_alive_with_token(runtime_pid, runtime_token):
+            conn.execute(
+                """
+                UPDATE task_runs
+                SET status = 'running',
+                    output_log = TRIM(COALESCE(output_log, '') || '\nRecovered after service restart. Existing process is still alive (pid=' || ? || ').')
+                WHERE id = ?
+                """,
+                (runtime_pid, task_id),
+            )
+            with running_external_pids_lock:
+                running_external_pids[task_id] = runtime_pid
+            recovered_alive += 1
+            continue
+
         conn.execute(
             """
             UPDATE task_runs
-            SET status = 'queued',
-                finished_at = NULL,
+            SET status = 'error',
+                finished_at = ?,
                 duration_seconds = NULL,
-                output_log = TRIM(COALESCE(output_log, '') || '\nRecovered after service restart. Task re-queued automatically.')
-            WHERE status IN ('running', 'canceling')
-            """
+                output_log = TRIM(COALESCE(output_log, '') || '\nRecovered after service restart. Previous process was not alive; task marked as interrupted and re-queued as a new run.')
+            WHERE id = ?
+            """,
+            (now_value, task_id),
         )
+
+        try:
+            payload = json.loads(row["payload_json"] or "{}")
+        except json.JSONDecodeError:
+            payload = {}
+        payload = refresh_queue_output_dir(payload, task_id)
+        new_input_dir = payload.get("input_post", "") if (row["module"] or "") == "consistency-check" else payload.get("input", "")
+        conn.execute(
+            """
+            INSERT INTO task_runs(user_id, module, tool_version, input_name, status, started_at, command, output_log, payload_json, input_dir)
+            VALUES (?, ?, ?, ?, 'queued', ?, '', ?, ?, ?)
+            """,
+            (
+                row["user_id"],
+                row["module"],
+                row["tool_version"],
+                row["input_name"] or detect_task_name_from_input(str(new_input_dir or "")),
+                "",
+                "Re-queued automatically after startup recovery because previous process was not alive.",
+                json.dumps(payload),
+                new_input_dir,
+            ),
+        )
+        requeued += 1
+
+    if rows:
         conn.commit()
-        logger.warning("Recovered %s interrupted task(s) after startup and moved them back to queue.", pending_count)
     conn.close()
+
+    if recovered_alive:
+        logger.warning("Recovered %s task(s) with still-alive external process after startup.", recovered_alive)
+    if requeued:
+        logger.warning("Recovered %s interrupted task(s) after startup and re-queued them as new runs.", requeued)
+
+
+def refresh_queue_output_dir(payload: dict[str, Any], task_id: int) -> dict[str, Any]:
+    """Ensure each execution attempt uses a fresh queue_task_* output folder."""
+    payload_copy = dict(payload)
+    configured_output = str(payload_copy.get("output") or "").strip()
+    if not configured_output:
+        return payload_copy
+
+    output_path = Path(configured_output)
+    if not output_path.name.startswith("queue_task_"):
+        return payload_copy
+
+    base_output_root = output_path.parent
+    fresh_stamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+    fresh_output_dir = base_output_root / f"queue_task_{fresh_stamp}_{task_id:06d}"
+    fresh_output_dir.mkdir(parents=True, exist_ok=True)
+    payload_copy["output"] = str(fresh_output_dir)
+    return payload_copy
 
 
 def load_tool_metadata() -> dict[str, str]:
@@ -846,6 +951,8 @@ def init_db() -> None:
             output_log_file TEXT,
             input_name TEXT,
             payload_json TEXT,
+            runtime_pid INTEGER,
+            runtime_token TEXT,
             FOREIGN KEY(user_id) REFERENCES users(id)
         )
         """
@@ -879,6 +986,10 @@ def init_db() -> None:
         cur.execute("ALTER TABLE task_runs ADD COLUMN input_name TEXT")
     if "payload_json" not in existing_columns:
         cur.execute("ALTER TABLE task_runs ADD COLUMN payload_json TEXT")
+    if "runtime_pid" not in existing_columns:
+        cur.execute("ALTER TABLE task_runs ADD COLUMN runtime_pid INTEGER")
+    if "runtime_token" not in existing_columns:
+        cur.execute("ALTER TABLE task_runs ADD COLUMN runtime_token TEXT")
 
     user_columns = {row["name"] for row in cur.execute("PRAGMA table_info(users)").fetchall()}
     if "access_request_reason" not in user_columns:
@@ -1487,6 +1598,7 @@ def run_queued_task(task_row: sqlite3.Row) -> None:
         conn_partial.commit()
         conn_partial.close()
 
+    run_token = secrets.token_hex(16)
     try:
         proc = subprocess.Popen(
             cmd,
@@ -1497,10 +1609,16 @@ def run_queued_task(task_row: sqlite3.Row) -> None:
             encoding="utf-8",
             errors="replace",
             bufsize=1,
-            env={**os.environ, "TERM": "xterm", "SSB_RA_NO_CLEAR": "1"},
+            env={**os.environ, "TERM": "xterm", "SSB_RA_NO_CLEAR": "1", "SSB_RA_WEB_TASK_TOKEN": run_token},
         )
         with running_processes_lock:
             running_processes[task_id] = proc
+        with running_external_pids_lock:
+            running_external_pids.pop(task_id, None)
+        conn_runtime = get_conn()
+        conn_runtime.execute("UPDATE task_runs SET runtime_pid = ?, runtime_token = ? WHERE id = ?", (proc.pid, run_token, task_id))
+        conn_runtime.commit()
+        conn_runtime.close()
         output_chunks: list[str] = []
         last_partial_update = time.perf_counter()
         stream = proc.stdout
@@ -1531,6 +1649,8 @@ def run_queued_task(task_row: sqlite3.Row) -> None:
     finally:
         with running_processes_lock:
             running_processes.pop(task_id, None)
+        with running_external_pids_lock:
+            running_external_pids.pop(task_id, None)
         sync_running_process_registry()
 
     output_log = strip_ansi(output_log)
@@ -1653,7 +1773,7 @@ def run_queued_task(task_row: sqlite3.Row) -> None:
         """
         UPDATE task_runs
         SET status = ?, finished_at = ?, duration_seconds = ?, command = ?, output_log = ?,
-            input_dir = ?, output_dir = ?, output_zip = ?, output_log_file = ?
+            input_dir = ?, output_dir = ?, output_zip = ?, output_log_file = ?, runtime_pid = NULL, runtime_token = NULL
         WHERE id = ?
         """,
         (
@@ -1714,6 +1834,19 @@ def queue_worker() -> None:
                 """,
                 (queued_row["id"],),
             ).fetchone()
+            if task_row is not None:
+                refreshed_payload = refresh_queue_output_dir(
+                    json.loads(task_row["payload_json"] or "{}"),
+                    queued_row["id"],
+                )
+                conn.execute(
+                    "UPDATE task_runs SET payload_json = ? WHERE id = ?",
+                    (json.dumps(refreshed_payload), queued_row["id"]),
+                )
+                conn.commit()
+                task_row_dict = dict(task_row)
+                task_row_dict["payload_json"] = json.dumps(refreshed_payload)
+                task_row = task_row_dict
             conn.close()
             if task_row is None:
                 continue
@@ -3345,7 +3478,7 @@ async def runs_stop(request: Request):
 
     conn = get_conn()
     rows = conn.execute(
-        "SELECT id, status FROM task_runs WHERE user_id = ? AND id IN (%s)" % ",".join("?" for _ in run_ids),
+        "SELECT id, status, runtime_pid, runtime_token FROM task_runs WHERE user_id = ? AND id IN (%s)" % ",".join("?" for _ in run_ids),
         (user["id"], *run_ids),
     ).fetchall()
 
@@ -3353,6 +3486,9 @@ async def runs_stop(request: Request):
     queued_ids: list[int] = []
     running_ids: list[int] = []
     running_without_process_ids: list[int] = []
+    running_external_process_ids: list[int] = []
+    external_pid_by_task: dict[int, int] = {}
+    row_by_task = {int(row["id"]): row for row in rows}
     for row in rows:
         status = (row["status"] or "").lower()
         if status == "queued":
@@ -3372,14 +3508,25 @@ async def runs_stop(request: Request):
             proc = running_processes.get(task_id)
             if proc and proc.poll() is None:
                 running_with_process_ids.append(task_id)
+                continue
+
+            row = row_by_task.get(task_id)
+            runtime_pid = int((row["runtime_pid"] if row else 0) or 0)
+            runtime_token = str((row["runtime_token"] if row else "") or "").strip()
+            if is_pid_alive_with_token(runtime_pid, runtime_token):
+                running_external_process_ids.append(task_id)
+                external_pid_by_task[task_id] = runtime_pid
+                with running_external_pids_lock:
+                    running_external_pids[task_id] = runtime_pid
             else:
                 running_without_process_ids.append(task_id)
 
-    if running_with_process_ids:
+    running_canceling_ids = [*running_with_process_ids, *running_external_process_ids]
+    if running_canceling_ids:
         conn.execute(
             "UPDATE task_runs SET status = 'canceling', output_log = TRIM(output_log || '\\nCancellation requested by user.') WHERE user_id = ? AND id IN (%s)"
-            % ",".join("?" for _ in running_with_process_ids),
-            (user["id"], *running_with_process_ids),
+            % ",".join("?" for _ in running_canceling_ids),
+            (user["id"], *running_canceling_ids),
         )
     if running_without_process_ids:
         conn.execute(
@@ -3391,7 +3538,7 @@ async def runs_stop(request: Request):
     conn.close()
 
     with canceled_task_ids_lock:
-        canceled_task_ids.update(running_with_process_ids)
+        canceled_task_ids.update(running_canceling_ids)
     with running_processes_lock:
         for task_id in running_with_process_ids:
             proc = running_processes.get(task_id)
@@ -3400,6 +3547,11 @@ async def runs_stop(request: Request):
                     proc.terminate()
                 except OSError:
                     pass
+
+    for task_id in running_external_process_ids:
+        pid = external_pid_by_task.get(task_id)
+        if pid:
+            terminate_pid_safe(pid)
 
     queue_event.set()
     return {
@@ -3570,7 +3722,7 @@ async def runs_delete(request: Request):
         )
 
     rows = conn.execute(
-        "SELECT id, status, module, tool_version, finished_at, output_dir, output_zip, output_log_file, payload_json FROM task_runs WHERE user_id = ? AND id IN (%s)" % ",".join("?" for _ in run_ids),
+        "SELECT id, status, module, tool_version, finished_at, output_dir, output_zip, output_log_file, payload_json, runtime_pid, runtime_token FROM task_runs WHERE user_id = ? AND id IN (%s)" % ",".join("?" for _ in run_ids),
         (user["id"], *run_ids),
     ).fetchall()
 
@@ -3578,6 +3730,9 @@ async def runs_delete(request: Request):
     queued_ids: list[int] = []
     running_ids: list[int] = []
     running_without_process_ids: list[int] = []
+    running_external_process_ids: list[int] = []
+    external_pid_by_task: dict[int, int] = {}
+    row_by_task = {int(row["id"]): row for row in rows}
     for row in rows:
         status = (row["status"] or "").strip().lower()
         if status == "queued":
@@ -3598,17 +3753,28 @@ async def runs_delete(request: Request):
             proc = running_processes.get(task_id)
             if proc and proc.poll() is None:
                 running_with_process_ids.append(task_id)
+                continue
+
+            row = row_by_task.get(task_id)
+            runtime_pid = int((row["runtime_pid"] if row else 0) or 0)
+            runtime_token = str((row["runtime_token"] if row else "") or "").strip()
+            if is_pid_alive_with_token(runtime_pid, runtime_token):
+                running_external_process_ids.append(task_id)
+                external_pid_by_task[task_id] = runtime_pid
+                with running_external_pids_lock:
+                    running_external_pids[task_id] = runtime_pid
             else:
                 running_without_process_ids.append(task_id)
 
-    if running_with_process_ids:
+    running_canceling_ids = [*running_with_process_ids, *running_external_process_ids]
+    if running_canceling_ids:
         conn.execute(
             "UPDATE task_runs SET status = 'canceling', output_log = TRIM(output_log || '\\nCancellation requested by user before deletion.') WHERE user_id = ? AND id IN (%s)"
-            % ",".join("?" for _ in running_with_process_ids),
-            (user["id"], *running_with_process_ids),
+            % ",".join("?" for _ in running_canceling_ids),
+            (user["id"], *running_canceling_ids),
         )
         with canceled_task_ids_lock:
-            canceled_task_ids.update(running_with_process_ids)
+            canceled_task_ids.update(running_canceling_ids)
         with running_processes_lock:
             for task_id in running_with_process_ids:
                 proc = running_processes.get(task_id)
@@ -3617,6 +3783,11 @@ async def runs_delete(request: Request):
                         proc.terminate()
                     except OSError:
                         pass
+
+        for task_id in running_external_process_ids:
+            pid = external_pid_by_task.get(task_id)
+            if pid:
+                terminate_pid_safe(pid)
 
     if running_without_process_ids:
         conn.execute(
@@ -3872,7 +4043,7 @@ async def admin_stop_runs(request: Request):
 
     conn = get_conn()
     rows = conn.execute(
-        "SELECT id, status FROM task_runs WHERE id IN (%s)" % ",".join("?" for _ in run_ids),
+        "SELECT id, status, runtime_pid, runtime_token FROM task_runs WHERE id IN (%s)" % ",".join("?" for _ in run_ids),
         tuple(run_ids),
     ).fetchall()
 
@@ -3880,6 +4051,9 @@ async def admin_stop_runs(request: Request):
     queued_ids: list[int] = []
     running_ids: list[int] = []
     running_without_process_ids: list[int] = []
+    running_external_process_ids: list[int] = []
+    external_pid_by_task: dict[int, int] = {}
+    row_by_task = {int(row["id"]): row for row in rows}
     for row in rows:
         status = (row["status"] or "").lower()
         if status == "queued":
@@ -3900,17 +4074,28 @@ async def admin_stop_runs(request: Request):
             proc = running_processes.get(task_id)
             if proc and proc.poll() is None:
                 running_with_process_ids.append(task_id)
+                continue
+
+            row = row_by_task.get(task_id)
+            runtime_pid = int((row["runtime_pid"] if row else 0) or 0)
+            runtime_token = str((row["runtime_token"] if row else "") or "").strip()
+            if is_pid_alive_with_token(runtime_pid, runtime_token):
+                running_external_process_ids.append(task_id)
+                external_pid_by_task[task_id] = runtime_pid
+                with running_external_pids_lock:
+                    running_external_pids[task_id] = runtime_pid
             else:
                 running_without_process_ids.append(task_id)
 
-    if running_with_process_ids:
+    running_canceling_ids = [*running_with_process_ids, *running_external_process_ids]
+    if running_canceling_ids:
         conn.execute(
             "UPDATE task_runs SET status = 'canceling', output_log = TRIM(output_log || '\nCancellation requested by admin.') WHERE id IN (%s)"
-            % ",".join("?" for _ in running_with_process_ids),
-            tuple(running_with_process_ids),
+            % ",".join("?" for _ in running_canceling_ids),
+            tuple(running_canceling_ids),
         )
         with canceled_task_ids_lock:
-            canceled_task_ids.update(running_with_process_ids)
+            canceled_task_ids.update(running_canceling_ids)
         with running_processes_lock:
             for task_id in running_with_process_ids:
                 proc = running_processes.get(task_id)
@@ -3919,6 +4104,11 @@ async def admin_stop_runs(request: Request):
                         proc.terminate()
                     except OSError:
                         pass
+
+        for task_id in running_external_process_ids:
+            pid = external_pid_by_task.get(task_id)
+            if pid:
+                terminate_pid_safe(pid)
 
     if running_without_process_ids:
         conn.execute(
@@ -4001,7 +4191,7 @@ async def admin_delete_runs(request: Request):
 
     conn = get_conn()
     rows = conn.execute(
-        "SELECT tr.id, tr.user_id, u.username, tr.status, tr.module, tr.tool_version, tr.finished_at, tr.output_dir, tr.output_zip, tr.output_log_file, tr.payload_json FROM task_runs tr JOIN users u ON u.id = tr.user_id WHERE tr.id IN (%s)" % ",".join("?" for _ in run_ids),
+        "SELECT tr.id, tr.user_id, u.username, tr.status, tr.module, tr.tool_version, tr.finished_at, tr.output_dir, tr.output_zip, tr.output_log_file, tr.payload_json, tr.runtime_pid, tr.runtime_token FROM task_runs tr JOIN users u ON u.id = tr.user_id WHERE tr.id IN (%s)" % ",".join("?" for _ in run_ids),
         tuple(run_ids),
     ).fetchall()
 
@@ -4009,6 +4199,9 @@ async def admin_delete_runs(request: Request):
     queued_ids: list[int] = []
     running_ids: list[int] = []
     running_without_process_ids: list[int] = []
+    running_external_process_ids: list[int] = []
+    external_pid_by_task: dict[int, int] = {}
+    row_by_task = {int(row["id"]): row for row in rows}
     for row in rows:
         status = (row["status"] or "").strip().lower()
         if status == "queued":
@@ -4029,17 +4222,28 @@ async def admin_delete_runs(request: Request):
             proc = running_processes.get(task_id)
             if proc and proc.poll() is None:
                 running_with_process_ids.append(task_id)
+                continue
+
+            row = row_by_task.get(task_id)
+            runtime_pid = int((row["runtime_pid"] if row else 0) or 0)
+            runtime_token = str((row["runtime_token"] if row else "") or "").strip()
+            if is_pid_alive_with_token(runtime_pid, runtime_token):
+                running_external_process_ids.append(task_id)
+                external_pid_by_task[task_id] = runtime_pid
+                with running_external_pids_lock:
+                    running_external_pids[task_id] = runtime_pid
             else:
                 running_without_process_ids.append(task_id)
 
-    if running_with_process_ids:
+    running_canceling_ids = [*running_with_process_ids, *running_external_process_ids]
+    if running_canceling_ids:
         conn.execute(
             "UPDATE task_runs SET status = 'canceling', output_log = TRIM(output_log || '\\nCancellation requested by admin before deletion.') WHERE id IN (%s)"
-            % ",".join("?" for _ in running_with_process_ids),
-            tuple(running_with_process_ids),
+            % ",".join("?" for _ in running_canceling_ids),
+            tuple(running_canceling_ids),
         )
         with canceled_task_ids_lock:
-            canceled_task_ids.update(running_with_process_ids)
+            canceled_task_ids.update(running_canceling_ids)
         with running_processes_lock:
             for task_id in running_with_process_ids:
                 proc = running_processes.get(task_id)
@@ -4048,6 +4252,11 @@ async def admin_delete_runs(request: Request):
                         proc.terminate()
                     except OSError:
                         pass
+
+        for task_id in running_external_process_ids:
+            pid = external_pid_by_task.get(task_id)
+            if pid:
+                terminate_pid_safe(pid)
 
     if running_without_process_ids:
         conn.execute(
