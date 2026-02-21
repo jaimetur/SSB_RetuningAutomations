@@ -1469,7 +1469,9 @@ def enqueue_payloads_for_user(
             configured_output = str(queue_payload.get("output") or "").strip()
             base_output_root = Path(configured_output) if configured_output else default_output_root
         queue_output_dir = base_output_root / f"queue_task_{queue_batch_stamp}_{index:02d}"
-        queue_output_dir.mkdir(parents=True, exist_ok=True)
+        # Do not pre-create queue_task_* folders here.
+        # A fresh dedicated folder is created right before execution starts
+        # (refresh_queue_output_dir), so eager mkdir would leave an empty orphan.
         queue_payload["output"] = str(queue_output_dir)
 
     for queue_payload in queue_payloads:

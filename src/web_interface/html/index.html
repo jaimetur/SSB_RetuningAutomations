@@ -1945,6 +1945,8 @@
       if (!ids.length) return;
       const rerunAnswer = await showModal({ title: "Re-run executions", message: "Queue selected executions as new tasks?", confirmText: "Accept", cancelText: "Cancel" });
       if (!rerunAnswer.ok) return;
+      markExecutionAutoEnablePending();
+      setExecutionAutoChecked(true);
       fetch(buildNoCacheUrl("/runs/rerun"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -2402,8 +2404,9 @@
       executionLogAuto.disabled = !hasActive;
 
       if (!hasActive) {
-        setExecutionAutoChecked(false);
-        clearExecutionAutoEnablePending();
+        if (!pendingExecutionAutoEnable) {
+          setExecutionAutoChecked(false);
+        }
         scheduleBackgroundRefresh();
         return;
       }
