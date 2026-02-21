@@ -1449,16 +1449,17 @@
       return items[0] ? String(items[0].id) : "";
     }
 
-    function fetchAdminRunLog() {
+    function fetchAdminRunLog(forceScrollBottom = false) {
       const runId = adminLogRunSelector?.value;
+      const shouldScrollBottom = Boolean(forceScrollBottom || adminExecutionLogAuto?.checked);
       if (!runId) {
-        renderAdminLog("", adminLogOutput);
+        renderAdminLog("", adminLogOutput, { scrollToBottom: shouldScrollBottom });
         return;
       }
       fetch(buildNoCacheUrl(`/admin/logs/by_run/${runId}`), { cache: "no-store" })
         .then((res) => res.json())
-        .then((data) => renderAdminLog(data.log || "", adminLogOutput, { scrollToBottom: adminExecutionLogAuto?.checked }))
-        .catch(() => renderAdminLog("", adminLogOutput, { scrollToBottom: adminExecutionLogAuto?.checked }));
+        .then((data) => renderAdminLog(data.log || "", adminLogOutput, { scrollToBottom: shouldScrollBottom }))
+        .catch(() => renderAdminLog("", adminLogOutput, { scrollToBottom: shouldScrollBottom }));
     }
 
     function updateAdminExecutionAutoRefreshAvailability(hasActive) {
@@ -1593,16 +1594,17 @@
       updateSelectionSizeLabels();
     }
 
-    function fetchAdminSystemLog() {
+    function fetchAdminSystemLog(forceScrollBottom = false) {
       const source = adminSystemLogSource?.value || "app";
+      const shouldScrollBottom = Boolean(forceScrollBottom || adminSystemLogAuto?.checked);
       fetch(buildNoCacheUrl(`/logs/system?source=${encodeURIComponent(source)}`), { cache: "no-store" })
         .then((res) => res.json())
-        .then((data) => renderAdminLog(data.log || "", adminSystemLogOutput, { scrollToBottom: adminSystemLogAuto?.checked }))
-        .catch(() => renderAdminLog("", adminSystemLogOutput, { scrollToBottom: adminSystemLogAuto?.checked }));
+        .then((data) => renderAdminLog(data.log || "", adminSystemLogOutput, { scrollToBottom: shouldScrollBottom }))
+        .catch(() => renderAdminLog("", adminSystemLogOutput, { scrollToBottom: shouldScrollBottom }));
     }
 
     adminLogRunSelector?.addEventListener("change", fetchAdminRunLog);
-    adminRefreshLogButton?.addEventListener("click", fetchAdminRunLog);
+    adminRefreshLogButton?.addEventListener("click", () => fetchAdminRunLog(true));
     adminCopyLogButton?.addEventListener("click", () => copyToClipboard(adminLogOutput?.textContent || ""));
     adminCopySelectionButton?.addEventListener("click", () => copyToClipboard(window.getSelection()?.toString() || ""));
 
@@ -1610,7 +1612,7 @@
       fetchAdminSystemLog();
       persistAdminSystemLogSource(adminSystemLogSource?.value || "app");
     });
-    adminRefreshSystemLogButton?.addEventListener("click", fetchAdminSystemLog);
+    adminRefreshSystemLogButton?.addEventListener("click", () => fetchAdminSystemLog(true));
     adminCopySystemLogButton?.addEventListener("click", () => copyToClipboard(adminSystemLogOutput?.textContent || ""));
     adminCopySystemSelectionButton?.addEventListener("click", () => copyToClipboard(window.getSelection()?.toString() || ""));
     adminDeleteSystemLogButton?.addEventListener("click", async () => {
@@ -1746,7 +1748,7 @@
       if (!adminSystemLogAuto?.checked) return;
       adminSystemLogRefreshTimer = setInterval(() => {
         fetchAdminSystemLog();
-      }, 60000);
+      }, 3000);
     };
 
     const shouldAdminPollBackground = () => {
